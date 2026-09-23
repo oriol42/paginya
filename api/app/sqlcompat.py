@@ -13,6 +13,8 @@ from pathlib import Path
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 PG = DATABASE_URL.startswith(("postgres://", "postgresql://"))
+# Several apps can share one Supabase project: each keeps its tables in its own schema.
+SCHEMA = re.sub(r"[^a-z0-9_]", "", os.getenv("DB_SCHEMA", "public").lower()) or "public"
 
 
 class Conn:
@@ -46,7 +48,7 @@ class Conn:
 
     def columns(self, table: str) -> set[str]:
         if PG:
-            rows = self.execute("SELECT column_name FROM information_schema.columns WHERE table_name = ?", (table,)).fetchall()
+            rows = self.execute("SELECT column_name FROM information_schema.columns WHERE table_name = ? AND table_schema = ?", (table, SCHEMA)).fetchall()
             return {r["column_name"] for r in rows}
         return {r[1] for r in self.raw.execute(f"PRAGMA table_info({table})")}
 
@@ -59,6 +61,9 @@ def connect(sqlite_path: Path):
 
         # prepare_threshold=None: required behind Supabase's connection pooler
         conn = psycopg.connect(DATABASE_URL, row_factory=dict_row, prepare_threshold=None, connect_timeout=10)
+        if SCHEMA != "public":
+            conn.execute(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}")
+            conn.execute(f"SET LOCAL search_path TO {SCHEMA}")  # LOCAL: safe behind a transaction pooler
         try:
             yield Conn(conn)
             conn.commit()

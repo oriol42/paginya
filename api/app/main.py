@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from . import config, db, doc_routes, fapshi, forms_routes, pricing
+from . import config, db, doc_routes, fapshi, forms_routes, pricing, storage
 from .render import render_cover
 from .svg_safe import UnsafeSvg, sanitize_svg
 
@@ -19,6 +19,7 @@ log = logging.getLogger("propre")
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     db.init()
+    storage.ensure_bucket(public=False)  # users' documents are private
     stop = threading.Event()
 
     def janitor() -> None:  # hourly: delete contents older than 7 days
@@ -102,6 +103,9 @@ def _public(order: dict) -> dict:
 
 @app.get("/health")
 def health() -> dict:
+    """Also the keep-alive target (cron every few hours): touches the database so Supabase stays awake too."""
+    with db.connect() as c:
+        c.execute("SELECT 1").fetchone()
     return {"ok": True, "payments": config.FAPSHI_MODE}
 
 

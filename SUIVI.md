@@ -133,3 +133,15 @@ Voir `Documents/affichya/PLAN.md` et son `SUIVI.md`. On démarre après avoir fi
   - style : miniatures en 2 colonnes, plus lisibles.
 - **Lettre** (`forms/LetterForm.tsx`) : **4 étapes** (Type → Toi → Destinataire → La lettre). Le type fait passer à l'étape suivante, les champs facultatifs sont repliés (« + Plus de détails »), l'aperçu est toujours à portée.
 
+## Hébergement sans carte bancaire (préparé le 24/09/2026)
+Oracle refuse les cartes virtuelles, et l'utilisateur n'a pas de carte bancaire classique. Le plan retenu, 100 % gratuit :
+- **Site** : export statique (`output: "export"` dans `next.config.ts`, dossier `out/`) sur **Vercel**. Vercel gratuit interdit en principe l'usage commercial : passer sur Cloudflare Pages quand les ventes démarrent (même dossier `out/`).
+- **API** : **Hugging Face Spaces** (Docker, 16 Go). Le Space public ne contient qu'un `Dockerfile` qui récupère le code dans le dépôt GitHub **privé**, grâce au secret de build `GITHUB_TOKEN`. Kit dans `Documents/serveur/hf/`.
+- **Données** : **Supabase**. Postgres via `DATABASE_URL` : un seul projet pour les deux applis, chacune dans son schéma (`DB_SCHEMA`). Les fichiers durables vont dans Supabase Storage (`app/storage.py`).
+  - Le disque de Hugging Face est effacé à chaque redémarrage : c'est seulement un cache.
+  - Ce qui ne peut pas être reconstruit (fichier d'origine, images, photos) est dans Storage. Le reste est reconstruit à la demande.
+- **Code** : `app/sqlcompat.py` fait tourner le même SQL sur SQLite (local, tests) et Postgres (production).
+- **Maintien en éveil** : `/health` touche la base toutes les 6 h, via GitHub Actions (`.github/workflows/keepalive.yml`) et via une tâche Supabase (pg_cron + pg_net). Hugging Face dort après 48 h sans visite, Supabase se met en pause après 7 jours.
+- **Déployer** : remplir `Documents/serveur/.env` (modèle `env.example`), puis `./deploy_nocard.sh`.
+- **Pas encore testé en vrai** avec Postgres/Supabase et Hugging Face (pas de réseau le 24/09). Premier test à faire dès que les comptes sont prêts.
+
