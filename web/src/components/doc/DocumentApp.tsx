@@ -38,8 +38,7 @@ export function DocumentApp() {
   const [view, setView] = useState<View>("after");
   const [beforePages, setBeforePages] = useState<number | null>(null);
   const [payOpen, setPayOpen] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [cover, setCover] = useState<StudioState | null>(null);
+    const [cover, setCover] = useState<StudioState | null>(null);
   const pending = useRef<Patch>({});
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chain = useRef<Promise<unknown>>(Promise.resolve());
@@ -193,79 +192,86 @@ export function DocumentApp() {
     </>
   );
 
-  const downloadButton = (
+  const title = `${KIND_LABEL[doc.meta.kind] ?? "Document"} · ${pages} page${pages > 1 ? "s" : ""}`;
+  const views = [
+    { value: "after" as View, label: "✨ Après" },
+    { value: "before" as View, label: "Avant" },
+    ...(typeof window !== "undefined" && window.innerWidth >= 1024 ? [{ value: "side" as View, label: "Côte à côte" }] : []),
+  ];
+  const download = (
     <button
       type="button"
       onClick={() => setPayOpen(true)}
       disabled={rendering}
-      className="w-full rounded-2xl bg-brand-500 px-5 py-3.5 text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 active:scale-[.98] disabled:opacity-60"
+      className="shrink-0 rounded-xl bg-brand-500 px-4 py-2.5 font-display text-[15px] font-bold text-white shadow-md shadow-brand-500/25 transition hover:bg-brand-600 active:scale-[.98] disabled:opacity-60"
     >
-      <span className="block font-display text-lg leading-tight font-bold">{paid ? "Télécharger à nouveau" : "Télécharger mon document"}</span>
-      <span className="block text-xs text-white/80">Word + PDF · sans filigrane</span>
+      ⬇ {paid ? "Retélécharger" : "Télécharger"}
     </button>
   );
 
   return (
-    <Shell right={<span className="hidden text-sm font-semibold text-slate-500 sm:inline">{KIND_LABEL[doc.meta.kind] ?? "Document"} · {pages} pages</span>}>
-      <div className="mx-auto grid w-full max-w-7xl flex-1 grid-cols-[minmax(0,1fr)] lg:grid-cols-[400px_minmax(0,1fr)] lg:gap-8 lg:px-5">
-        {/* Desktop sidebar: panels stay beside the document, never on top of it */}
-        <aside className="hidden lg:block">
-          <div className="sticky top-14 flex h-[calc(100dvh-3.5rem)] flex-col pt-5">
-            <Tabs panel={panel} onPanel={setPanel} />
-            <div className="mt-4 flex-1 overflow-y-auto pr-1 pb-4">{panelBody}</div>
-            <div className="space-y-2 border-t border-slate-100 pt-3 pb-4">
-              {downloadButton}
-              <DangerRow confirm={confirmDelete} onAsk={() => setConfirmDelete(true)} onCancel={() => setConfirmDelete(false)} onDelete={remove} onNew={reset} />
-            </div>
+    <div className="flex h-dvh flex-col bg-[#eef1f4]">
+      {/* Top bar (Google Docs / Canva): title · before/after · corrections · download */}
+      <header className="z-30 shrink-0 border-b border-slate-200/80 bg-white pt-[env(safe-area-inset-top)]">
+        <div className="flex h-14 items-center gap-2 px-2 sm:px-4">
+          <Link href="/" className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-xl text-slate-600 hover:bg-slate-100" aria-label="Accueil">←</Link>
+          <div className="hidden sm:block"><Logo /></div>
+          <span className="ml-1 min-w-0 truncate text-sm font-semibold text-slate-600 sm:ml-3">{title}</span>
+          <div className="ml-auto flex items-center gap-2">
+            <span className={`hidden rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 transition sm:inline ${rendering ? "opacity-100" : "opacity-0"}`}>⏳ Mise à jour…</span>
+            <ChangesPill doc={doc} />
+            <div className="hidden w-[300px] lg:block"><Segmented value={view} onChange={showView} options={views} /></div>
+            <div className="hidden lg:block">{download}</div>
           </div>
+        </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+        {/* Desktop: tool rail + its panel */}
+        <nav className="hidden w-[76px] shrink-0 flex-col items-center gap-1 border-r border-slate-200/80 bg-white py-3 lg:flex">
+          {PANELS.map((p) => (
+            <button key={p.id} type="button" onClick={() => setPanel(p.id)} className={`flex w-[64px] flex-col items-center gap-1 rounded-2xl py-2.5 text-[11px] font-bold transition ${panel === p.id ? "bg-brand-500/10 text-brand-700" : "text-slate-500 hover:bg-slate-50"}`}>
+              <span className="text-xl leading-none">{p.icon}</span>
+              {p.id === "cover" ? "Garde" : p.label}
+            </button>
+          ))}
+          <div className="mt-auto w-full px-2"><MoreMenu onNew={reset} onDelete={remove} /></div>
+        </nav>
+        <aside className="hidden w-[340px] shrink-0 flex-col border-r border-slate-200/80 bg-white lg:flex">
+          <p className="px-5 pt-5 font-display text-lg font-bold text-ink">{PANELS.find((p) => p.id === panel)?.icon} {panel === "cover" ? "Page de garde" : PANELS.find((p) => p.id === panel)?.label}</p>
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-3 pb-6">{panelBody}</div>
         </aside>
 
-        {/* Pages */}
-        <section className={`relative min-w-0 px-4 pt-4 lg:px-0 lg:pt-5 ${drawer ? "pb-[50dvh]" : "pb-44"} lg:pb-16`}>
-          <ChangesCard doc={doc} />
-          <div className="sticky top-14 z-20 -mx-4 mt-4 bg-[#f7faf9]/95 px-4 py-2 backdrop-blur lg:mx-0 lg:px-0">
-            <div className="mx-auto flex max-w-[620px] items-center gap-3">
-              <div className="flex-1">
-                <Segmented
-                  value={view}
-                  onChange={showView}
-                  options={[
-                    { value: "after", label: "✨ Après" },
-                    { value: "before", label: "Avant" },
-                    ...(typeof window !== "undefined" && window.innerWidth >= 1024 ? [{ value: "side" as View, label: "Côte à côte" }] : []),
-                  ]}
-                />
-              </div>
-              <span className={`shrink-0 rounded-full bg-ink px-3 py-1.5 text-xs font-bold text-white transition ${rendering ? "opacity-100" : "opacity-0"}`}>⏳ Mise à jour…</span>
-            </div>
+        {/* The document, on its grey desk */}
+        <main className={`min-w-0 flex-1 overflow-y-auto ${drawer ? "pb-[50dvh]" : "pb-28"} lg:pb-12`}>
+          <div className="sticky top-0 z-20 bg-[#eef1f4]/90 px-3 pt-3 pb-2 backdrop-blur lg:hidden">
+            <Segmented value={view} onChange={showView} options={views} />
           </div>
-          {error && <p className="mx-auto mt-3 max-w-[620px] rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
-          <Pages doc={doc} view={view} beforePages={beforePages} dim={rendering} />
-        </section>
+          {error && <p className="mx-auto mt-3 max-w-[720px] rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
+          <div className="px-3 pt-2 sm:px-6 lg:pt-8">
+            <Pages doc={doc} view={view} beforePages={beforePages} dim={rendering} />
+          </div>
+        </main>
       </div>
 
-      {/* Mobile: toolbar + half-height drawer (no dark overlay: the document stays visible) */}
+      {/* Mobile: one bottom row (tools + download) and a half-height drawer that leaves the page visible */}
       <div className="fixed inset-x-0 bottom-0 z-40 lg:hidden">
         {drawer && (
-          <div className="sheet-in flex h-[46dvh] flex-col rounded-t-[28px] border-t border-slate-200 bg-[#f7faf9] shadow-[0_-12px_40px_-12px_rgba(15,23,42,.25)]">
+          <div className="sheet-in flex h-[46dvh] flex-col rounded-t-[28px] border-t border-slate-200 bg-white shadow-[0_-12px_40px_-12px_rgba(15,23,42,.25)]">
             <div className="flex items-center justify-between px-4 pt-3 pb-2">
               <Tabs panel={panel} onPanel={setPanel} compact />
-              <button type="button" onClick={() => setDrawer(false)} className="ml-2 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-slate-500 ring-1 ring-slate-200" aria-label="Fermer">✕</button>
+              <button type="button" onClick={() => setDrawer(false)} className="ml-2 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-500" aria-label="Fermer">✕</button>
             </div>
             <div className="flex-1 overflow-y-auto px-4 pb-4">{panelBody}</div>
           </div>
         )}
-        <div className="border-t border-slate-100 bg-white/95 px-3 pt-2.5 pb-[max(.75rem,env(safe-area-inset-bottom))] backdrop-blur">
-          {!drawer && (
-            <div className="mb-2.5 grid grid-cols-3 gap-2">
-              {PANELS.map((p) => (
-                <button key={p.id} type="button" onClick={() => { setPanel(p.id); setDrawer(true); }} className="flex items-center justify-center gap-1.5 rounded-2xl bg-slate-100 py-2.5 text-sm font-bold text-slate-700 active:scale-[.97]">
-                  {p.icon} {p.label}
-                </button>
-              ))}
-            </div>
-          )}
-          {downloadButton}
+        <div className="flex items-center gap-1.5 border-t border-slate-200 bg-white px-2 pt-2 pb-[max(.6rem,env(safe-area-inset-bottom))]">
+          {PANELS.map((p) => (
+            <button key={p.id} type="button" onClick={() => { setPanel(p.id); setDrawer(!(drawer && panel === p.id)); }} className={`flex w-[62px] shrink-0 flex-col items-center rounded-xl py-1.5 text-[11px] font-bold ${drawer && panel === p.id ? "bg-brand-500/10 text-brand-700" : "text-slate-600"}`}>
+              <span className="text-lg leading-6">{p.icon}</span>{p.label}
+            </button>
+          ))}
+          <div className="ml-auto flex-1 [&>button]:w-full [&>button]:py-3">{download}</div>
         </div>
       </div>
 
@@ -288,7 +294,7 @@ export function DocumentApp() {
           onClose={() => setPayOpen(false)}
         />
       )}
-    </Shell>
+    </div>
   );
 }
 
@@ -340,7 +346,7 @@ function Pages({ doc, view, beforePages, dim }: { doc: DocView; view: View; befo
   }
   const n = view === "after" ? pages : beforePages ?? 0;
   return (
-    <div className={`mx-auto mt-2 grid max-w-[620px] gap-5 transition ${dim ? "opacity-60" : ""}`}>
+    <div className={`mx-auto mt-2 grid max-w-[760px] gap-6 transition ${dim ? "opacity-60" : ""}`}>
       {view === "before" && (
         <p className="rounded-2xl bg-amber-50 px-4 py-2.5 text-center text-sm text-amber-800 ring-1 ring-amber-100">Voici ton document tel que tu l&apos;as envoyé.</p>
       )}
@@ -354,52 +360,53 @@ function Pages({ doc, view, beforePages, dim }: { doc: DocView; view: View; befo
   );
 }
 
-function ChangesCard({ doc }: { doc: DocView }) {
+/** "✨ 13 corrections" (Grammarly-style): small in the top bar, the full list on tap. */
+function ChangesPill({ doc }: { doc: DocView }) {
   const [open, setOpen] = useState(false);
-  const changes = [
-    ...(doc.meta.changes ?? []),
-    doc.has_cover && "Page de garde ajoutée avec en-tête bilingue",
-    doc.options.toc && "Sommaire automatique avec numéros de page",
-    doc.options.page_numbers && "Pagination i, ii… puis 1, 2, 3",
-  ].filter(Boolean) as string[];
-  const shown = open ? changes : changes.slice(0, 3);
+  const changes = doc.meta.changes ?? [];
+  if (!changes.length) return null;
   return (
-    <div className="mx-auto max-w-[620px] rounded-3xl bg-gradient-to-br from-brand-500 to-emerald-600 p-4 text-white shadow-lg shadow-brand-500/20">
-      <p className="text-xs font-bold tracking-wide text-white/75 uppercase">{KIND_LABEL[doc.meta.kind] ?? "Document"} · {doc.render?.pages ?? "…"} pages</p>
-      <p className="mt-0.5 font-display text-lg font-bold">Ce que Paginya a fait ✨</p>
-      <ul className="mt-2.5 space-y-1.5">
-        {shown.map((c) => (
-          <li key={c} className="flex gap-2 text-[14px] leading-snug">
-            <span className="mt-0.5 grid h-4.5 w-4.5 shrink-0 place-items-center rounded-full bg-white/25 text-[10px] font-bold">✓</span>
-            {c}
-          </li>
-        ))}
-      </ul>
-      {changes.length > 3 && (
-        <button type="button" onClick={() => setOpen(!open)} className="mt-2 text-sm font-bold text-white/90 underline underline-offset-2">
-          {open ? "Voir moins" : `+ ${changes.length - 3} autres améliorations`}
-        </button>
+    <div className="relative">
+      <button type="button" onClick={() => setOpen(!open)} className="rounded-full bg-brand-500/10 px-3 py-2 text-xs font-bold text-brand-700 hover:bg-brand-500/15 sm:text-sm">
+        ✨ {changes.length} correction{changes.length > 1 ? "s" : ""}
+      </button>
+      {open && (
+        <>
+          <button type="button" aria-label="Fermer" className="fixed inset-0 z-40 cursor-default" onClick={() => setOpen(false)} />
+          <div className="rise fixed inset-x-3 top-16 z-50 max-h-[70dvh] overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl ring-1 ring-slate-100 sm:absolute sm:inset-x-auto sm:top-12 sm:right-0 sm:w-[380px]">
+            <p className="font-display text-lg font-bold text-ink">Ce que Paginya a corrigé ✨</p>
+            <ul className="mt-3 space-y-2">
+              {changes.map((c) => (
+                <li key={c} className="flex gap-2.5 text-[14px] leading-snug text-slate-700">
+                  <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brand-500 text-[11px] font-bold text-white">✓</span>
+                  {c}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-4 text-xs text-slate-500">Compare avec « Avant » pour voir ton document d&apos;origine.</p>
+          </div>
+        </>
       )}
     </div>
   );
 }
 
-function DangerRow({ confirm, onAsk, onCancel, onDelete, onNew }: { confirm: boolean; onAsk: () => void; onCancel: () => void; onDelete: () => void; onNew: () => void }) {
-  if (confirm) {
-    return (
-      <div className="flex items-center justify-between gap-2 rounded-2xl bg-red-50 px-3 py-2 text-sm">
-        <span className="text-red-700">Supprimer définitivement ?</span>
-        <span className="flex gap-2">
-          <button type="button" onClick={onCancel} className="font-semibold text-slate-600">Non</button>
-          <button type="button" onClick={onDelete} className="rounded-lg bg-red-600 px-3 py-1 font-bold text-white">Oui, supprimer</button>
-        </span>
-      </div>
-    );
-  }
+function MoreMenu({ onNew, onDelete }: { onNew: () => void; onDelete: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [confirm, setConfirm] = useState(false);
   return (
-    <div className="flex justify-between text-sm font-semibold text-slate-500">
-      <button type="button" onClick={onNew} className="hover:text-slate-700">↺ Nouveau document</button>
-      <button type="button" onClick={onAsk} className="hover:text-red-600">🗑 Supprimer</button>
+    <div className="relative">
+      <button type="button" onClick={() => setOpen(!open)} className="w-full rounded-2xl py-2.5 text-center text-lg text-slate-500 hover:bg-slate-50" aria-label="Plus">⋯</button>
+      {open && (
+        <div className="absolute bottom-12 left-0 z-50 w-56 rounded-2xl bg-white p-2 text-sm shadow-xl ring-1 ring-slate-100">
+          <button type="button" onClick={onNew} className="block w-full rounded-xl px-3 py-2 text-left font-semibold text-slate-700 hover:bg-slate-50">↺ Nouveau document</button>
+          {confirm ? (
+            <button type="button" onClick={onDelete} className="block w-full rounded-xl bg-red-600 px-3 py-2 text-left font-bold text-white">Oui, supprimer définitivement</button>
+          ) : (
+            <button type="button" onClick={() => setConfirm(true)} className="block w-full rounded-xl px-3 py-2 text-left font-semibold text-red-600 hover:bg-red-50">🗑 Supprimer ce document</button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

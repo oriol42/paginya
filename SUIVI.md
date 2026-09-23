@@ -122,3 +122,14 @@ Voir `Documents/affichya/PLAN.md` et son `SUIVI.md`. On démarre après avoir fi
   - comparer avec **LightGBM** ;
   - ajouter de **vrais documents** en accès libre (thèses et mémoires HAL/DUMAS, licence CC-BY) comme source de documents « vérité » ;
   - constituer un petit jeu de vrais documents camerounais corrigés à la main, qui servira de juge final.
+
+## Refonte UI (23/09/2026)
+- **Écran du document** (`components/doc/DocumentApp.tsx`), sur le modèle de Google Docs et Canva :
+  - barre du haut : titre, Après / Avant / Côte à côte, pastille « ✨ N corrections » (liste façon Grammarly), bouton **Télécharger** en haut à droite ;
+  - rail d'outils à gauche (Style, Garde, Plan, menu ⋯ avec « Nouveau » et « Supprimer ») et son panneau ;
+  - pages centrées sur un fond gris « bureau », plus grandes (760 px) ;
+  - sur téléphone : **une seule rangée en bas** (3 outils + Télécharger) et un tiroir qui laisse voir la page ;
+  - la grosse carte verte des corrections a été retirée ;
+  - style : miniatures en 2 colonnes, plus lisibles.
+- **Lettre** (`forms/LetterForm.tsx`) : **4 étapes** (Type → Toi → Destinataire → La lettre). Le type fait passer à l'étape suivante, les champs facultatifs sont repliés (« + Plus de détails »), l'aperçu est toujours à portée.
+
