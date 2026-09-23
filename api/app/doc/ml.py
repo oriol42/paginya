@@ -143,12 +143,14 @@ def refine(raws: list[Raw], trace: dict[int, dict], base: float, threshold: floa
     for i, it in trace.items():
         if it.get("type") in ("toc", "table", "figure") or it.get("kind") in ("special", "partie", "chapitre"):
             continue  # certain by construction
-        if it.get("type") == "list" and (raws[i].list_kind or _R["bullet"].search(raws[i].text)):
+        if it.get("_nomark") or it.get("type") == "list" and (raws[i].list_kind or _R["bullet"].search(raws[i].text)):
             continue  # a bullet is a bullet: never promoted to a heading
         k = int(pr[i].argmax())
         if pr[i, k] < threshold:
             continue
         t = it.get("type")
+        if H1 <= k <= H4 and t != "heading" and i > 0 and raws[i - 1].text.rstrip().endswith(":"):
+            continue  # a heading never follows "… les suivantes :" (that's an enumeration)
         if H1 <= k <= H4:
             lvl = k - H1 + 1
             if t != "heading" or it.get("level") != lvl:

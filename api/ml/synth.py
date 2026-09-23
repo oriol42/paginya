@@ -172,6 +172,13 @@ def truth_doc(rng: random.Random) -> list[El]:
                         if rng.random() < 0.3 and d3 < 4:
                             els.append(El(H4, rng.choice(SECTION_TITLES), 4, "section"))
                             els.append(El(PARA, paragraph(rng)))
+                if rng.random() < 0.2:
+                    # enumeration typed WITHOUT bullets: "… les suivantes :" then short lines
+                    els.append(El(PARA, rng.choice(["Les missions principales sont les suivantes :", "Nos tâches étaient les suivantes :",
+                                                   "Ce service comprend :", "Les objectifs sont :", "Il s'agit notamment de :"])))
+                    for _ in range(rng.randint(2, 5)):
+                        it = rng.choice(LIST_ITEMS)
+                        els.append(El(LIST, (it[:1].upper() + it[1:]) + rng.choice(["", "", " ;", "."]), ordered=False, kind="nomark"))
                 if rng.random() < 0.35:
                     if rng.random() < 0.5:
                         els.append(El(PARA, rng.choice(EMPH).format(y=rng.randint(2015, 2025))))
@@ -285,6 +292,8 @@ def render(els: list[El], h: Habit, rng: random.Random, tmp: Path) -> list[Raw] 
                 chapter_depth = 1
         if e.label in (H1, H2, H3, H4):
             lines.append((e, styled_text(e, h, counters, rng, chapter_depth)))
+        elif e.label == LIST and e.kind == "nomark":
+            lines.append((e, e.text))  # no bullet, no Word list: that's the whole difficulty
         elif e.label == LIST:
             list_num = list_num + 1 if lines and lines[-1][0].label == LIST else 1
             prefix = f"{list_num}. " if e.ordered else f"{h.bullet} "
@@ -304,7 +313,7 @@ def render(els: list[El], h: Habit, rng: random.Random, tmp: Path) -> list[Raw] 
             if e.label in (H1, H2, H3, H4) and h.mode == "styles" and rng.random() > h.miss_format:
                 doc.add_heading(t, level=min(e.depth, 4))
                 continue
-            if e.label == LIST and h.word_lists:
+            if e.label == LIST and h.word_lists and e.kind != "nomark":
                 doc.add_paragraph(t, style="List Number" if e.ordered else "List Bullet")
                 continue
             p = doc.add_paragraph()

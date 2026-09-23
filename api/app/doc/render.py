@@ -16,6 +16,8 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Emu, Mm, Pt, RGBColor
+
+from .clean import typo_fr
 from PIL import Image
 
 from .. import render as cover_render
@@ -230,7 +232,7 @@ def add_text(paragraph, text: str, color: str) -> None:
     pos = 0
     for m in LINK.finditer(text):
         if m.start() > pos:
-            paragraph.add_run(text[pos:m.start()])
+            paragraph.add_run(typo_fr(text[pos:m.start()]))
         target = m.group(0)
         url = target if target.startswith("http") else (f"mailto:{target}" if "@" in target else f"https://{target}")
         rid = paragraph.part.relate_to(url, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink", is_external=True)
@@ -252,7 +254,7 @@ def add_text(paragraph, text: str, color: str) -> None:
         paragraph._p.append(link)
         pos = m.end()
     if pos < len(text):
-        paragraph.add_run(text[pos:])
+        paragraph.add_run(typo_fr(text[pos:]))
 
 
 # --- document setup ----------------------------------------------------------
@@ -542,8 +544,8 @@ class Builder:
         run.bold = True
         _field(p, f"SEQ {label} \\* ARABIC")
         p.runs[-1].bold = True
-        p.add_run(" : ").bold = True
-        p.add_run(b.get("text", ""))
+        p.add_run("\u00a0: ").bold = True
+        p.add_run(typo_fr(b.get("text", "")))
         if b.get("of") == "table":
             p.paragraph_format.keep_with_next = True
         self.first_in_section = False

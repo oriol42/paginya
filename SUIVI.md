@@ -109,6 +109,15 @@ Voir `Documents/affichya/PLAN.md` et son `SUIVI.md`. On démarre après avoir fi
   - Garde-fous : les spéciaux, parties, chapitres et puces ne sont jamais modifiés par le modèle. Les titres promus depuis « 2. xxx » gardent leur numéro.
   - Sans le fichier modèle, Paginya marche comme avant (règles seules).
 - Tests : `tests/test_ml.py` et les 28 tests d'avant, soit 31 au vert.
+- **Nettoyage automatique** (`app/doc/clean.py`, 23/09/2026) :
+  - paragraphes coupés par un « Entrée » recollés ;
+  - **énumérations sans puces** (« … les suivantes : » + lignes courtes) transformées en listes. Ça se fait avant le modèle, qui ne peut plus les transformer en titres ;
+  - listes harmonisées selon la règle française : fragments en minuscule avec « ; », le dernier avec « . » ; phrases avec majuscule et « . » ;
+  - **majuscules** : début de phrase, après un point (sauf abréviations), textes et titres de section tout en CAPITALES remis normalement. Les sigles vus dans le document et les villes sont gardés, les accents perdus sont rétablis (PRESENTATION → Présentation, « A DOUALA » → « à Douala »). Les chapitres et parties restent en capitales, comme le demandent les normes ;
+  - **typographie française** à l'écriture du Word : espaces, espace insécable avant « : ; ! ? », « guillemets », (parenthèses) ;
+  - le texte justifié était déjà géré par les styles ;
+  - chaque correction apparaît dans la carte « Ce qu'on a changé » ;
+  - tests : `tests/test_clean.py`. Le générateur produit aussi des énumérations sans puces. Mesure : 99,5 %.
 - À faire quand internet revient :
   - comparer avec **LightGBM** ;
   - ajouter de **vrais documents** en accès libre (thèses et mémoires HAL/DUMAS, licence CC-BY) comme source de documents « vérité » ;

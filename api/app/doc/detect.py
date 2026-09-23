@@ -155,12 +155,18 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
     items, stats["captions_moved"] = _fix_caption_positions(items)
 
     traced = {it["_src"]: it for it in items if "_src" in it}
+    from .clean import unmarked_lists
+
+    stats["lists"] = unmarked_lists(items)  # before the model: it must not turn these lines into headings
     if refine:
         from . import ml
 
         full = {**{i: {"type": "toc"} for i in dropped}, **traced}
         m = ml.model()
         stats["ml_fixes"] = ml.refine(raws, full, base, float(m.p.get("threshold", 0.9)) if m else 0.9)
+    from .clean import clean
+
+    stats.update(clean(items))
     stats["typed_lists"] = sum(1 for it in items if it.pop("_typed", False))
     stats["text_tables"] = sum(1 for it in items if it.pop("_from_text", False))
     blocks = []
@@ -179,6 +185,7 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
     for it in blocks:
         it.pop("_src", None)
         it.pop("_full", None)
+        it.pop("_nomark", None)
     return out
 
 
@@ -202,6 +209,14 @@ def _changes(blocks: list[dict], stats: dict) -> list[str]:
         out.append(f"{len(headings)} titres structurés sur {levels} niveau{'x' if levels > 1 else ''}")
     if stats["typed_lists"]:
         out.append(f"{stats['typed_lists']} tirets ou numéros tapés à la main transformés en vraies listes")
+    if stats.get("lists"):
+        out.append(f"{stats['lists']} énumération{'s' if stats['lists'] > 1 else ''} sans puces transformée{'s' if stats['lists'] > 1 else ''} en liste")
+    if stats.get("merged"):
+        out.append(f"{stats['merged']} paragraphe{'s' if stats['merged'] > 1 else ''} coupé{'s' if stats['merged'] > 1 else ''} en deux recollé{'s' if stats['merged'] > 1 else ''}")
+    if stats.get("caps"):
+        out.append(f"{stats['caps']} majuscule{'s' if stats['caps'] > 1 else ''} corrigée{'s' if stats['caps'] > 1 else ''} (débuts de phrase, textes tout en capitales, accents)")
+    if stats.get("lists_harmonised"):
+        out.append("Listes harmonisées (ponctuation « ; » et « . », majuscules)")
     if stats["text_tables"]:
         out.append(f"{stats['text_tables']} tableau{'x' if stats['text_tables'] > 1 else ''} reconstruit{'s' if stats['text_tables'] > 1 else ''} à partir du texte")
     captions = sum(b["type"] == "caption" for b in blocks)
@@ -217,6 +232,7 @@ def _changes(blocks: list[dict], stats: dict) -> list[str]:
     links = sum(len(LINKS.findall(b.get("text", ""))) for b in blocks)
     if links:
         out.append(f"{links} lien{'s' if links > 1 else ''} rendu{'s' if links > 1 else ''} cliquable{'s' if links > 1 else ''}")
+    out.append("Texte justifié et typographie française (espaces, « guillemets »)")
     return out
 
 
