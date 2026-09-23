@@ -90,6 +90,22 @@ Voir `Documents/affichya/PLAN.md` et son `SUIVI.md`. On démarre après avoir fi
 2. Affichya, en commençant par les pubs utiny et Paginya.
 3. Mise en ligne des deux, puis Fapshi réel.
 
-## Idée validée pour plus tard : IA légère pour la détection du plan (23/09/2026)
-Voir `Documents/affichya/docs/ETUDE-MOTEUR-UX.md`, section 5. Les corrections du plan faites par les utilisateurs deviennent des étiquettes : on garde seulement des caractéristiques anonymes, jamais le texte, avec consentement. Vers 300 documents, on entraîne un classifieur scikit-learn qui départage les cas douteux. Les règles restent la base, et le modèle n'est activé que s'il fait mieux qu'elles sur un jeu de test.
-
+## Plan IA pour la détection du plan (validé le 23/09/2026, à faire après le moteur Affichya)
+L'idée de l'utilisateur : fabriquer des documents « mal faits » à partir de documents bien faits. C'est la bonne méthode (données synthétiques). Elle donne des milliers d'exemples étiquetés gratuitement, sans attendre les utilisateurs.
+1. **Documents « vérité »** (on connaît la vraie structure) :
+   - DOCX et PDF en accès libre, avec de vrais styles de titres et une licence qui permet la réutilisation (ex. CC-BY) : dépôts de thèses et mémoires (HAL, DUMAS, dépôts universitaires) ;
+   - plus des documents qu'on génère nous-mêmes à partir de nos modèles (rapport de stage, mémoire, lettre) et de textes libres.
+   On ne garde que des caractéristiques, jamais le texte, et on ne redistribue rien.
+2. **Dégradation automatique**, comme le font vraiment les étudiants :
+   - styles supprimés et titres faits « à la main » (gras + taille) ;
+   - numérotation tapée à la main (I., 1.1, A-) et puces « - » ou « • » tapées ;
+   - sommaire tapé à la main avec des points, légendes au mauvais endroit ;
+   - polices et tailles au hasard, retours à la ligne cassés (copier-coller d'un PDF ou de WhatsApp) ;
+   - photos OCR (Tesseract) de pages imprimées.
+   Chaque document donne des dizaines de variantes, ce qui fait des milliers de paires (mal fait → vérité).
+3. **Modèle** : mieux que scikit-learn seul.
+   - **LightGBM** (gratuit, rapide sur CPU) sur les caractéristiques du paragraphe **et de ses voisins** (contexte).
+   - Puis une passe de **cohérence de la hiérarchie** (Viterbi / CRF) : pas de niveau 3 juste après un niveau 1, numérotation continue.
+   - Plus tard, si besoin : un petit modèle de texte (MiniLM ou CamemBERT-small en ONNX, CPU) pour les cas où seule la phrase permet de décider.
+4. **Évaluation** : un jeu de vrais documents camerounais mal faits, corrigés à la main une fois, sert de juge. Le modèle ne remplace les règles que s'il fait mieux (score par type : titre N1/N2/N3, légende, liste, corps). Les règles restent en secours.
+5. **Bonus** : le même modèle devine le **type de document** (rapport de stage, mémoire, lettre, CV) pour choisir le style tout seul.
