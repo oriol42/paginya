@@ -16,7 +16,7 @@ Dernière mise à jour : 23/09/2026 (soir). Tenir ce fichier à jour à la fin d
 | Projet | Dossier | État |
 |---|---|---|
 | **Paginya** (ex-« Propre », renommage du code à faire) : mise en forme de documents + pages de garde | `Documents/propre/` | MVP bien avancé (voir §3) |
-| **Affichya** : affiches + vidéos pub à partir de quelques mots | `Documents/generateur-pub/` | Plan écrit (`PLAN.md`), rien de codé. Premier client : utiny |
+| **Affichya** : affiches + vidéos pub à partir de quelques mots | `Documents/affichya/` | Première version faite (affiches + vidéos MP4 avec musique), voir son `SUIVI.md`. Clients : utiny et Paginya |
 | **utiny** (autre app du fondateur, déjà en ligne) | GitHub `oriol42/dotme` · `utiny-app.vercel.app` | « Buy Me a Coffee » camerounais : page créateur, mur de dons en direct, objectif, top supporters, MoMo/OM, 13 % de commission. React + Vite + Supabase + Fapshi. Identité : ambre `#f2a93b`, corail `#ff6b57`, crème `#fbf9f5`, texte `#1c1712`, polices Sora + Inter |
 
 ## 3. Propre : ce qui est fait
@@ -61,7 +61,7 @@ Dernière mise à jour : 23/09/2026 (soir). Tenir ce fichier à jour à la fin d
 2. ✅ **Lettres et demandes** (`/lettre`, 300 F) : 6 types avec modèles de texte administratif, timbre fiscal en option, s/c, P.J.
 3. ✅ **Épreuves** (`/epreuve`, 500 F) : en-tête MINESEC, barème aligné à droite et total vérifié (20 pts), QCM, sous-questions, pagination x/y.
 4. ✅ **Renommage visible en Paginya** (logo, textes, filigranes, fichiers). Restent internes : le nom du dossier `propre/`, les clés `propre:` du stockage navigateur, les variables `PROPRE_*`.
-5. **Prochain chantier : Affichya** (voir `Documents/generateur-pub/`).
+5. **Affichya : première version faite ✅** (voir `Documents/affichya/`).
 6. Plus tard pour Paginya : assistant ✨, « Mes documents », ajustement manuel des coins des photos, CV.
 6. À la mise en ligne : serveur (Oracle gratuit ou hébergeur local), Docker, domaine, clés Fapshi, activation de direct-pay, Sentry, autorisation de transfert auprès de l'Autorité de protection des données.
 
@@ -76,7 +76,7 @@ Dernière mise à jour : 23/09/2026 (soir). Tenir ce fichier à jour à la fin d
 
 ## 6. Générateur de pubs : prochaines étapes
 
-Voir `Documents/generateur-pub/PLAN.md` et son `SUIVI.md`. On démarre après avoir fini les points 1 à 3 de Propre. Premier livrable : les vidéos et affiches pour **utiny** et Propre.
+Voir `Documents/affichya/PLAN.md` et son `SUIVI.md`. On démarre après avoir fini les points 1 à 3 de Propre. Premier livrable : les vidéos et affiches pour **utiny** et Propre.
 
 ## 7. Noms (décidés le 23/09/2026)
 
