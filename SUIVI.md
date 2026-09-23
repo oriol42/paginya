@@ -90,22 +90,26 @@ Voir `Documents/affichya/PLAN.md` et son `SUIVI.md`. On démarre après avoir fi
 2. Affichya, en commençant par les pubs utiny et Paginya.
 3. Mise en ligne des deux, puis Fapshi réel.
 
-## Plan IA pour la détection du plan (validé le 23/09/2026, à faire après le moteur Affichya)
-L'idée de l'utilisateur : fabriquer des documents « mal faits » à partir de documents bien faits. C'est la bonne méthode (données synthétiques). Elle donne des milliers d'exemples étiquetés gratuitement, sans attendre les utilisateurs.
-1. **Documents « vérité »** (on connaît la vraie structure) :
-   - DOCX et PDF en accès libre, avec de vrais styles de titres et une licence qui permet la réutilisation (ex. CC-BY) : dépôts de thèses et mémoires (HAL, DUMAS, dépôts universitaires) ;
-   - plus des documents qu'on génère nous-mêmes à partir de nos modèles (rapport de stage, mémoire, lettre) et de textes libres.
-   On ne garde que des caractéristiques, jamais le texte, et on ne redistribue rien.
-2. **Dégradation automatique**, comme le font vraiment les étudiants :
-   - styles supprimés et titres faits « à la main » (gras + taille) ;
-   - numérotation tapée à la main (I., 1.1, A-) et puces « - » ou « • » tapées ;
-   - sommaire tapé à la main avec des points, légendes au mauvais endroit ;
-   - polices et tailles au hasard, retours à la ligne cassés (copier-coller d'un PDF ou de WhatsApp) ;
-   - photos OCR (Tesseract) de pages imprimées.
-   Chaque document donne des dizaines de variantes, ce qui fait des milliers de paires (mal fait → vérité).
-3. **Modèle** : mieux que scikit-learn seul.
-   - **LightGBM** (gratuit, rapide sur CPU) sur les caractéristiques du paragraphe **et de ses voisins** (contexte).
-   - Puis une passe de **cohérence de la hiérarchie** (Viterbi / CRF) : pas de niveau 3 juste après un niveau 1, numérotation continue.
-   - Plus tard, si besoin : un petit modèle de texte (MiniLM ou CamemBERT-small en ONNX, CPU) pour les cas où seule la phrase permet de décider.
-4. **Évaluation** : un jeu de vrais documents camerounais mal faits, corrigés à la main une fois, sert de juge. Le modèle ne remplace les règles que s'il fait mieux (score par type : titre N1/N2/N3, légende, liste, corps). Les règles restent en secours.
-5. **Bonus** : le même modèle devine le **type de document** (rapport de stage, mémoire, lettre, CV) pour choisir le style tout seul.
+## IA de détection du plan (faite le 23/09/2026) ✅
+- **Données synthétiques** (`api/ml/synth.py`) : on part de documents « bien faits », dont on connaît la vraie structure (spéciaux, parties, chapitres, sections jusqu'au niveau 4, listes, légendes, sommaire tapé).
+  - Une « habitude d'auteur » aléatoire les abîme : styles Word, ou bien gras, taille et majuscules à la main, numérotations tapées (CHAPITRE I, I., A., 1., 1.1, « 1 » sans point, a)), puces tapées, paragraphes en gras, mise en forme oubliée, tailles 11/12/14.
+  - Le document est produit en DOCX ou en texte collé, puis passe par la **vraie extraction** de Paginya.
+- Mesure : `python -m ml.evaluate 300`. Entraînement : `python -m ml.train 2500` (~6 min CPU).
+- **Résultats** (300 documents de validation, ~31 000 paragraphes) :
+  - Règles d'origine : 91,4 % des paragraphes justes, niveau de titre juste 75 %.
+  - **4 bugs de règles corrigés** : 97,4 % / 92,4 %. Les voici :
+    1. Une partie ou un chapitre en style Word « Titre 1/2 » sortait un niveau trop bas après l'introduction.
+    2. Les légendes « Tab. / Fig. / Graph. » n'étaient pas reconnues.
+    3. Les titres « 1 Historique » (sans point) étaient ratés.
+    4. « 2. Titre » en gras juste après une liste à puces était pris pour un élément de liste.
+  - **Règles + modèle : 99,7 % / 99,1 %** (titres trouvés 99,9 %).
+  - Vérification de généralisation (`SYNTH_SPLIT=train`) : entraîné sur la moitié du vocabulaire, testé sur l'autre moitié et sur de vraies phrases, on obtient 99,2 %. Le modèle a appris la mise en forme, pas les mots.
+- **Modèle** (`app/doc/ml.py`, `structure_model.npz`, 84 Ko) : petit réseau de neurones en numpy (pas de scikit-learn, pas de GPU, <1 ms/doc).
+  - Il voit le paragraphe, ses voisins, les habitudes du document et **la décision des règles** (empilement). Il ne corrige que s'il est sûr (seuil enregistré avec le modèle).
+  - Garde-fous : les spéciaux, parties, chapitres et puces ne sont jamais modifiés par le modèle. Les titres promus depuis « 2. xxx » gardent leur numéro.
+  - Sans le fichier modèle, Paginya marche comme avant (règles seules).
+- Tests : `tests/test_ml.py` et les 28 tests d'avant, soit 31 au vert.
+- À faire quand internet revient :
+  - comparer avec **LightGBM** ;
+  - ajouter de **vrais documents** en accès libre (thèses et mémoires HAL/DUMAS, licence CC-BY) comme source de documents « vérité » ;
+  - constituer un petit jeu de vrais documents camerounais corrigés à la main, qui servira de juge final.

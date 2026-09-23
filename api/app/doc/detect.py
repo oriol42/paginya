@@ -60,7 +60,7 @@ SPECIAL_LOOKUP = {v: k for k, vals in SPECIALS.items() for v in vals}
 
 TOC_ENTRY = re.compile(r"^(.{2,}?)[\s.…_·-]{3,}\s*([ivxlcdm]+|\d+)\s*$", re.I)
 CAPTION = re.compile(
-    r"^(tableau|table|figure|fig\.?|graphique|graphe|image|photo|sch[ée]ma|carte|illustration|diagramme)"
+    r"^(tableau|table|tab\.|figure|fig\.?|graphique|graphe|graph\.|image|photo|sch[ée]ma|carte|illustration|diagramme)"
     r"\s*(n\s*[°o]\s*)?(\d+(?:[.\-]\d+)?)\s*[:.\-–—]\s*(.*)$",
     re.I,
 )
@@ -74,6 +74,7 @@ PARTIE = re.compile(
 CHAPITRE = re.compile(r"^(chapitre|chapter)\s+([ivx]+|\d+|premier|un|une|deux|trois|quatre|cinq|six|one|two|three|four|five)\b", re.I)
 DECIMAL = re.compile(r"^(\d{1,2}(?:\.\d{1,2})+)\.?\s+(\S.*)$")
 SINGLE_NUM = re.compile(r"^(\d{1,2})\s*[.)°]\s+(\S.*)$")
+NUM_NODOT = re.compile(r"^(\d{1,2})\s+([A-ZÀ-Ý][^\d].*)$")  # "1 Historique" (number without a dot)
 ROMAN = re.compile(r"^([IVX]{1,5})\s*[.\-–—)/]\s*(\S.*)$")
 LETTER = re.compile(r"^([A-H])\s*[.\-–—)/]\s+(\S.*)$")
 LOWER_ITEM = re.compile(r"^([a-z])\s*[.)]\s+(\S.*)$")
@@ -100,9 +101,12 @@ RANK = [
 
 # --- main ------------------------------------------------------------------
 
-def detect(raws: list[Raw]) -> dict:
+def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
+    """`trace`: also return, for each raw paragraph index, what it became (used to measure accuracy).
+    `refine`: let the learned model correct the rules where it is confident (app/doc/ml.py)."""
     base = body_size(raws)
     items: list[dict] = []
+    dropped: list[int] = []
     skip_toc = False
     stats = {"toc_lines": 0, "captions_moved": 0}
 
@@ -126,20 +130,23 @@ def detect(raws: list[Raw]) -> dict:
         if special == "toc":
             skip_toc = True
             stats["toc_lines"] += 1
+            dropped.append(idx)
             continue
         if skip_toc:
             if TOC_ENTRY.match(text) or (len(text) < 120 and re.search(r"\s\d{1,3}$", text)):
                 stats["toc_lines"] += 1
+                dropped.append(idx)
                 continue
             skip_toc = False
         if TOC_ENTRY.match(text) and len(text) < 160:
             stats["toc_lines"] += 1
+            dropped.append(idx)
             continue  # stray table-of-contents line
 
         if special:
-            items.append({"type": "heading", "kind": "special", "special": special, "text": _clean_special(text)})
+            items.append({"type": "heading", "kind": "special", "special": special, "text": _clean_special(text), "_src": idx})
             continue
-        items.append(_classify_text(r, nxt, base))
+        items.append({**_classify_text(r, nxt, base), "_src": idx})
 
     items = _text_tables(items)
     items = _resolve_numbered(items)
@@ -147,6 +154,13 @@ def detect(raws: list[Raw]) -> dict:
     _roles_in_sections(items)
     items, stats["captions_moved"] = _fix_caption_positions(items)
 
+    traced = {it["_src"]: it for it in items if "_src" in it}
+    if refine:
+        from . import ml
+
+        full = {**{i: {"type": "toc"} for i in dropped}, **traced}
+        m = ml.model()
+        stats["ml_fixes"] = ml.refine(raws, full, base, float(m.p.get("threshold", 0.9)) if m else 0.9)
     stats["typed_lists"] = sum(1 for it in items if it.pop("_typed", False))
     stats["text_tables"] = sum(1 for it in items if it.pop("_from_text", False))
     blocks = []
@@ -159,7 +173,13 @@ def detect(raws: list[Raw]) -> dict:
     meta = _meta(blocks)
     meta["title"] = _guess_title(blocks)
     meta["changes"] = _changes(blocks, stats)
-    return {"blocks": blocks, "meta": meta}
+    out = {"blocks": blocks, "meta": meta}
+    if trace:
+        out["trace"] = {**{i: {"type": "toc"} for i in dropped}, **{i: dict(it) for i, it in traced.items()}}
+    for it in blocks:
+        it.pop("_src", None)
+        it.pop("_full", None)
+    return out
 
 
 def _guess_title(blocks: list[dict]) -> str:
@@ -207,6 +227,11 @@ def _clean_special(text: str) -> str:
 def _classify_text(r: Raw, nxt: Raw | None, base: float) -> dict:
     text = r.text.strip()
 
+    if PARTIE.match(text) and len(text) < 160:
+        return {"type": "heading", "kind": "partie", "text": text}
+    if CHAPITRE.match(text) and len(text) < 160:
+        return {"type": "heading", "kind": "chapitre", "text": text}
+
     m = re.match(r"^(heading|titre|title)\s*(\d)?$", r.style)
     if m and text:
         level = int(m.group(2) or 1)
@@ -246,7 +271,10 @@ def _classify_text(r: Raw, nxt: Raw | None, base: float) -> dict:
         return {"type": "list", "ordered": False, "level": min(r.indent, 2), "text": m.group(2), "_typed": True}
     m = SINGLE_NUM.match(text)
     if m:
-        return {"type": "numcand", "text": text, "body": m.group(2), "title_like": _is_title_like(text, 90), "level": min(r.indent, 2)}
+        return {"type": "numcand", "text": text, "body": m.group(2), "title_like": _is_title_like(text, 90), "level": min(r.indent, 2), "bold": r.bold}
+    m = NUM_NODOT.match(text)
+    if m and _is_title_like(text, 90):
+        return {"type": "numcand", "text": text, "body": m.group(2), "title_like": True, "level": min(r.indent, 2), "bold": r.bold, "nodot": True}
     m = LOWER_ITEM.match(text)
     if m and len(text) < 400:
         return {"type": "list", "ordered": True, "level": min(r.indent, 2) or 1, "text": m.group(2), "_typed": True}
@@ -306,10 +334,12 @@ def _resolve_numbered(items: list[dict]) -> list[dict]:
             continue
         prev_c = i > 0 and items[i - 1].get("type") in ("numcand", "list")
         next_c = i + 1 < len(items) and items[i + 1].get("type") in ("numcand", "list")
-        if it["title_like"] and not prev_c and not next_c:
-            out.append({"type": "heading", "kind": "dec1", "text": it["text"]})
+        # after a *bullet* list, a short "2. Xxx" followed by text is the next section, not a list item
+        after_bullets = i > 0 and items[i - 1].get("type") == "list" and not items[i - 1].get("ordered")
+        if it["title_like"] and not next_c and (not prev_c or after_bullets or it.get("bold") or it.get("nodot")):
+            out.append({"type": "heading", "kind": "dec1", "text": it["text"], "_src": it.get("_src")})
         else:
-            out.append({"type": "list", "ordered": True, "level": it["level"], "text": it["body"], "_typed": True})
+            out.append({"type": "list", "ordered": True, "level": it["level"], "text": it["body"], "_typed": True, "_src": it.get("_src"), "_full": it["text"]})
     return out
 
 
