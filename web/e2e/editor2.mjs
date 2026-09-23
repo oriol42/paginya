@@ -1,0 +1,26 @@
+import { launch } from "./cdp.mjs";
+import fs from "node:fs";
+const text = fs.readFileSync("/home/oriol/Documents/propre/api/tests/fixtures/rapport_brut.txt", "utf8");
+const p = await launch({ width: 1440, height: 950 });
+const click = (label, sel = "button,a") => p.eval(`(() => { const b=[...document.querySelectorAll(${JSON.stringify(sel)})].find(x=>x.textContent.includes(${JSON.stringify(label)})); if(!b) throw new Error('no '+${JSON.stringify(label)}); b.click(); })()`);
+const type = (sel, v) => p.eval(`(() => { const el=document.querySelector(${JSON.stringify(sel)}); const proto = el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:(el.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype); Object.getOwnPropertyDescriptor(proto,'value').set.call(el, ${JSON.stringify(v)}); el.dispatchEvent(new Event(el.tagName==='SELECT'?'change':'input',{bubbles:true})); })()`);
+const idle = async () => { for (let i=0;i<60;i++){ await p.sleep(500); const busy = await p.eval(`[...document.querySelectorAll('span')].some(s=>s.textContent.includes('Mise à jour') && getComputedStyle(s).opacity==='1')`); if(!busy) break; } await p.sleep(800); };
+await p.goto("http://localhost:3000/document", 3000);
+await p.eval("localStorage.clear()");
+await p.goto("http://localhost:3000/document", 3000);
+await click("Texte"); await p.sleep(300);
+await type("textarea", text);
+await click("Mettre en forme");
+for (let i=0;i<60;i++){ if (await p.eval(`document.body.innerText.includes('Ce que Propre a fait')`)) break; await p.sleep(500); }
+await idle();
+await p.shot("e1-desktop.png");
+await click("Côte à côte"); await p.sleep(6000);
+await p.shot("e2-side.png");
+await click("Après"); await p.sleep(500);
+await click("Page de garde"); await p.sleep(800);
+await type("select", "uy2-esstic");
+await type('input[placeholder="NOM Prénom"]', "NGNICHANG TANDI Honorine");
+await p.sleep(1500); await idle();
+await p.eval("window.scrollTo(0,0)");
+await p.shot("e3-cover.png");
+p.close();

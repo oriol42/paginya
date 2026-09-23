@@ -1,0 +1,126 @@
+"use client";
+
+import { useState } from "react";
+import { API_URL } from "@/lib/api";
+import type { Block } from "@/lib/documents";
+
+type Props = {
+  docId: string;
+  blocks: Block[];
+  onChange: (blocks: Block[]) => void;
+};
+
+type Target = { label: string; apply: (b: Block) => Block; active: (b: Block) => boolean };
+
+const TARGETS: Target[] = [
+  { label: "Titre 1", apply: (b) => ({ ...b, type: "heading", level: 1, special: undefined }), active: (b) => b.type === "heading" && b.level === 1 },
+  { label: "Titre 2", apply: (b) => ({ ...b, type: "heading", level: 2, special: undefined, part: false }), active: (b) => b.type === "heading" && b.level === 2 },
+  { label: "Titre 3", apply: (b) => ({ ...b, type: "heading", level: 3, special: undefined, part: false }), active: (b) => b.type === "heading" && b.level === 3 },
+  { label: "Texte", apply: (b) => ({ ...b, type: "paragraph", level: undefined, role: undefined, special: undefined, part: false }), active: (b) => b.type === "paragraph" },
+  { label: "• Puce", apply: (b) => ({ ...b, type: "list", ordered: false, level: 0 }), active: (b) => b.type === "list" && !b.ordered },
+  { label: "1. Liste", apply: (b) => ({ ...b, type: "list", ordered: true, level: 0 }), active: (b) => b.type === "list" && !!b.ordered },
+];
+
+const EDITABLE = new Set(["heading", "paragraph", "list", "quote"]);
+
+export function PlanPanel({ docId, blocks, onChange }: Props) {
+  const [onlyHeadings, setOnlyHeadings] = useState(blocks.length > 40);
+  const [open, setOpen] = useState<number | null>(null);
+  const visible = onlyHeadings ? blocks.filter((b) => b.type === "heading") : blocks;
+
+  const update = (id: number, fn: (b: Block) => Block) => onChange(blocks.map((b) => (b.id === id ? fn(b) : b)));
+
+  return (
+    <div>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <p className="text-sm text-slate-500">Touche un élément pour changer son type.</p>
+        <button
+          type="button"
+          onClick={() => setOnlyHeadings((v) => !v)}
+          className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200"
+        >
+          {onlyHeadings ? "Tout afficher" : "Titres seulement"}
+        </button>
+      </div>
+      <ul className="space-y-1.5">
+        {visible.map((b) => {
+          const isOpen = open === b.id;
+          const indent = b.type === "heading" ? Math.max(0, (b.level ?? 1) - 1) * 14 : 0;
+          return (
+            <li key={b.id} style={{ marginLeft: indent }}>
+              <button
+                type="button"
+                onClick={() => setOpen(isOpen ? null : b.id)}
+                className={`flex w-full items-start gap-2.5 rounded-2xl px-3 py-2.5 text-left transition ${
+                  isOpen ? "bg-white ring-2 ring-brand-500" : "bg-white ring-1 ring-slate-100 hover:ring-slate-200"
+                } ${b.hidden ? "opacity-45" : ""}`}
+              >
+                <BlockBadge b={b} />
+                <span className={`min-w-0 flex-1 ${b.hidden ? "line-through" : ""}`}>
+                  <BlockText docId={docId} b={b} />
+                </span>
+              </button>
+              {isOpen && (
+                <div className="sheet-in mt-1.5 mb-2 rounded-2xl bg-brand-50/70 p-2.5 ring-1 ring-brand-100">
+                  {EDITABLE.has(b.type) && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {TARGETS.map((t) => (
+                        <button
+                          key={t.label}
+                          type="button"
+                          onClick={() => update(b.id, t.apply)}
+                          className={`rounded-full px-3 py-1.5 text-[13px] font-semibold transition ${
+                            t.active(b) ? "bg-ink text-white" : "bg-white text-slate-700 ring-1 ring-slate-200 hover:ring-brand-300"
+                          }`}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => update(b.id, (x) => ({ ...x, hidden: !x.hidden }))}
+                    className="mt-2 text-[13px] font-semibold text-slate-600"
+                  >
+                    {b.hidden ? "↺ Remettre dans le document" : "🗑 Retirer du document"}
+                  </button>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function BlockBadge({ b }: { b: Block }) {
+  const map: Record<string, [string, string]> = {
+    heading: [b.special ? "★" : `T${b.level ?? 1}`, "bg-ink text-white"],
+    paragraph: ["¶", "bg-slate-100 text-slate-500"],
+    list: [b.ordered ? "1." : "•", "bg-sky-100 text-sky-700"],
+    table: ["▦", "bg-amber-100 text-amber-700"],
+    figure: ["🖼", "bg-violet-100 text-violet-700"],
+    caption: ["Lég", "bg-amber-50 text-amber-700"],
+    source: ["Src", "bg-slate-100 text-slate-500"],
+    quote: ["❝", "bg-slate-100 text-slate-600"],
+  };
+  const [label, cls] = map[b.type] ?? ["?", "bg-slate-100"];
+  return <span className={`mt-0.5 grid h-6 min-w-6 shrink-0 place-items-center rounded-lg px-1 text-[11px] font-bold ${cls}`}>{label}</span>;
+}
+
+function BlockText({ docId, b }: { docId: string; b: Block }) {
+  if (b.type === "table") {
+    const rows = b.rows ?? [];
+    return <span className="text-sm text-slate-600">Tableau · {rows.length} lignes × {rows[0]?.length ?? 0} colonnes</span>;
+  }
+  if (b.type === "figure") {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={`${API_URL}/documents/${docId}/images/${b.image}`} alt="" className="max-h-16 rounded-lg" />;
+  }
+  if (b.role === "sigle") return <span className="line-clamp-1 text-sm text-slate-600"><b>{b.term}</b> : {b.definition}</span>;
+  if (b.type === "heading") return <span className={`line-clamp-2 font-semibold text-ink ${b.level === 1 ? "text-[15px]" : "text-sm"}`}>{b.text}</span>;
+  if (b.type === "caption") return <span className="line-clamp-1 text-sm text-amber-800">{b.of === "table" ? "Tableau" : "Figure"} : {b.text}</span>;
+  return <span className="line-clamp-1 text-sm text-slate-500">{b.text}</span>;
+}

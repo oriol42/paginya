@@ -1,0 +1,13 @@
+{
+  "name": "Paginya",
+  "short_name": "Paginya",
+  "description": "Des documents propres, sans toucher à Word.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F7FAF9",
+  "theme_color": "#0E9F6E",
+  "lang": "fr",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
