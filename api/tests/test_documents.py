@@ -234,3 +234,33 @@ def test_cleanup_after_7_days_and_purge_after_a_year(client):
     assert client.get(f"/documents/{doc['id']}").status_code == 404
     cleanup(now=_t.time() + 400 * 86400)
     assert db.get_order(doc["id"]) is None
+
+
+def test_survives_a_server_restart(client, tmp_path):
+    """Hugging Face wipes the disk at every restart: the original, its images and the renders must come back."""
+    src = tmp_path / "in.docx"
+    make_docx(src)
+    doc = client.post("/documents", json={"filename": "rapport.docx", "data": base64.b64encode(src.read_bytes()).decode()}).json()
+    client.post(f"/documents/{doc['id']}/render")
+    client.post(f"/orders/{doc['id']}/pay", json={"phone": "670000000"})
+    assert client.get(f"/orders/{doc['id']}").json()["status"] == "PAID"
+
+    shutil.rmtree(tmp_path / "docs")  # the restart: only the database and durable storage are left
+    assert client.get(f"/documents/{doc['id']}/pages/1.png").content.startswith(b"\x89PNG")
+    fig = next(b for b in doc["blocks"] if b["type"] == "figure")
+    assert client.get(f"/documents/{doc['id']}/images/{fig['image']}").status_code == 200
+
+    shutil.rmtree(tmp_path / "docs")
+    assert client.get(f"/orders/{doc['id']}/file.pdf").content.startswith(b"%PDF")
+    assert client.post(f"/documents/{doc['id']}/before").json()["pages"] >= 1
+
+    client.delete(f"/documents/{doc['id']}")
+    assert not [p for p in (tmp_path / "objects").rglob("*") if p.is_file()]  # right to erasure: durable copies deleted too
+
+
+def test_form_survives_a_server_restart(client, tmp_path):
+    from tests.test_forms import LETTER  # noqa: PLC0415
+
+    f = client.post("/forms", json={"kind": "lettre", "data": LETTER}).json()
+    shutil.rmtree(tmp_path / "forms")
+    assert client.get(f"/forms/{f['id']}/pages/1.png").content.startswith(b"\x89PNG")

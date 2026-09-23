@@ -14,7 +14,7 @@ from docx import Document as DocxDocument
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import config, db, pricing
+from . import config, db, pricing, storage
 from .doc import office
 from .doc.detect import detect
 from .doc.extract import ExtractError, from_docx, from_pdf, from_text
@@ -36,10 +36,38 @@ def doc_dir(order_id: str) -> Path:
     return config.DATA_DIR / "docs" / order_id
 
 
+# --- durable inputs (Hugging Face disk is a cache: see storage.py) ------------
+
+def _persist_inputs(order_id: str) -> None:
+    """The original file and its images can't be rebuilt: keep them in durable storage."""
+    folder = doc_dir(order_id)
+    for path in [*folder.glob("source.*"), *(folder / "images").glob("*")]:
+        if path.is_file():
+            storage.put(f"docs/{order_id}/{path.relative_to(folder)}", path.read_bytes())
+
+
+def _ensure_inputs(order_id: str) -> None:
+    """After a restart the local copy is gone: bring the original and images back."""
+    folder = doc_dir(order_id)
+    if any(folder.glob("source.*")):
+        return
+    for key in storage.list_keys(f"docs/{order_id}"):
+        data = storage.get(key)
+        if data is not None:
+            path = folder / key.removeprefix(f"docs/{order_id}/")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+
+
+def _forget(order_id: str) -> None:
+    shutil.rmtree(doc_dir(order_id), ignore_errors=True)
+    storage.delete_prefix(f"docs/{order_id}")
+
+
 def _discard(order_id: str | None) -> None:
     if not order_id:
         return
-    shutil.rmtree(doc_dir(order_id), ignore_errors=True)
+    _forget(order_id)
     with db.connect() as c:
         c.execute("DELETE FROM orders WHERE id = ?", (order_id,))
 
@@ -151,6 +179,7 @@ def create(body: DocIn) -> dict:
         order_id = db.create_order("document_court", pricing.price_for("document_court"), {"doc": doc})
     else:
         db.update_payload(order_id, {"doc": doc})
+    _persist_inputs(order_id)
     return view(db.get_order(order_id))
 
 
@@ -212,6 +241,7 @@ def update(order_id: str, body: DocPatch) -> dict:
 def render(order_id: str) -> dict:
     order = _load(order_id)
     doc = order["payload"]["doc"]
+    _ensure_inputs(order_id)
     folder = doc_dir(order_id)
     build = folder / "build"
     build.mkdir(parents=True, exist_ok=True)
@@ -238,8 +268,10 @@ def render(order_id: str) -> dict:
 
 @router.get("/{order_id}/pages/{n}.png")
 def page(order_id: str, n: int) -> FileResponse:
-    _load(order_id)
+    order = _load(order_id)
     path = doc_dir(order_id) / "build" / "pages" / f"{n}.png"
+    if not path.is_file() and order["payload"]["doc"].get("render"):
+        render(order_id)  # the server restarted: rebuild the pages once
     if not path.is_file():
         raise HTTPException(404, "Page introuvable")
     return FileResponse(path, media_type="image/png", headers={"Cache-Control": "no-cache"})
@@ -250,6 +282,7 @@ def image(order_id: str, name: str) -> FileResponse:
     _load(order_id)
     if not name.replace(".", "").isalnum():
         raise HTTPException(404, "Image introuvable")
+    _ensure_inputs(order_id)
     path = doc_dir(order_id) / "images" / name
     if not path.is_file():
         raise HTTPException(404, "Image introuvable")
@@ -258,6 +291,8 @@ def image(order_id: str, name: str) -> FileResponse:
 
 def final_file(order_id: str, fmt: str) -> Path:
     path = doc_dir(order_id) / "build" / f"final.{fmt}"
+    if fmt in ("pdf", "docx") and not path.is_file() and _load(order_id)["payload"]["doc"].get("render"):
+        render(order_id)  # rebuilt after a restart
     if fmt not in ("pdf", "docx") or not path.is_file():
         raise HTTPException(409, "Lance d'abord la mise en page")
     return path
@@ -268,6 +303,7 @@ def final_file(order_id: str, fmt: str) -> Path:
 @router.post("/{order_id}/before")
 def before(order_id: str) -> dict:
     _load(order_id)
+    _ensure_inputs(order_id)
     folder = doc_dir(order_id)
     out = folder / "before"
     pages_dir = out / "pages"
@@ -309,7 +345,7 @@ def before_page(order_id: str, n: int) -> FileResponse:
 @router.delete("/{order_id}")
 def delete(order_id: str) -> dict:
     order = _load(order_id)
-    shutil.rmtree(doc_dir(order_id), ignore_errors=True)
+    _forget(order_id)
     if order["status"] in ("PAID", "PENDING"):
         # Keep the payment record (accounting), drop every piece of content.
         db.update_payload(order_id, {"doc": {"deleted": True, "blocks": [], "meta": {}, "style": {}, "options": {}}})
@@ -329,7 +365,7 @@ def cleanup(now: float | None = None) -> int:
     for row in rows:
         ref = row["paid_at"] or row["created_at"]
         if now - ref > 365 * 86400:  # payment proof kept 12 months, then everything goes
-            shutil.rmtree(doc_dir(row["id"]), ignore_errors=True)
+            _forget(row["id"])
             shutil.rmtree(config.DATA_DIR / "forms" / row["id"], ignore_errors=True)
             with db.connect() as c:
                 c.execute("DELETE FROM orders WHERE id = ?", (row["id"],))
@@ -339,9 +375,11 @@ def cleanup(now: float | None = None) -> int:
         folder = doc_dir(row["id"])
         forms_folder = config.DATA_DIR / "forms" / row["id"]
         if folder.exists() or forms_folder.exists():
-            shutil.rmtree(folder, ignore_errors=True)
             shutil.rmtree(forms_folder, ignore_errors=True)
             removed += 1
+        order_row = db.get_order(row["id"])
+        if order_row and "doc" in order_row["payload"] and not order_row["payload"]["doc"].get("deleted"):
+            _forget(row["id"])
         order = db.get_order(row["id"])
         if order and "doc" in order["payload"] and not order["payload"]["doc"].get("deleted"):
             db.update_payload(row["id"], {"doc": {"deleted": True, "blocks": [], "meta": {}, "style": {}, "options": {}}})

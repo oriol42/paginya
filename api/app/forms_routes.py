@@ -103,9 +103,17 @@ def refresh(order_id: str) -> dict:
     return view(db.get_order(order_id))
 
 
+def _rebuild_if_lost(order_id: str) -> None:
+    """The server's disk is a cache (restarts wipe it): everything is rebuilt from the saved form data."""
+    order = _load(order_id)
+    fd = order["payload"]["form_doc"]
+    if fd.get("render") and not (form_dir(order_id) / "final.pdf").is_file():
+        _render(order_id, fd["kind"], fd["data"], paid=order["status"] == "PAID")
+
+
 @router.get("/{order_id}/pages/{n}.png")
 def page(order_id: str, n: int) -> FileResponse:
-    _load(order_id)
+    _rebuild_if_lost(order_id)
     path = form_dir(order_id) / "pages" / f"{n}.png"
     if not path.is_file():
         raise HTTPException(404, "Page introuvable")
@@ -113,6 +121,7 @@ def page(order_id: str, n: int) -> FileResponse:
 
 
 def final_file(order_id: str, fmt: str) -> Path:
+    _rebuild_if_lost(order_id)
     path = form_dir(order_id) / f"final.{fmt}"
     if fmt not in ("pdf", "docx") or not path.is_file():
         raise HTTPException(409, "Document pas encore prêt")

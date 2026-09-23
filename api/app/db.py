@@ -1,11 +1,11 @@
-"""Tiny SQLite store for orders (swap for Postgres when deploying at scale)."""
+"""Orders store: SQLite locally, Postgres (Supabase) in production — see sqlcompat."""
 import json
-import sqlite3
 import time
 import uuid
 from contextlib import contextmanager
 
-from .config import DATA_DIR, DB_PATH
+from . import sqlcompat
+from .config import DATA_DIR, DB_PATH  # noqa: F401  (DATA_DIR: patched by tests)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS orders (
@@ -25,14 +25,8 @@ CREATE INDEX IF NOT EXISTS orders_trans ON orders(trans_id);
 
 @contextmanager
 def connect():
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-        conn.commit()
-    finally:
-        conn.close()
+    with sqlcompat.connect(DB_PATH) as c:
+        yield c
 
 
 def init() -> None:
