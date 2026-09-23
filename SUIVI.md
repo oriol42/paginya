@@ -89,3 +89,7 @@ Voir `Documents/affichya/PLAN.md` et son `SUIVI.md`. On démarre après avoir fi
 1. ✅ Finir Paginya : Tesseract, lettres/demandes, épreuves, renommage (fait le 23/09).
 2. Affichya, en commençant par les pubs utiny et Paginya.
 3. Mise en ligne des deux, puis Fapshi réel.
+
+## Idée validée pour plus tard : IA légère pour la détection du plan (23/09/2026)
+Voir `Documents/affichya/docs/ETUDE-MOTEUR-UX.md`, section 5. Les corrections du plan faites par les utilisateurs deviennent des étiquettes : on garde seulement des caractéristiques anonymes, jamais le texte, avec consentement. Vers 300 documents, on entraîne un classifieur scikit-learn qui départage les cas douteux. Les règles restent la base, et le modèle n'est activé que s'il fait mieux qu'elles sur un jeu de test.
+
