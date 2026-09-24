@@ -1,15 +1,16 @@
-# Wakes the two free servers every 6 hours (Hugging Face sleeps after 48 h without visits,
-# Supabase pauses after 7 days without activity: /health touches the database).
+# Free servers on Render sleep after 15 min and wake in ~1 min. Budget: 750 h/month for both.
+# Affichya stays awake 6h–22h Cameroon time (its links are opened by customers); Paginya wakes on demand.
+# The same call touches the database, so Supabase never pauses either.
 name: keep-alive
 on:
   schedule:
-    - cron: "17 */6 * * *"
+    - cron: "*/10 5-20 * * *"   # UTC = Cameroon time − 1 h
+    - cron: "0 3 * * *"         # once at night: Paginya + database
   workflow_dispatch:
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - run: |
-          for u in "https://ayebare-paginya-api.hf.space" "https://ayebare-affichya-api.hf.space"; do
-            curl -fsS --retry 3 --retry-delay 20 --max-time 180 "$u/health" && echo " ← $u"
-          done
+      - run: curl -fsS --retry 3 --retry-delay 30 --max-time 180 "https://affichya-api.onrender.com/health"
+      - if: github.event.schedule == '0 3 * * *'
+        run: curl -fsS --retry 3 --retry-delay 30 --max-time 180 "https://paginya-api.onrender.com/health"
