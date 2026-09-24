@@ -1,12 +1,14 @@
 """Paginya API: orders, cover rendering and Fapshi direct-pay."""
 import hmac
 import logging
+import os
 import threading
 import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import config, db, doc_routes, fapshi, forms_routes, pricing, storage
@@ -236,3 +238,9 @@ def download(order_id: str, fmt: str) -> Response:
     filename = f"paginya-page-de-garde.{fmt}"
     return Response(data, media_type=MEDIA[fmt],
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+# One address per app in production: the API also serves the static site (web/out) when WEB_DIR is set.
+# Mounted last so every API route above keeps priority.
+if os.getenv("WEB_DIR"):
+    app.mount("/", StaticFiles(directory=os.environ["WEB_DIR"], html=True), name="site")
