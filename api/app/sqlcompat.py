@@ -59,8 +59,18 @@ def connect(sqlite_path: Path):
         import psycopg
         from psycopg.rows import dict_row
 
-        # prepare_threshold=None: required behind Supabase's connection pooler
-        conn = psycopg.connect(DATABASE_URL, row_factory=dict_row, prepare_threshold=None, connect_timeout=10)
+        # prepare_threshold=None: required behind Supabase's connection pooler. One retry: a network blip
+        # (or the pooler waking up) must not turn into an error for the user.
+        for attempt in (1, 2):
+            try:
+                conn = psycopg.connect(DATABASE_URL, row_factory=dict_row, prepare_threshold=None, connect_timeout=15)
+                break
+            except psycopg.OperationalError:
+                if attempt == 2:
+                    raise
+                import time
+
+                time.sleep(1)
         if SCHEMA != "public":
             conn.execute(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}")
             conn.execute(f"SET LOCAL search_path TO {SCHEMA}")  # LOCAL: safe behind a transaction pooler
