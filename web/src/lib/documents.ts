@@ -1,6 +1,6 @@
 import { API_URL } from "./api";
 
-export type BlockType = "heading" | "paragraph" | "list" | "table" | "figure" | "caption" | "source" | "quote";
+export type BlockType = "heading" | "paragraph" | "list" | "table" | "figure" | "caption" | "source" | "quote" | "code" | "title";
 
 export type Block = {
   id: number;
@@ -16,6 +16,7 @@ export type Block = {
   term?: string;
   definition?: string;
   part?: boolean;
+  sub?: boolean;
   hidden?: boolean;
 };
 
@@ -31,7 +32,8 @@ export type DocStyle = {
   color?: string;
 };
 
-export type DocOptions = { toc: boolean; toc_end: boolean; lists: boolean; cover: boolean; page_numbers: boolean };
+export type DocOptions = { toc: boolean; toc_end: boolean; lists: boolean; cover: boolean; page_numbers: boolean; chapter_pages?: boolean; letterhead?: boolean };
+export type Letterhead = { fr: string[][]; en: string[][]; logo?: string | null; institutionId?: string };
 
 export type DocMeta = {
   kind: string;
@@ -56,6 +58,7 @@ export type DocView = {
   style: DocStyle;
   options: DocOptions;
   has_cover: boolean;
+  letterhead?: Letterhead | null;
   render: { pages: number; version: number } | null;
 };
 
@@ -85,7 +88,7 @@ export const docs = {
   fromFile: async (file: File) =>
     call<DocView>("/documents", { method: "POST", body: JSON.stringify({ filename: file.name, data: await toBase64(file) }) }),
   get: (id: string) => call<DocView>(`/documents/${id}`),
-  update: (id: string, patch: Partial<{ blocks: Block[]; style: DocStyle; options: DocOptions; cover_svg: string; remove_cover: boolean }>) =>
+  update: (id: string, patch: Partial<{ blocks: Block[]; style: DocStyle; options: DocOptions; kind: string; letterhead: Letterhead; cover_svg: string; remove_cover: boolean }>) =>
     call<DocView>(`/documents/${id}`, { method: "PUT", body: JSON.stringify(patch) }),
   render: (id: string) => call<DocView>(`/documents/${id}/render`, { method: "POST" }),
   pageUrl: (id: string, n: number, version: number) => `${API_URL}/documents/${id}/pages/${n}.png?v=${version}`,
@@ -133,5 +136,19 @@ export const KIND_LABEL: Record<string, string> = {
   memoire: "Mémoire",
   rapport_stage: "Rapport de stage",
   rapport: "Rapport",
+  expose: "Exposé / devoir",
+  cours: "Cours / notes",
+  administratif: "Lettre / administratif",
   document: "Document",
 };
+
+/** What the user can pick; each type only adds the pages it really has (the API sets the defaults). */
+export const KINDS: { id: string; label: string; hint: string }[] = [
+  { id: "document", label: "Document simple", hint: "Texte mis en forme, rien d'ajouté" },
+  { id: "cours", label: "Cours / notes", hint: "Titre en haut, pas de sommaire" },
+  { id: "expose", label: "Exposé / devoir", hint: "Page de garde, pas de sommaire" },
+  { id: "administratif", label: "Lettre / administratif", hint: "Une page propre, sans numéros" },
+  { id: "rapport", label: "Rapport", hint: "Page de garde + sommaire" },
+  { id: "rapport_stage", label: "Rapport de stage", hint: "Normes complètes (sommaire, table…)" },
+  { id: "memoire", label: "Mémoire", hint: "Normes complètes (sommaire, table…)" },
+];

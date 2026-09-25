@@ -1,4 +1,4 @@
-import { MINISTRY_EN, MINISTRY_FR, REPUBLIC_EN, REPUBLIC_FR, institution } from "../institutions";
+import { MINESEC_EN, MINESEC_FR, MINISTRY_EN, MINISTRY_FR, REPUBLIC_EN, REPUBLIC_FR, institution } from "../institutions";
 import type { CoverForm, CoverModel, DocKind, StyleId } from "./types";
 
 export type FieldKey =
@@ -104,8 +104,8 @@ export function compose(form: CoverForm): CoverModel {
     headerEn.push(REPUBLIC_EN);
   }
   if (def.academic && form.showMinistry) {
-    headerFr.push(MINISTRY_FR);
-    headerEn.push(MINISTRY_EN);
+    headerFr.push(inst.secondary ? MINESEC_FR : MINISTRY_FR);
+    headerEn.push(inst.secondary ? MINESEC_EN : MINISTRY_EN);
   }
   const fr = groups(form.headerFr);
   const en = groups(form.headerEn);

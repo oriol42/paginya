@@ -3,12 +3,12 @@
 import { useState } from "react";
 import { DEFAULT_LABELS, KINDS, type FieldKey } from "@/lib/cover/kinds";
 import type { CoverForm, Person } from "@/lib/cover/types";
-import { INSTITUTIONS, institution } from "@/lib/institutions";
+import { INSTITUTIONS, institution, logoData } from "@/lib/institutions";
 import { Field, Input, TextArea, Toggle } from "../ui";
 
 type StepProps = { form: CoverForm; onChange: (patch: Partial<CoverForm>) => void };
 
-async function readLogo(file: File): Promise<string> {
+export async function readLogo(file: File): Promise<string> {
   const url = URL.createObjectURL(file);
   try {
     const img = new Image();
@@ -41,10 +41,15 @@ export function EssentialsStep({ form, onChange }: StepProps) {
         <Field label="Ton établissement">
           <select
             value={form.institutionId}
-            onChange={(e) => {
+            onChange={async (e) => {
               const inst = institution(e.target.value);
               onChange({ institutionId: inst.id, headerFr: inst.fr.join("\n"), headerEn: inst.en.join("\n") });
-              setCustom(inst.id === "autre");
+              setCustom(inst.id === "autre" || inst.id === "lycee");
+              // the school's logo comes with it (the user can still change or remove it)
+              if (inst.logo) {
+                const logo = await logoData(inst.logo);
+                if (logo) onChange({ logo });
+              }
             }}
             className={selectCls}
           >
@@ -170,7 +175,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-function LogoPicker({ logo, onChange }: { logo?: string; onChange: (l?: string) => void }) {
+export function LogoPicker({ logo, onChange }: { logo?: string; onChange: (l?: string) => void }) {
   return (
     <div className="flex items-center gap-3 rounded-2xl bg-white p-3 ring-1 ring-slate-100">
       {logo ? (

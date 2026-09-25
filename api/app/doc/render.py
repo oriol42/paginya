@@ -5,13 +5,14 @@ LibreOffice turns them into real indexes with page numbers (office.py).
 """
 from __future__ import annotations
 
+import base64
 import io
 import re
 from pathlib import Path
 
 from docx import Document
 from docx.enum.section import WD_SECTION
-from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.enum.table import WD_ALIGN_VERTICAL, WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -72,7 +73,26 @@ DEFAULT_STYLE = {
     "margins": [2.5, 2.5, 3.0, 2.5],  # top, bottom, left, right (cm)
     "color": "#0E9F6E",
 }
-DEFAULT_OPTIONS = {"toc": True, "toc_end": True, "lists": True, "cover": True, "page_numbers": True}
+DEFAULT_OPTIONS = {"toc": False, "toc_end": False, "lists": False, "cover": False, "page_numbers": True, "chapter_pages": False, "letterhead": False}
+
+# Kinds of document the user can pick (detected first, always changeable). Each one only adds the
+# pages its kind really has: a course or a letter never gets a table of contents by itself.
+KINDS = {
+    "memoire": {"toc": True, "toc_end": True, "lists": True, "cover": True, "page_numbers": True, "chapter_pages": True},
+    "rapport_stage": {"toc": True, "toc_end": True, "lists": True, "cover": True, "page_numbers": True, "chapter_pages": True},
+    "rapport": {"toc": True, "toc_end": False, "lists": True, "cover": True, "page_numbers": True, "chapter_pages": True},
+    "expose": {"toc": False, "toc_end": False, "lists": False, "cover": True, "page_numbers": True, "chapter_pages": False},
+    "cours": {"toc": False, "toc_end": False, "lists": False, "cover": False, "page_numbers": True, "chapter_pages": False},
+    "administratif": {"toc": False, "toc_end": False, "lists": False, "cover": False, "page_numbers": False, "chapter_pages": False},
+    "document": {"toc": False, "toc_end": False, "lists": False, "cover": False, "page_numbers": True, "chapter_pages": False},
+}
+
+
+def options_for(kind: str, words: int = 0) -> dict:
+    opts = dict(KINDS.get(kind, KINDS["document"]))
+    if kind == "document" and words < 600:
+        opts["page_numbers"] = False  # a one-page text needs no "1"
+    return opts
 
 
 def resolved_style(style: dict | None) -> dict:
@@ -184,6 +204,26 @@ def _band(paragraph, hex6: str) -> None:
     ppr.append(ind)
 
 
+_PPR_AFTER_SHD = ("tabs", "suppressAutoHyphens", "kinsoku", "wordWrap", "overflowPunct", "topLinePunct", "autoSpaceDE",
+                  "autoSpaceDN", "bidi", "adjustRightInd", "snapToGrid", "spacing", "ind", "contextualSpacing", "mirrorIndents",
+                  "suppressOverlap", "jc", "textDirection", "textAlignment", "textboxTightWrap", "outlineLvl", "divId", "cnfStyle",
+                  "rPr", "sectPr", "pPrChange")
+
+
+def _shade_para(paragraph, hex6: str) -> None:
+    """Paragraph background, inserted where the OOXML schema wants it (Word rejects misplaced elements)."""
+    ppr = paragraph._p.get_or_add_pPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"), hex6)
+    after = next((c for c in ppr if c.tag.split("}")[-1] in _PPR_AFTER_SHD), None)
+    if after is None:
+        ppr.append(shd)
+    else:
+        after.addprevious(shd)
+
+
 def _no_borders(table) -> None:
     tblpr = table._tbl.tblPr
     borders = OxmlElement("w:tblBorders")
@@ -227,8 +267,58 @@ def _page_numbers(section, fmt: str, start: int | None, align: str, font: str, c
 LINK = re.compile(r"(https?://[^\s)»]+[^\s.,;:)»]|www\.[^\s)»]+[^\s.,;:)»]|[\w.+-]+@[\w-]+\.[\w.-]*\w)")
 
 
+INLINE = re.compile(r"(\*\*\*|\*\*|__)(?=\S)(.+?)(?<=\S)\1|(?<![\w*])\*(?=[^\s*])(.+?)(?<=[^\s*])\*(?![\w*])|`([^`\n]+)`")
+
+
+def inline_spans(text: str) -> list[tuple[str, str]]:
+    """Markdown-style emphasis → [(text, flags)] with flags among "b" (bold), "i" (italic), "c" (code)."""
+    out, pos = [], 0
+    for m in INLINE.finditer(text):
+        if m.start() > pos:
+            out.append((text[pos:m.start()], ""))
+        if m.group(1):
+            flags = "bi" if m.group(1) == "***" else "b"
+            out.extend((t, f + flags) for t, f in inline_spans(m.group(2)))
+        elif m.group(3):
+            out.extend((t, f + "i") for t, f in inline_spans(m.group(3)))
+        else:
+            out.append((m.group(4), "c"))
+        pos = m.end()
+    if pos < len(text):
+        out.append((text[pos:], ""))
+    return out
+
+
 def add_text(paragraph, text: str, color: str) -> None:
-    """Adds text, turning URLs and e-mail addresses into clickable links."""
+    """Adds text with its **bold**, *italic* and `code` spans, and clickable links."""
+    for part, flags in inline_spans(text):
+        start = len(paragraph.runs)
+        if "c" in flags:
+            run = paragraph.add_run(part)
+            _set_font(run._r, MONO)
+            run.font.size = Pt(9.5)
+            _shade_run(run, "F1F3F5")
+        else:
+            _add_linked(paragraph, part, color)
+        for run in paragraph.runs[start:]:
+            if "b" in flags:
+                run.bold = True
+            if "i" in flags:
+                run.italic = True
+
+
+MONO = "Liberation Mono"
+
+
+def _shade_run(run, hex6: str) -> None:
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"), hex6)
+    run._r.get_or_add_rPr().append(shd)
+
+
+def _add_linked(paragraph, text: str, color: str) -> None:
     pos = 0
     for m in LINK.finditer(text):
         if m.start() > pos:
@@ -266,6 +356,7 @@ class Builder:
         self.doc = Document()
         self.first_in_section = True
         self.has_parts = False
+        self.chapter_pages = True
         self._list_nums: dict[tuple[str, int], int] = {}
         self._last_list_key: tuple | None = None
         self._setup_page(self.doc.sections[0])
@@ -374,7 +465,7 @@ class Builder:
     # blocks
     def heading(self, b: dict) -> None:
         level = max(1, min(int(b.get("level", 1)), 4))
-        breaks = level == 1 or (level == 2 and self.has_parts and not b.get("special"))
+        breaks = self.chapter_pages and (level == 1 or (level == 2 and self.has_parts and not b.get("special")))
         if breaks:
             self.page_break()
         if b.get("part"):
@@ -503,14 +594,16 @@ class Builder:
         for i, (row, values) in enumerate(zip(table.rows, rows)):
             for cell, value in zip(row.cells, values):
                 p = cell.paragraphs[0]
-                run = p.add_run(value)
-                run.font.size = Pt(max(self.st["size"] - 1, 9))
+                add_text(p, value, "1D4ED8")
                 p.paragraph_format.space_after = Pt(2)
                 p.paragraph_format.line_spacing = 1.0
                 p.paragraph_format.first_line_indent = Cm(0)
+                for run in p.runs:
+                    run.font.size = Pt(max(self.st["size"] - 1, 9))
+                    if i == 0:
+                        run.bold = True
+                        _set_color(run.font, self.st["table_head_text"])
                 if i == 0:
-                    run.bold = True
-                    _set_color(run.font, self.st["table_head_text"])
                     _shade(cell, self.st["table_head"])
                     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         # Header row repeats on each page.
@@ -570,6 +663,102 @@ class Builder:
             r.italic = True
         self._last_list_key = None
 
+    def code(self, b: dict) -> None:
+        """Code / command listing: monospace, grey box, lines kept as written, never split across pages if short."""
+        lines = b.get("text", "").split("\n")
+        for i, line in enumerate(lines):
+            p = self.doc.add_paragraph()
+            pf = p.paragraph_format
+            pf.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            pf.first_line_indent = Cm(0)
+            pf.left_indent = Cm(0.4)
+            pf.line_spacing = 1.0
+            pf.space_before = Pt(6) if i == 0 else Pt(0)
+            pf.space_after = Pt(8) if i == len(lines) - 1 else Pt(0)
+            if len(lines) <= 25:
+                pf.keep_with_next = i < len(lines) - 1
+            run = p.add_run(line.replace("\t", "    ") or " ")
+            _set_font(run._r, MONO)
+            run.font.size = Pt(9)
+            _set_color(run.font, "1F2937")
+            _shade_para(p, "F3F4F6")
+        self.first_in_section = False
+        self._last_list_key = None
+
+    def letterhead(self, h: dict) -> None:
+        """Official Cameroonian header, as on exam papers and administrative letters:
+        French column | logo | English column, groups separated by a short line of stars."""
+        fr, en = h.get("fr") or [], h.get("en") or []
+        if not fr and not en:
+            return
+        table = self.doc.add_table(rows=1, cols=3)
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        _no_borders(table)
+        _full_width(table)
+        widths = [0.41, 0.18, 0.41]
+        for i, w in enumerate(widths):
+            table.columns[i].width = Emu(int(self.text_width * w))  # grid (LibreOffice)
+            table.rows[0].cells[i].width = Emu(int(self.text_width * w))  # cell (Word)
+        font_size = Pt(8.5)
+
+        def column(cell, groups: list[list[str]]) -> None:
+            first = True
+            for gi, group in enumerate(groups):
+                for line in group:
+                    p = cell.paragraphs[0] if first else cell.add_paragraph()
+                    first = False
+                    pf = p.paragraph_format
+                    pf.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    pf.first_line_indent = Cm(0)
+                    pf.space_after = pf.space_before = Pt(0)
+                    pf.line_spacing = 1.0
+                    motto = bool(re.search(r"paix|peace", line, re.I))
+                    run = p.add_run(line if motto else line.upper())
+                    run.font.size = font_size
+                    run.bold = not motto
+                    run.italic = motto
+                if gi < len(groups) - 1:
+                    p = cell.add_paragraph()
+                    p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    p.paragraph_format.space_after = Pt(0)
+                    p.paragraph_format.first_line_indent = Cm(0)
+                    run = p.add_run("*" * 8)
+                    run.font.size = Pt(7)
+
+        column(table.rows[0].cells[0], fr)
+        column(table.rows[0].cells[2], en)
+        mid = table.rows[0].cells[1]
+        mid.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        p = mid.paragraphs[0]
+        p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.first_line_indent = Cm(0)
+        if h.get("logo_png"):
+            p.add_run().add_picture(io.BytesIO(h["logo_png"]), height=Cm(2.3))
+        spacer = self.doc.add_paragraph()
+        spacer.paragraph_format.space_after = Pt(10)
+        self.first_in_section = False
+        self._last_list_key = None
+
+    def title(self, b: dict) -> None:
+        """Document title written at the top of the text (Markdown "# Title"), not part of the outline."""
+        p = self._para()
+        run = p.add_run(b.get("text", ""))
+        pf = p.paragraph_format
+        pf.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        pf.first_line_indent = Cm(0)
+        if b.get("sub"):
+            run.font.size = Pt(self.st["size"] + 1)
+            run.italic = True
+            _set_color(run.font, "555555")
+            pf.space_after = Pt(18)
+        else:
+            run.bold = True
+            run.font.size = Pt(self.st["sizes"][0] + 4)
+            _set_color(run.font, self.st["heading_color"])
+            pf.space_after = Pt(6)
+            pf.keep_with_next = True
+        self._last_list_key = None
+
     def cover(self, png: bytes) -> None:
         section = self.doc.sections[0]
         for side in ("top_margin", "bottom_margin", "left_margin", "right_margin"):
@@ -586,12 +775,18 @@ class Builder:
 def build_docx(document: dict, images_dir: Path) -> bytes:
     st = resolved_style(document.get("style"))
     opts = {**DEFAULT_OPTIONS, **(document.get("options") or {})}
+    if "chapter_pages" not in (document.get("options") or {}):  # documents saved before this option existed
+        opts["chapter_pages"] = KINDS.get((document.get("meta") or {}).get("kind", ""), {}).get("chapter_pages", False)
     blocks = [b for b in document.get("blocks", []) if not b.get("hidden")]
     b = Builder(st, images_dir)
     b.has_parts = any(x.get("part") for x in blocks)
+    b.chapter_pages = opts["chapter_pages"]
 
     started = False
-    if opts["cover"] and document.get("cover_svg"):
+    has_cover = opts["cover"] and document.get("cover_svg")
+    if opts.get("letterhead") and document.get("letterhead") and not has_cover:
+        b.letterhead(_letterhead_data(document["letterhead"]))
+    if has_cover:
         b.cover(cover_render.svg_to_png(document["cover_svg"], 200))
         started = True
 
@@ -604,7 +799,11 @@ def build_docx(document: dict, images_dir: Path) -> bytes:
     prelim, body = blocks[:split], blocks[split:]
     has_tables = any(x.get("type") == "caption" and x.get("of") == "table" for x in blocks)
     has_figures = any(x.get("type") == "caption" and x.get("of") == "figure" for x in blocks)
-    want_prelim = bool(prelim) or opts["toc"] or (opts["lists"] and (has_tables or has_figures))
+    # Front matter (roman page numbers) only when there is some: dedication, thanks, abstract... or a sommaire.
+    # An introduction paragraph above the first heading of a course is just the start of the text.
+    want_prelim = any(x.get("special") for x in prelim) or opts["toc"] or (opts["lists"] and (has_tables or has_figures))
+    if not want_prelim:
+        prelim, body = [], prelim + body
     number = opts["page_numbers"]
 
     if want_prelim:
@@ -639,6 +838,23 @@ def build_docx(document: dict, images_dir: Path) -> bytes:
     buf = io.BytesIO()
     b.doc.save(buf)
     return buf.getvalue()
+
+
+def _letterhead_data(h: dict) -> dict:
+    """Decodes the embedded logo (data: URL) into image bytes Word can hold."""
+    out = {"fr": h.get("fr") or [], "en": h.get("en") or []}
+    logo = h.get("logo") or ""
+    m = re.match(r"^data:image/(png|jpeg|jpg|webp);base64,(.+)$", logo, re.S)
+    if m:
+        try:
+            raw = base64.b64decode(m.group(2))
+            with Image.open(io.BytesIO(raw)) as img:
+                buf = io.BytesIO()
+                img.convert("RGBA").save(buf, "PNG")  # webp/odd PNGs → plain PNG
+                out["logo_png"] = buf.getvalue()
+        except Exception:  # noqa: BLE001 - a broken logo must not break the document
+            pass
+    return out
 
 
 def _lists(b: Builder, opts: dict, has_tables: bool, has_figures: bool) -> None:
@@ -692,3 +908,7 @@ def _emit(b: Builder, x: dict, _all: list[dict]) -> None:
         b.source(x)
     elif kind == "quote":
         b.quote(x)
+    elif kind == "code":
+        b.code(x)
+    elif kind == "title":
+        b.title(x)

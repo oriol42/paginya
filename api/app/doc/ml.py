@@ -141,7 +141,7 @@ def refine(raws: list[Raw], trace: dict[int, dict], base: float, threshold: floa
     pr = m.proba(features(raws, trace, base))
     changed = 0
     for i, it in trace.items():
-        if it.get("type") in ("toc", "table", "figure") or it.get("kind") in ("special", "partie", "chapitre"):
+        if raws[i].explicit or it.get("type") in ("toc", "table", "figure", "code", "title") or it.get("kind") in ("special", "partie", "chapitre"):
             continue  # certain by construction
         if it.get("_nomark") or it.get("type") == "list" and (raws[i].list_kind or _R["bullet"].search(raws[i].text)):
             continue  # a bullet is a bullet: never promoted to a heading

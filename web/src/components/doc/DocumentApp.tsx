@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { OrderStatus } from "@/lib/api";
-import { KIND_LABEL, docs, type Block, type DocOptions, type DocStyle, type DocView } from "@/lib/documents";
+import { KIND_LABEL, docs, type Block, type DocOptions, type DocStyle, type DocView, type Letterhead } from "@/lib/documents";
 import { Logo } from "../Logo";
 import { PaySheet } from "../PaySheet";
 import type { StudioState } from "../studio/state";
@@ -18,7 +18,7 @@ import { Working } from "./Working";
 const LAST_DOC = "propre:doc:last";
 type Panel = "style" | "cover" | "plan";
 type View = "after" | "before" | "side";
-type Patch = Partial<{ blocks: Block[]; style: DocStyle; options: DocOptions; cover_svg: string; remove_cover: boolean }>;
+type Patch = Partial<{ blocks: Block[]; style: DocStyle; options: DocOptions; kind: string; letterhead: Letterhead; cover_svg: string; remove_cover: boolean }>;
 
 const PANELS: { id: Panel; icon: string; label: string }[] = [
   { id: "style", icon: "🎨", label: "Style" },
@@ -168,7 +168,7 @@ export function DocumentApp() {
 
   const panelBody = (
     <>
-      {panel === "style" && <DocStylePanel style={doc.style} options={doc.options} onStyle={(style) => change({ style })} onOptions={(options) => change({ options })} />}
+      {panel === "style" && <DocStylePanel style={doc.style} options={doc.options} kind={doc.meta.kind} onStyle={(style) => change({ style })} onOptions={(options) => change({ options })} onKind={(kind) => { setDoc((d) => (d ? { ...d, meta: { ...d.meta, kind } } : d)); change({ kind }); }} letterhead={doc.letterhead ?? null} hasCover={doc.has_cover} onLetterhead={(letterhead, options) => change({ letterhead, options })} />}
       {panel === "cover" && (
         <CoverEditor
           docId={doc.id}

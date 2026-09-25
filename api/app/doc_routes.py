@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import binascii
 import os
+import re
 import shutil
 import time
 import uuid
@@ -17,8 +18,8 @@ from pydantic import BaseModel
 from . import config, db, pricing, storage
 from .doc import office
 from .doc.detect import detect
-from .doc.extract import ExtractError, from_docx, from_pdf, from_text
-from .doc.render import DEFAULT_OPTIONS, THEMES, build_docx
+from .doc.extract import ExtractError, from_docx, from_markdown, from_pdf, from_text, looks_like_markdown
+from .doc.render import DEFAULT_OPTIONS, KINDS, THEMES, build_docx, options_for
 from .doc.scan import ScanError, ocr_local, read_text, straighten
 from .svg_safe import UnsafeSvg, sanitize_svg
 
@@ -27,9 +28,9 @@ router = APIRouter(prefix="/documents")
 MAX_UPLOAD = 15 * 1024 * 1024
 MAX_TEXT = 1_500_000
 TIERS = ["document_court", "rapport", "memoire"]
-BLOCK_TYPES = {"heading", "paragraph", "list", "table", "figure", "caption", "source", "quote"}
+BLOCK_TYPES = {"heading", "paragraph", "list", "table", "figure", "caption", "source", "quote", "code", "title"}
 BLOCK_KEYS = {"id", "type", "text", "level", "ordered", "rows", "image", "of", "special", "role",
-              "term", "definition", "part", "hidden"}
+              "term", "definition", "part", "hidden", "sub"}
 
 
 def doc_dir(order_id: str) -> Path:
@@ -90,6 +91,8 @@ class DocPatch(BaseModel):
     blocks: list[dict] | None = None
     style: dict | None = None
     options: dict | None = None
+    letterhead: dict | None = None  # {"fr": [[lines]], "en": [[lines]], "logo": "data:image/png;base64,..."}
+    kind: str | None = None  # user's choice of document type: resets the automatic pages to that type's
     cover_svg: str | None = None
     remove_cover: bool = False
 
@@ -116,6 +119,7 @@ def view(order: dict) -> dict:
         "style": doc["style"],
         "options": doc["options"],
         "has_cover": bool(doc.get("cover_svg")),
+        "letterhead": doc.get("letterhead"),
         "render": doc.get("render"),
     }
 
@@ -142,8 +146,9 @@ def create(body: DocIn) -> dict:
                 raws = from_docx(src, folder / "images")
             elif ext == ".pdf":
                 raws = from_pdf(src)
-            elif ext in (".txt", ".md"):
-                raws = from_text(raw_bytes.decode("utf-8", "replace"))
+            elif ext in (".txt", ".md", ".markdown"):
+                content = raw_bytes.decode("utf-8", "replace")
+                raws = from_markdown(content) if ext != ".txt" or looks_like_markdown(content) else from_text(content)
             elif ext == ".doc":
                 raise ExtractError("Ancien format .doc : enregistre-le en .docx (Fichier > Enregistrer sous) puis réessaie.")
             else:
@@ -154,7 +159,7 @@ def create(body: DocIn) -> dict:
     elif body.text and body.text.strip():
         if len(body.text) > MAX_TEXT:
             raise HTTPException(413, "Texte trop long")
-        raws = from_text(body.text)
+        raws = from_markdown(body.text) if looks_like_markdown(body.text) else from_text(body.text)
         order_id = db.create_order("document_court", pricing.price_for("document_court"), {"doc": {}})
         tmp_id = order_id
         doc_dir(order_id).mkdir(parents=True, exist_ok=True)
@@ -171,7 +176,7 @@ def create(body: DocIn) -> dict:
         "blocks": result["blocks"],
         "meta": result["meta"],
         "style": {"theme": theme, "color": "#0E9F6E"},
-        "options": dict(DEFAULT_OPTIONS),
+        "options": options_for(result["meta"]["kind"], result["meta"]["words"]),
         "cover_svg": None,
         "render": None,
     }
@@ -207,6 +212,23 @@ def _clean_blocks(blocks: list[dict]) -> list[dict]:
     return out
 
 
+def _clean_letterhead(h: dict) -> dict:
+    def groups(v) -> list[list[str]]:
+        if not isinstance(v, list):
+            return []
+        out = []
+        for g in v[:6]:
+            lines = [str(x).strip()[:160] for x in (g if isinstance(g, list) else [g])[:4] if str(x).strip()]
+            if lines:
+                out.append(lines)
+        return out
+
+    logo = h.get("logo")
+    ok_logo = isinstance(logo, str) and len(logo) < 900_000 and logo.startswith(("data:image/png;base64,", "data:image/jpeg;base64,", "data:image/webp;base64,"))
+    inst = re.sub(r"[^a-z0-9-]", "", str(h.get("institutionId", "")))[:40]
+    return {"fr": groups(h.get("fr")), "en": groups(h.get("en")), "logo": logo if ok_logo else None, "institutionId": inst}
+
+
 @router.put("/{order_id}")
 def update(order_id: str, body: DocPatch) -> dict:
     order = _load(order_id)
@@ -224,8 +246,13 @@ def update(order_id: str, body: DocPatch) -> dict:
         if style.get("theme") not in THEMES:
             style["theme"] = doc["style"].get("theme", "academique")
         doc["style"] = style
+    if body.kind is not None and body.kind in KINDS:
+        doc["meta"]["kind"] = body.kind
+        doc["options"] = {**options_for(body.kind, doc["meta"].get("words", 0)), "letterhead": doc["options"].get("letterhead", False)}
     if body.options is not None:
         doc["options"] = {k: bool(body.options.get(k, v)) for k, v in DEFAULT_OPTIONS.items()}
+    if body.letterhead is not None:
+        doc["letterhead"] = _clean_letterhead(body.letterhead)
     if body.remove_cover:
         doc["cover_svg"] = None
     elif body.cover_svg:
@@ -318,7 +345,7 @@ def before(order_id: str) -> dict:
         shutil.copy(source, pdf)
     else:
         docx = source
-        if source.suffix in (".txt", ".md"):
+        if source.suffix in (".txt", ".md", ".markdown"):
             docx = out / "plain.docx"
             plain = DocxDocument()
             for line in source.read_text(encoding="utf-8", errors="replace").splitlines():

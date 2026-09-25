@@ -30,7 +30,8 @@ class Raw:
     list_kind: str = ""      # "", "bullet" or "number" (from Word numbering)
     rows: list[list[str]] = field(default_factory=list)  # table
     image: str = ""          # stored image file name (figure)
-    source: str = "text"     # text | docx | pdf
+    source: str = "text"     # text | docx | pdf | md
+    explicit: bool = False   # structure given by the source (Markdown): never guessed over
 
 
 class ExtractError(ValueError):
@@ -76,6 +77,143 @@ def from_text(text: str, source: str = "text") -> list[Raw]:
         buf.append(line)
     flush()
     return [p for p in paras if p.text]
+
+
+# --- Markdown ----------------------------------------------------------------
+
+_MD_HEAD = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
+_MD_ITEM = re.compile(r"^(\s*)([-*+]|\d{1,3}[.)])\s+(.*)$")
+_MD_RULE = re.compile(r"^\s{0,3}([-*_])(\s*\1){2,}\s*$")
+_MD_FENCE = re.compile(r"^\s{0,3}(```|~~~)")
+_MD_TABLE_SEP = re.compile(r"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$")
+_MD_HINTS = [re.compile(p, re.M) for p in (r"^#{1,6}\s+\S", r"\*\*[^*\n]+\*\*", r"^```", r"^\|.*\|\s*$", r"^>\s")]
+
+
+def looks_like_markdown(text: str) -> bool:
+    """Pasted text written in Markdown (from ChatGPT, Notion, GitHub...): at least two different signs."""
+    return sum(bool(p.search(text)) for p in _MD_HINTS) >= 2
+
+
+def strip_inline(text: str) -> str:
+    """Text without Markdown emphasis markers (for headings, titles, table of contents)."""
+    text = re.sub(r"(\*\*|__)(.+?)\1", r"\2", text)
+    text = re.sub(r"(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?![\w*])", r"\1", text)
+    return re.sub(r"`([^`]+)`", r"\1", text).strip()
+
+
+def from_markdown(text: str) -> list[Raw]:
+    """Markdown keeps its structure as written: # headings, lists, tables, code blocks, quotes.
+
+    Inline **bold**, *italic* and `code` stay in the text; the renderer turns them into real formatting.
+    A single leading "# Title" becomes the document title (and a heading right under it, its subtitle).
+    """
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").replace("\u00a0", " ").split("\n")
+    out: list[Raw] = []
+    buf: list[str] = []
+    quote: list[str] = []
+
+    def raw(**kw) -> Raw:
+        return Raw(source="md", explicit=True, **kw)
+
+    def flush() -> None:
+        if buf:
+            out.append(raw(text=re.sub(r"[ \t]+", " ", " ".join(s.strip() for s in buf)).strip()))
+            buf.clear()
+        if quote:
+            out.append(raw(text=" ".join(quote).strip(), style="quote"))
+            quote.clear()
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        s = line.strip()
+        if not s:
+            flush()
+            i += 1
+            continue
+        if _MD_FENCE.match(line):
+            flush()
+            fence = _MD_FENCE.match(line).group(1)
+            code: list[str] = []
+            i += 1
+            while i < len(lines) and not lines[i].strip().startswith(fence):
+                code.append(lines[i].rstrip())
+                i += 1
+            i += 1
+            while code and not code[-1].strip():
+                code.pop()
+            if code:
+                out.append(raw(text="\n".join(code), style="code"))
+            continue
+        if _MD_RULE.match(line):
+            flush()
+            i += 1
+            continue
+        m = _MD_HEAD.match(s)
+        if m:
+            flush()
+            if m.group(2):
+                out.append(raw(text=strip_inline(m.group(2)), style=f"heading {len(m.group(1))}"))
+            i += 1
+            continue
+        if s.startswith("|") and i + 1 < len(lines) and _MD_TABLE_SEP.match(lines[i + 1]):
+            flush()
+            rows = [_md_cells(s)]
+            i += 2
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                rows.append(_md_cells(lines[i].strip()))
+                i += 1
+            out.append(raw(rows=rows))
+            continue
+        if s.startswith(">"):
+            if buf:
+                flush()
+            quote.append(s.lstrip(">").strip())
+            i += 1
+            continue
+        m = _MD_ITEM.match(line)
+        if m:
+            flush()
+            depth = len(m.group(1).replace("\t", "    ")) // 2
+            out.append(raw(text=m.group(3).strip(), list_kind="number" if m.group(2)[0].isdigit() else "bullet", indent=min(depth, 2)))
+            i += 1
+            continue
+        if out and out[-1].list_kind and not buf and line[:1] in (" ", "\t"):
+            out[-1].text += " " + s  # continuation of a list item
+            i += 1
+            continue
+        if quote:
+            flush()
+        buf.append(s)
+        if line.endswith("  ") or line.endswith("\\"):
+            flush()  # explicit line break
+        i += 1
+    flush()
+    return _md_title(out)
+
+
+def _md_cells(line: str) -> list[str]:
+    return [c.strip() for c in re.split(r"(?<!\\)\|", line.strip().strip("|"))]
+
+
+def _md_title(raws: list[Raw]) -> list[Raw]:
+    """One "# Title" at the top = the document's title; the other levels move up to fill the gap."""
+    heads = [r for r in raws if r.style.startswith("heading ")]
+    if not heads:
+        return raws
+    levels = sorted({int(r.style[-1]) for r in heads})
+    first = raws[0]
+    if first.style == "heading 1" and sum(r.style == "heading 1" for r in heads) == 1 and len(heads) > 1:
+        first.style = "doctitle"
+        if len(raws) > 1 and raws[1].style.startswith("heading ") and int(raws[1].style[-1]) > min(
+                (int(r.style[-1]) for r in heads[1:] if r is not raws[1]), default=9):
+            raws[1].style = "docsubtitle"  # "### ENSPD — Préparation concours" right under the title
+        levels = sorted({int(r.style[-1]) for r in raws if r.style.startswith("heading ")})
+    remap = {lvl: min(i + 1, 4) for i, lvl in enumerate(levels)}
+    for r in raws:
+        if r.style.startswith("heading "):
+            r.style = f"heading {remap[int(r.style[-1])]}"
+    return raws
 
 
 def _indent(line: str) -> int:

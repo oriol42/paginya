@@ -126,6 +126,17 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
         text = r.text.strip()
         if r.style.startswith("toc") or r.style.startswith("table of figures"):
             continue
+        if r.style == "code":
+            items.append({"type": "code", "text": r.text, "_src": idx})
+            continue
+        if r.style in ("doctitle", "docsubtitle"):
+            items.append({"type": "title", "sub": r.style == "docsubtitle", "text": text, "_src": idx})
+            continue
+        if r.explicit:  # Markdown: the author already said what each line is
+            item = _classify_explicit(r)
+            if item:
+                items.append({**item, "_src": idx, "_explicit": True})
+                continue
         special = _special_of(text)
         if special == "toc":
             skip_toc = True
@@ -186,12 +197,15 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
         it.pop("_src", None)
         it.pop("_full", None)
         it.pop("_nomark", None)
+        it.pop("_explicit", None)
     return out
 
 
 def _guess_title(blocks: list[dict]) -> str:
     """A short first line before any section heading is usually the document title."""
     for b in blocks[:3]:
+        if b["type"] == "title" and not b.get("sub"):
+            return b["text"]
         if b.get("special"):
             return ""
         text = b.get("text", "")
@@ -238,6 +252,22 @@ def _changes(blocks: list[dict], stats: dict) -> list[str]:
 
 def _clean_special(text: str) -> str:
     return re.sub(r"^([IVX]+|\d+)\s*[.\-–)]\s*", "", text.strip()).rstrip(" :")
+
+
+def _classify_explicit(r: Raw) -> dict | None:
+    """Markdown blocks: headings, lists and quotes are what they say; plain paragraphs still get
+    the special-section checks (Introduction, Bibliographie...) through the normal path."""
+    m = re.match(r"^heading (\d)$", r.style)
+    if m:
+        special = _special_of(r.text)
+        if special and special != "toc" and m.group(1) == "1":
+            return {"type": "heading", "kind": "special", "special": special, "text": _clean_special(r.text)}
+        return {"type": "heading", "kind": f"style{m.group(1)}", "text": r.text.strip()}
+    if r.list_kind:
+        return {"type": "list", "ordered": r.list_kind == "number", "level": r.indent, "text": r.text.strip()}
+    if r.style == "quote":
+        return {"type": "quote", "text": r.text.strip()}
+    return {"type": "paragraph", "text": r.text.strip()}
 
 
 def _classify_text(r: Raw, nxt: Raw | None, base: float) -> dict:
@@ -319,7 +349,7 @@ def _text_tables(items: list[dict]) -> list[dict]:
     while i < len(items):
         run: list[list[str]] = []
         j = i
-        while j < len(items) and items[j].get("type") == "paragraph" and (cells := _cells(items[j]["text"])):
+        while j < len(items) and items[j].get("type") == "paragraph" and not items[j].get("_explicit") and (cells := _cells(items[j]["text"])):
             run.append(cells)
             j += 1
         if len(run) >= 2:
@@ -422,18 +452,28 @@ def _fix_caption_positions(items: list[dict]) -> tuple[list[dict], int]:
     return out, moved
 
 
+ADMIN = re.compile(r"\bobjet\s*:|veuillez agr[ée]er|je soussign|certifie que|attestation|note de service|proc[èe]s[- ]verbal|"
+                   r"d[ée]cision n|communiqu[ée]|monsieur le |madame la ", re.I)
+COURSE = re.compile(r"\b(cours|le[çc]on|chapitre|exercices?|td|tp|fiche|r[ée]vision|notes?|module|corrig[ée])\b", re.I)
+
+
 def _meta(blocks: list[dict]) -> dict:
     words = sum(len(b.get("text", "").split()) for b in blocks)
     text_head = " ".join(b.get("text", "") for b in blocks[:40]).lower()
     headings = [b for b in blocks if b["type"] == "heading"]
+    titles = " ".join(b.get("text", "") for b in blocks[:3] if b["type"] in ("title", "heading"))
     if "memoire" in plain(text_head) or "mémoire" in text_head:
         kind = "memoire"
-    elif "stage" in text_head:
+    elif re.search(r"rapport de stage|stage acad|stage professionnel", text_head):
         kind = "rapport_stage"
-    elif words < 2500:
-        kind = "document"
-    else:
+    elif words < 1500 and ADMIN.search(text_head):
+        kind = "administratif"
+    elif COURSE.search(titles):
+        kind = "cours"
+    elif words >= 2500 and len(headings) >= 5:
         kind = "rapport"
+    else:
+        kind = "document"
     return {
         "kind": kind,
         "words": words,

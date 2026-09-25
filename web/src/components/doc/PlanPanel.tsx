@@ -105,6 +105,8 @@ function BlockBadge({ b }: { b: Block }) {
     caption: ["Lég", "bg-amber-50 text-amber-700"],
     source: ["Src", "bg-slate-100 text-slate-500"],
     quote: ["❝", "bg-slate-100 text-slate-600"],
+    code: ["</>", "bg-slate-800 text-white"],
+    title: ["Tt", "bg-brand-500 text-white"],
   };
   const [label, cls] = map[b.type] ?? ["?", "bg-slate-100"];
   return <span className={`mt-0.5 grid h-6 min-w-6 shrink-0 place-items-center rounded-lg px-1 text-[11px] font-bold ${cls}`}>{label}</span>;
@@ -120,6 +122,8 @@ function BlockText({ docId, b }: { docId: string; b: Block }) {
     return <img src={`${API_URL}/documents/${docId}/images/${b.image}`} alt="" className="max-h-16 rounded-lg" />;
   }
   if (b.role === "sigle") return <span className="line-clamp-1 text-sm text-slate-600"><b>{b.term}</b> : {b.definition}</span>;
+  if (b.type === "title") return <span className={`line-clamp-2 text-ink ${b.sub ? "text-sm italic" : "text-[15px] font-bold"}`}>{b.text}</span>;
+  if (b.type === "code") return <code className="line-clamp-2 whitespace-pre rounded bg-slate-100 px-1.5 text-xs text-slate-700">{b.text}</code>;
   if (b.type === "heading") return <span className={`line-clamp-2 font-semibold text-ink ${b.level === 1 ? "text-[15px]" : "text-sm"}`}>{b.text}</span>;
   if (b.type === "caption") return <span className="line-clamp-1 text-sm text-amber-800">{b.of === "table" ? "Tableau" : "Figure"} : {b.text}</span>;
   return <span className="line-clamp-1 text-sm text-slate-500">{b.text}</span>;
