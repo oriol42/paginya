@@ -1,10 +1,10 @@
 """Study: real reports (Memoire Online HTML) → Raw paragraphs → Paginya detect; compare with the author's own structure."""
 import glob, html, re, sys, collections
-sys.path.insert(0, "/home/oriol/Documents/propre/api")
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2]))
 from app.doc.extract import Raw, from_text
 from app.doc.detect import detect
 
-D = "/tmp/claude-1000/-home-oriol-Documents/0fb93d79-f021-45bc-93d8-aa1f7011764d/scratchpad/corpus"
+D = sys.argv[2] if len(sys.argv) > 2 else "corpus"  # pages Memoire Online téléchargées (non versionnées)
 
 def clean(s):
     s = html.unescape(re.sub(r"<[^>]+>", " ", s))
