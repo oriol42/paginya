@@ -1,6 +1,6 @@
 # SUIVI : où on en est (à lire en premier pour reprendre)
 
-Dernière mise à jour : 23/09/2026 (soir). Tenir ce fichier à jour à la fin de chaque session de travail.
+Dernière mise à jour : 25/09/2026 (après-midi). Tenir ce fichier à jour à la fin de chaque session de travail.
 
 ## 1. Le fondateur et les règles du jeu
 
@@ -158,3 +158,21 @@ Oracle refuse les cartes virtuelles, et l'utilisateur n'a pas de carte bancaire 
 - Données de test supprimées : les applis démarrent vides.
 - **À faire** : changer les clés passées dans la conversation (GitHub, Render, Supabase service_role, Hugging Face à supprimer) ; clés Fapshi réelles (mode `mock` pour l'instant) ; nom de domaine ; Cloudflare Pages dès les premières ventes.
 
+
+## Vraie mise en page, types de document, en-tête officiel (25/09/2026) ✅
+
+Point de départ : le fondateur a importé un cours en Markdown (`cours_module1_notions_faibles.md`). Résultat : `#` et `**` restés bruts, sommaire rempli de lignes SQL, 26 pages avec couverture et un chapitre par page.
+
+- **Import Markdown fidèle** (`extract.from_markdown`). Un `.md`, ou un texte collé qui ressemble à du Markdown (`looks_like_markdown`), garde sa structure : titres `#`, listes, tableaux `|`, blocs de code (police à chasse fixe sur fond gris), citations `>`, `---` supprimé. Le gras, l'italique et le `code` deviennent de vrais styles Word (`render.inline_spans`, aussi dans les cellules de tableau). Un `# Titre` unique en tête devient le titre du document (et le titre juste en dessous, son sous-titre). Les blocs Markdown sont `explicit` : le modèle et les règles de devinette n'y touchent pas.
+- **Type de document au choix** (panneau Style → « C'est quoi, ce document ? »). Types : document, cours, exposé, lettre/administratif, rapport, rapport de stage, mémoire. Chaque type n'ajoute que ses pages (`render.KINDS`, `options_for`) ; plus aucun sommaire imposé. L'API détecte un type par défaut (`detect._meta` : cours, administratif…) ; `PUT /documents/{id}` accepte `kind`.
+- **Interrupteurs visibles** « Ce que Paginya ajoute » : sommaire, table des matières, chaque grand titre sur une nouvelle page (`chapter_pages`), listes des tableaux/figures, numéros de page.
+- **En-tête officiel sur la 1re page** (`letterhead`) : colonne FR | logo | colonne EN, séparateurs `********`, devise en italique. Réglages : établissement, République, ministère (MINESUP, ou MINESEC pour un lycée), logo ou armoiries. Composant `LetterheadPanel.tsx`. Rendu Word : `Builder.letterhead`, tableau sans bordure. Nettoyage côté API : `_clean_letterhead`.
+- **Logos** : 25 établissements + armoiries du Cameroun dans `web/public/logos/`, sources dans `docs/LOGOS.md` (retrait sur demande). `institutions.ts` passe de 14 à 49 établissements. Le logo se met tout seul quand on choisit l'école, sur la page de garde comme sur l'en-tête.
+- **Étude de documents réels** : `docs/ETUDE-DOCUMENTS.md`, script `api/ml/study/real_reports.py`. Sur 13 rapports de Memoire Online, la précision des titres passe de 0,58 à 0,82 et le rappel de 0,83 à 0,93 ; le banc synthétique ne bouge pas (97,5 %). Correctifs : sommaires « P.03 », `SECTION I`, « 3. TERME : définition », éléments en « ; » jamais promus en titre.
+- Tests : 52 (dont `tests/test_markdown.py`). Vérification navigateur : `serveur/check/md_check.mjs <fichier.md>` (API et site lancés en local).
+
+**Reste (Paginya), dans l'ordre**
+1. Notes de bas de page collées dans le texte, prises pour des titres.
+2. Paragraphes coupés dont la suite commence par une majuscule.
+3. Logos manquants : Ngaoundéré, ENSAI, Ebolowa, SUP'PTIC, ISSEA, IUC, Siantou, UPAC.
+4. Retenter DICAMES (PDF de mémoires CAMES) pour élargir l'étude.
