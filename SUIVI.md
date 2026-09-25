@@ -145,3 +145,16 @@ Oracle refuse les cartes virtuelles, et l'utilisateur n'a pas de carte bancaire 
 - **Déployer** : remplir `Documents/serveur/.env` (modèle `env.example`), puis `./deploy_nocard.sh`.
 - **Pas encore testé en vrai** avec Postgres/Supabase et Hugging Face (pas de réseau le 24/09). Premier test à faire dès que les comptes sont prêts.
 
+## EN LIGNE depuis le 25/09/2026 ✅
+- Site : **https://paginya.vercel.app** · Serveur : https://paginya-api.onrender.com (Render gratuit, Virginie) · Base et fichiers : Supabase (us-east-1).
+- Hugging Face abandonné : les serveurs Docker gratuits y sont devenus payants (PRO 9 $/mois).
+- Tout est décrit dans `Documents/serveur/README.md` : déployer une nouvelle version, test en ligne `check/prod_check.mjs`, limites du gratuit.
+- Test en ligne réussi le 25/09/2026. Paginya : document mis en page en ~80 s, réveil compris. Affichya : boutique, pub gratuite, lien suivi, vitrine, WhatsApp et voix off OK.
+- Corrections faites pendant la mise en ligne :
+  - polices en WOFF2 (844 → 184 Ko) et affichage jamais bloqué par les polices ;
+  - bibliothèque des personnages chargée à la demande (/app : 2,7 Mo → 0,7 Mo de JS) ;
+  - chargements limités dans le temps ;
+  - les boutons attendent les images au lieu de ne rien faire.
+- Données de test supprimées : les applis démarrent vides.
+- **À faire** : changer les clés passées dans la conversation (GitHub, Render, Supabase service_role, Hugging Face à supprimer) ; clés Fapshi réelles (mode `mock` pour l'instant) ; nom de domaine ; Cloudflare Pages dès les premières ventes.
+
