@@ -141,7 +141,7 @@ def refine(raws: list[Raw], trace: dict[int, dict], base: float, threshold: floa
     pr = m.proba(features(raws, trace, base))
     changed = 0
     for i, it in trace.items():
-        if raws[i].explicit or it.get("type") in ("toc", "table", "figure", "code", "title") or it.get("kind") in ("special", "partie", "chapitre"):
+        if raws[i].explicit or it.get("type") in ("toc", "table", "figure", "code", "title") or it.get("kind") in ("special", "partie", "chapitre", "section"):
             continue  # certain by construction
         if it.get("_nomark") or it.get("type") == "list" and (raws[i].list_kind or _R["bullet"].search(raws[i].text)):
             continue  # a bullet is a bullet: never promoted to a heading
@@ -149,6 +149,10 @@ def refine(raws: list[Raw], trace: dict[int, dict], base: float, threshold: floa
         if pr[i, k] < threshold:
             continue
         t = it.get("type")
+        if H1 <= k <= H4 and t != "heading" and raws[i].text.rstrip().endswith((";", ",")):
+            continue  # "6. Valeur en FC ;" is an item of an enumeration
+        if H1 <= k <= H4 and t != "heading" and re.search(r"\s:\s+[a-zàâçéèêëîïôûù]\S*\s+\S+\s+\S+", raws[i].text):
+            continue  # "LES ABONNÉS : sont ceux qui…" defines a term, it is not a title
         if H1 <= k <= H4 and t != "heading" and i > 0 and raws[i - 1].text.rstrip().endswith(":"):
             continue  # a heading never follows "… les suivantes :" (that's an enumeration)
         if H1 <= k <= H4:

@@ -154,7 +154,7 @@ def unmarked_lists(items: list[dict]) -> int:
             run = []
             while j < len(items) and not items[j].get("_explicit") and items[j].get("type") in ("paragraph", "heading") and items[j].get("kind") not in ("special", "partie", "chapitre"):
                 t = items[j]["text"].strip()
-                if len(t) > 110 or len(t.split()) > 14 or t.endswith(":") or items[j].get("kind", "").startswith(("style", "dec", "roman", "letter")):
+                if len(t) > 110 or len(t.split()) > 14 or t.endswith(":") or items[j].get("kind", "").startswith(("style", "dec", "roman", "letter", "section")):
                     break  # a real sentence, a new intro or a numbered/styled heading ends the enumeration
                 run.append(j)
                 j += 1

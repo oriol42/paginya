@@ -58,7 +58,7 @@ SPECIALS: dict[str, tuple[str, ...]] = {
 }
 SPECIAL_LOOKUP = {v: k for k, vals in SPECIALS.items() for v in vals}
 
-TOC_ENTRY = re.compile(r"^(.{2,}?)[\s.…_·-]{3,}\s*([ivxlcdm]+|\d+)\s*$", re.I)
+TOC_ENTRY = re.compile(r"^(.{2,}?)(?:[\s.…_·-]{3,}\s*|\s+(?:p\.?|pp\.?|page)\s*)([ivxlcdm]+|\d+)\s*$", re.I)
 CAPTION = re.compile(
     r"^(tableau|table|tab\.|figure|fig\.?|graphique|graphe|graph\.|image|photo|sch[ée]ma|carte|illustration|diagramme)"
     r"\s*(n\s*[°o]\s*)?(\d+(?:[.\-]\d+)?)\s*[:.\-–—]\s*(.*)$",
@@ -72,6 +72,9 @@ PARTIE = re.compile(
     re.I,
 )
 CHAPITRE = re.compile(r"^(chapitre|chapter)\s+([ivx]+|\d+|premier|un|une|deux|trois|quatre|cinq|six|one|two|three|four|five)\b", re.I)
+# "TERME : définition en minuscules…" after a number
+DEFINITION = re.compile(r"^\d{1,2}(?:\.\d{1,2})*\s*[.)]?\s+[^:]{2,60}\s:\s+[a-zàâçéèêëîïôûù]\S*\s+\S+\s+\S+")
+SECTION = re.compile(r"^(section|sous[- ]section|paragraphe)\s+([ivx]+|\d+|premi[eè]re?|unique)\b", re.I)
 DECIMAL = re.compile(r"^(\d{1,2}(?:\.\d{1,2})+)\.?\s+(\S.*)$")
 SINGLE_NUM = re.compile(r"^(\d{1,2})\s*[.)°]\s+(\S.*)$")
 NUM_NODOT = re.compile(r"^(\d{1,2})\s+([A-ZÀ-Ý][^\d].*)$")  # "1 Historique" (number without a dot)
@@ -94,7 +97,7 @@ def _is_title_like(text: str, limit: int = 120) -> bool:
 
 # Order used to turn heading "kinds" into levels (first present = level 1).
 RANK = [
-    "partie", "chapitre", "style1", "roman", "upper", "style2", "letter", "dec1", "big",
+    "partie", "chapitre", "style1", "section", "roman", "upper", "style2", "letter", "dec1", "big",
     "bold", "style3", "dec2", "short", "style4", "dec3", "dec4",
 ]
 
@@ -301,6 +304,12 @@ def _classify_text(r: Raw, nxt: Raw | None, base: float) -> dict:
     if CHAPITRE.match(text) and len(text) < 160:
         return {"type": "heading", "kind": "chapitre", "text": text}
 
+    if SECTION.match(text) and len(text) < 180 and not ENDS_SENTENCE.search(text):
+        return {"type": "heading", "kind": "section", "text": text}
+    if DEFINITION.match(text):  # "3. LES ABONNÉS : sont ceux qui…" is an item, not a title
+        m = SINGLE_NUM.match(text) or DECIMAL.match(text)
+        if m:
+            return {"type": "list", "ordered": True, "level": min(r.indent, 2), "text": m.group(2), "_typed": True}
     m = DECIMAL.match(text)
     if m and _is_title_like(text, 140):
         depth = min(m.group(1).count(".") + 1, 4)

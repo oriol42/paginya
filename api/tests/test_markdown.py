@@ -100,3 +100,21 @@ def test_letterhead_and_kind_via_api(client):
     assert r.json()["meta"]["kind"] == "memoire" and o["toc"] and o["chapter_pages"] and o["letterhead"]
     r = client.put(f"/documents/{d['id']}", json={"letterhead": {"fr": "x", "logo": "javascript:alert(1)"}})
     assert r.json()["letterhead"]["logo"] is None and r.json()["letterhead"]["fr"] == []
+
+
+def test_real_report_patterns():
+    """Cases found in real internship reports (Memoire Online corpus, docs/ETUDE-DOCUMENTS.md)."""
+    from app.doc.extract import Raw
+    raws = [Raw(text=t, source="docx") for t in [
+        "SOMMAIRE",
+        "A- Etude de la population d'Amoutivé P.03",
+        "B- Les habitats et installations domestiques P.05",
+        "SECTION I : HISTORIQUE ET PLACE DE LA SGBC DANS L'ÉCONOMIE NATIONALE",
+        "La banque a été créée en 1963 et compte aujourd'hui plusieurs agences dans tout le pays, avec un réseau dense.",
+        "3. LES ABONNES INTERMEDIAIRES : sont ceux qui utilisent l'eau pour l'usage domestique et commercial",
+    ]]
+    r = detect(raws, trace=True)
+    tr = r["trace"]
+    assert tr[1]["type"] == "toc" and tr[2]["type"] == "toc"
+    assert tr[3]["type"] == "heading"
+    assert tr[5]["type"] != "heading"
