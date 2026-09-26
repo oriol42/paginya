@@ -18,6 +18,10 @@ FAPSHI_BASE_URL = {
 FAPSHI_API_USER = os.getenv("FAPSHI_API_USER", "")
 FAPSHI_API_KEY = os.getenv("FAPSHI_API_KEY", "")
 FAPSHI_WEBHOOK_SECRET = os.getenv("FAPSHI_WEBHOOK_SECRET", "")
+# One Fapshi service can be shared by several apps: each payment's externalId starts with the app's prefix,
+# and the app that receives the webhook forwards the others (FAPSHI_FORWARD = "AF=https://.../webhooks/fapshi").
+FAPSHI_PREFIX = os.getenv("FAPSHI_PREFIX", "PG")
+FAPSHI_FORWARD = dict(x.split("=", 1) for x in os.getenv("FAPSHI_FORWARD", "").split(",") if "=" in x)
 
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
 

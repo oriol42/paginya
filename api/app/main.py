@@ -159,7 +159,7 @@ def pay(order_id: str, body: PayIn) -> dict:
         raise HTTPException(400, str(exc)) from exc
     try:
         trans_id = fapshi.direct_pay(
-            order["amount"], phone, external_id=order_id,
+            order["amount"], phone, external_id=fapshi.external_id(order_id),
             message=f"Paginya - {pricing.LABELS[order['product']]}",
         )
     except fapshi.FapshiError as exc:
@@ -181,7 +181,7 @@ def _sync_with_fapshi(order: dict) -> dict:
         return order
     if status == "PAID" and config.FAPSHI_MODE != "mock":
         # Never trust a success that doesn't match the order exactly.
-        if tx.get("amount") != order["amount"] or tx.get("externalId") != order["id"]:
+        if not fapshi.matches(tx, order):
             log.error("Payment mismatch for order %s: %s", order["id"], tx)
             return order
     db.settle(order["id"], status)
@@ -209,7 +209,12 @@ async def fapshi_webhook(request: Request) -> dict:
     if not config.FAPSHI_WEBHOOK_SECRET or not hmac.compare_digest(secret, config.FAPSHI_WEBHOOK_SECRET):
         raise HTTPException(401, "Signature invalide")
     body = await request.json()
-    order = db.get_order(str(body.get("externalId", "")))
+    ext = str(body.get("externalId", ""))
+    target = fapshi.forward_target(ext)
+    if target:  # a payment of another app sharing the Fapshi service
+        threading.Thread(target=fapshi.forward, args=(target, body, secret), daemon=True).start()
+        return {"ok": True}
+    order = db.get_order(fapshi.order_id_of(ext))
     if order is not None:
         # Re-check with Fapshi rather than trusting the body.
         _sync_with_fapshi(order)

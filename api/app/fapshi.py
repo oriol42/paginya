@@ -24,6 +24,37 @@ class FapshiError(RuntimeError):
     pass
 
 
+def external_id(order_id: str) -> str:
+    """What Fapshi stores for an order: the app prefix tells whose payment it is in a shared service."""
+    return f"{config.FAPSHI_PREFIX}-{order_id}" if config.FAPSHI_PREFIX else order_id
+
+
+def order_id_of(ext: str) -> str:
+    """Order id from a Fapshi externalId (with or without the app prefix)."""
+    head, sep, rest = ext.partition("-")
+    return rest if sep and head == config.FAPSHI_PREFIX else ext
+
+
+def matches(tx: dict, order: dict) -> bool:
+    """A success counts only if it is exactly this order (amount and id, prefixed or not)."""
+    return tx.get("amount") == order["amount"] and tx.get("externalId") in (external_id(order["id"]), order["id"])
+
+
+def forward_target(ext: str) -> str | None:
+    """Webhook address of the app a payment belongs to, when it is not us."""
+    head, sep, _ = ext.partition("-")
+    if sep and head != config.FAPSHI_PREFIX:
+        return config.FAPSHI_FORWARD.get(head)
+    return None
+
+
+def forward(url: str, body: dict, secret: str) -> None:
+    try:
+        httpx.post(url, json=body, headers={"x-wh-secret": secret}, timeout=20)
+    except httpx.HTTPError:
+        pass  # the other app also polls Fapshi: nothing is lost
+
+
 def _headers() -> dict:
     return {"apiuser": config.FAPSHI_API_USER, "apikey": config.FAPSHI_API_KEY}
 
