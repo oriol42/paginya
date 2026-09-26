@@ -176,3 +176,9 @@ Point de départ : le fondateur a importé un cours en Markdown (`cours_module1_
 2. Paragraphes coupés dont la suite commence par une majuscule.
 3. Logos manquants : Ngaoundéré, ENSAI, Ebolowa, SUP'PTIC, ISSEA, IUC, Siantou, UPAC.
 4. Retenter DICAMES (PDF de mémoires CAMES) pour élargir l'étude.
+
+## Référencement Google (26/09/2026), en attente de mise en ligne
+- Ajoutés : `robots.txt` et `sitemap.xml` (`src/app/robots.ts`, `sitemap.ts`), titres et descriptions, image de partage `public/og.png` (1200×630), fiche « WebApplication » (JSON-LD) dans `layout.tsx`. Idem pour Affichya.
+- Adresse du site : `src/lib/site.ts` (`NEXT_PUBLIC_SITE_URL`, à changer le jour où on achète un nom de domaine).
+- Google Search Console : mettre le code de la méthode « balise HTML » dans `NEXT_PUBLIC_GOOGLE_VERIFICATION` au moment du build, puis soumettre `/sitemap.xml`.
+- Le jeton Vercel a expiré le 26/09 : il faut en créer un nouveau (sans date d'expiration) avant `python3 deploy_render.py web`.
