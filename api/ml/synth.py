@@ -229,6 +229,7 @@ class Habit:
     word_lists: bool        # Word numbering vs typed "-" bullets
     bullet: str
     caps_body_short: float  # short body lines in capitals (e.g. "NB :")
+    extreme: bool = False   # the really careless student (see mess())
 
 
 def habit(rng: random.Random) -> Habit:
@@ -247,6 +248,7 @@ def habit(rng: random.Random) -> Habit:
         word_lists=rng.random() < 0.4,
         bullet=rng.choice(["-", "•", "–", "➢", "*", "o", "✓", "►"]),
         caps_body_short=rng.random() * 0.3,
+        extreme=rng.random() < float(os.environ.get("SYNTH_EXTREME", "0")),
     )
 
 
@@ -278,6 +280,47 @@ def styled_text(e: El, h: Habit, counters: Counter4, rng: random.Random, chapter
     return text
 
 
+def _strip_accents(s: str) -> str:
+    import unicodedata
+
+    return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+
+
+def mess(lines: list[tuple[El, str]], rng: random.Random) -> list[tuple[El, str]]:
+    """What a very careless author does to the whole text: glued or odd numbering, "=>" bullets,
+    no space after bullets, headings ending with ":", whole text in capitals or lowercase, no accents,
+    spaces before commas and none after full stops. One line stays one line (labels must stay aligned)."""
+    import re
+
+    case = rng.choices(["keep", "upper", "lower"], [6, 2, 2])[0]
+    accents = rng.random() < 0.35
+    typo = rng.random() < 0.5
+    bullet = rng.choice(["-", "=>", "->", "*", "+", "•", ">"])
+    glue = rng.random() < 0.5
+    out = []
+    for e, t in lines:
+        if e.label in (H1, H2, H3, H4):
+            if e.kind == "chapitre":
+                t = re.sub(r"^CHAPITRE\s+([IVX]+|\d+)\s*[:.–-]?\s*", lambda m: rng.choice([f"Chapitre{m.group(1)} ", f"CHAPITRE {m.group(1)}: ", f"chapitre {m.group(1)}- "]), t, flags=re.I)
+            t = re.sub(r"^(\d{1,2})\.\s", lambda m: rng.choice([f"{m.group(1)}- ", f"{m.group(1)}) ", f"{m.group(1)}°) ", f"{m.group(1)}-"]) if glue else m.group(0), t)
+            t = re.sub(r"^([IVX]{1,4})\.\s", lambda m: rng.choice([f"{m.group(1)}- ", f"{m.group(1)}/ ", f"{m.group(1)}) "]), t)
+            if rng.random() < 0.3:
+                t = t.rstrip() + rng.choice([" :", ":", "."])
+        elif e.label == LIST and e.kind != "nomark":
+            t = re.sub(r"^(?:[-•–➢*o✓►])\s+", (bullet if glue else bullet + " "), t)
+        if typo and e.label in (PARA, LIST):
+            t = re.sub(r",\s", lambda m: rng.choice([", ", " , ", ",", " ,"]), t)
+            t = re.sub(r"\.\s(?=[A-ZÉ])", lambda m: rng.choice([". ", ".", " . "]), t)
+        if case == "upper":
+            t = t.upper()
+        elif case == "lower" and e.label != TOC:
+            t = t.lower()
+        if accents:
+            t = _strip_accents(t)
+        out.append((e, t))
+    return out
+
+
 def render(els: list[El], h: Habit, rng: random.Random, tmp: Path) -> list[Raw] | None:
     """Writes the messy document and reads it back with the production extractor."""
     counters = Counter4()
@@ -303,6 +346,8 @@ def render(els: list[El], h: Habit, rng: random.Random, tmp: Path) -> list[Raw] 
         else:
             lines.append((e, e.text))
 
+    if h.extreme:
+        lines = mess(lines, rng)
     if h.mode == "text":
         sep = "\n\n" if rng.random() < 0.5 else "\n"
         raws = from_text(sep.join(t for _, t in lines))

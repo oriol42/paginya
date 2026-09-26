@@ -118,3 +118,24 @@ def test_real_report_patterns():
     assert tr[1]["type"] == "toc" and tr[2]["type"] == "toc"
     assert tr[3]["type"] == "heading"
     assert tr[5]["type"] != "heading"
+
+
+def test_very_messy_numbering_and_bullets():
+    """The careless student: odd numbering, "=>" bullets, no space after "-", titles ending with ":"."""
+    from app.doc.extract import Raw
+    texts = [
+        "Chapitre1 PRESENTATION DE LA STRUCTURE",
+        "1- Historique :",
+        "La structure a été créée en 1998 par un groupe d'entrepreneurs et compte aujourd'hui plus de cent agents répartis.",
+        "2°) Missions",
+        "Elle a pour missions principales les suivantes :",
+        "=> accueillir les usagers",
+        "-orienter les clients",
+        "+ suivre les dossiers",
+        "Elle contribue aussi à 10.000 emplois et à 1-2 projets par an dans la région du Littoral et au-delà.",
+    ]
+    tr = detect([Raw(text=t, source="docx") for t in texts], trace=True)["trace"]
+    kinds = [tr[i]["type"] for i in range(len(texts))]
+    assert kinds[0] == "heading" and kinds[1] == "heading" and kinds[3] == "heading"
+    assert kinds[5:8] == ["list", "list", "list"]
+    assert kinds[8] == "paragraph"

@@ -1,6 +1,7 @@
 """Accuracy of structure detection on synthetic messy documents (rules alone, or rules + model)."""
 from __future__ import annotations
 
+import os
 import sys
 from collections import Counter
 
@@ -61,7 +62,7 @@ if __name__ == "__main__":
         if s is None:
             continue
         raws, labels, h = s
-        pr = predict_rules(raws)
+        pr = predict_rules(raws, refine=os.environ.get("REFINE") == "1")
         ys += labels
         ps += pr
         a, b = modes.setdefault(h.mode, ([], []))

@@ -71,17 +71,18 @@ PARTIE = re.compile(
     r"|partie\s+([ivx]+|\d+|une|deux|trois|quatre|cinq)\b)",
     re.I,
 )
-CHAPITRE = re.compile(r"^(chapitre|chapter)\s+([ivx]+|\d+|premier|un|une|deux|trois|quatre|cinq|six|one|two|three|four|five)\b", re.I)
+CHAPITRE = re.compile(r"^(chapitre|chapter)\s*([ivx]+|\d+|premier|un|une|deux|trois|quatre|cinq|six|one|two|three|four|five)\b", re.I)
 # "TERME : définition en minuscules…" after a number
 DEFINITION = re.compile(r"^\d{1,2}(?:\.\d{1,2})*\s*[.)]?\s+[^:]{2,60}\s:\s+[a-zàâçéèêëîïôûù]\S*\s+\S+\s+\S+")
 SECTION = re.compile(r"^(section|sous[- ]section|paragraphe)\s+([ivx]+|\d+|premi[eè]re?|unique)\b", re.I)
 DECIMAL = re.compile(r"^(\d{1,2}(?:\.\d{1,2})+)\.?\s+(\S.*)$")
-SINGLE_NUM = re.compile(r"^(\d{1,2})\s*[.)°]\s+(\S.*)$")
+# "1. ", "1) ", "1- ", "1°) ", "1-Texte" (no space) — but not "1-2 fois" or "10.000 F"
+SINGLE_NUM = re.compile(r"^(\d{1,2})\s*(?:°\)|[.)°]\s|-)\s*(?=[^\d\s])(\S.*)$")
 NUM_NODOT = re.compile(r"^(\d{1,2})\s+([A-ZÀ-Ý][^\d].*)$")  # "1 Historique" (number without a dot)
 ROMAN = re.compile(r"^([IVX]{1,5})\s*[.\-–—)/]\s*(\S.*)$")
 LETTER = re.compile(r"^([A-H])\s*[.\-–—)/]\s+(\S.*)$")
 LOWER_ITEM = re.compile(r"^([a-z])\s*[.)]\s+(\S.*)$")
-BULLET = re.compile(r"^\s*([-–—•*➢►▪▫◦✓✔→>§]|||||o(?=\s))\s*(\S.*)$")
+BULLET = re.compile(r"^\s*(=>|->|-->|\+(?=\s*[A-Za-zÀ-ÿ])|[-–—•*➢►▪▫◦✓✔→>§]|||||o(?=\s))\s*(\S.*)$")
 
 
 def _special_of(text: str) -> str | None:
@@ -93,6 +94,15 @@ def _special_of(text: str) -> str | None:
 
 def _is_title_like(text: str, limit: int = 120) -> bool:
     return 2 <= len(text) <= limit and not ENDS_SENTENCE.search(text.strip())
+
+
+def _numbered_title_like(text: str, limit: int, body: str) -> bool:
+    """A numbered line is a title even when its author ended it with ":" or "." ("2- Les missions :"),
+    as long as what follows the number is one short phrase (no other sentence inside)."""
+    if _is_title_like(text, limit):
+        return True
+    core = re.sub(r"\s*[:.]\s*$", "", body.strip())
+    return _is_title_like(core, limit) and not re.search(r"[.!?]\s", core) and len(core.split()) <= 14
 
 
 # Order used to turn heading "kinds" into levels (first present = level 1).
@@ -311,14 +321,14 @@ def _classify_text(r: Raw, nxt: Raw | None, base: float) -> dict:
         if m:
             return {"type": "list", "ordered": True, "level": min(r.indent, 2), "text": m.group(2), "_typed": True}
     m = DECIMAL.match(text)
-    if m and _is_title_like(text, 140):
+    if m and _numbered_title_like(text, 140, m.group(2)):
         depth = min(m.group(1).count(".") + 1, 4)
         return {"type": "heading", "kind": f"dec{depth}", "text": text}
     m = ROMAN.match(text)
-    if m and _is_title_like(text, 140):
+    if m and _numbered_title_like(text, 140, m.group(2)):
         return {"type": "heading", "kind": "roman", "text": text}
     m = LETTER.match(text)
-    if m and _is_title_like(text, 110):
+    if m and _numbered_title_like(text, 110, m.group(2)):
         return {"type": "heading", "kind": "letter", "text": text}
 
     m = BULLET.match(text)
@@ -326,7 +336,7 @@ def _classify_text(r: Raw, nxt: Raw | None, base: float) -> dict:
         return {"type": "list", "ordered": False, "level": min(r.indent, 2), "text": m.group(2), "_typed": True}
     m = SINGLE_NUM.match(text)
     if m:
-        return {"type": "numcand", "text": text, "body": m.group(2), "title_like": _is_title_like(text, 90), "level": min(r.indent, 2), "bold": r.bold}
+        return {"type": "numcand", "text": text, "body": m.group(2), "title_like": _numbered_title_like(text, 90, m.group(2)), "level": min(r.indent, 2), "bold": r.bold}
     m = NUM_NODOT.match(text)
     if m and _is_title_like(text, 90):
         return {"type": "numcand", "text": text, "body": m.group(2), "title_like": True, "level": min(r.indent, 2), "bold": r.bold, "nodot": True}
