@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { WakeServer } from "@/components/WakeServer";
 import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 
@@ -44,6 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="fr" className="h-full antialiased">
       <body className="min-h-full flex flex-col font-sans">
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }} />
+        <WakeServer />
         {children}
       </body>
     </html>
