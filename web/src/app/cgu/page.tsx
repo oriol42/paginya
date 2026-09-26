@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CONTACT, LegalPage } from "@/components/Footer";
 
-export const metadata: Metadata = { title: "Conditions générales · Paginya" };
+export const metadata: Metadata = { title: "Conditions générales" };
 
 export default function Cgu() {
   return (

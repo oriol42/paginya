@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { LegalPage } from "@/components/Footer";
 
-export const metadata: Metadata = { title: "Tarifs · Paginya", description: "Aperçu gratuit. Tu paies seulement pour télécharger ton document, par Mobile Money." };
+export const metadata: Metadata = { title: "Tarifs", description: "Aperçu gratuit. Tu paies seulement pour télécharger ton document, par Mobile Money." };
 
 const PRICES = [
   { label: "Page de garde", price: "300 F", note: "Word + PDF + image" },

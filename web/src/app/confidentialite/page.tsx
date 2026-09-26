@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { CONTACT, LegalPage } from "@/components/Footer";
 
-export const metadata: Metadata = { title: "Confidentialité · Paginya" };
+export const metadata: Metadata = { title: "Confidentialité" };
 
 export default function Confidentialite() {
   return (

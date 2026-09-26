@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { DocumentApp } from "@/components/doc/DocumentApp";
 
 export const metadata: Metadata = {
-  title: "Mise en forme · Paginya",
+  title: "Mise en forme",
   description: "Importe ton Word, ton PDF ou colle ton texte : titres, listes, tableaux, sommaire et pagination automatiques.",
 };
 
