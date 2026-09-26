@@ -133,6 +133,10 @@ def model() -> Model | None:
     return _model  # type: ignore[return-value]
 
 
+# the rules' own bullet pattern (wider than the model feature: "=>", "->", "+ ")
+from .detect import BULLET as _BULLET  # noqa: E402
+
+
 def refine(raws: list[Raw], trace: dict[int, dict], base: float, threshold: float = 0.9) -> int:
     """Corrects the rules' items in place where the model is confident. Returns the number of changes."""
     m = model()
@@ -143,7 +147,7 @@ def refine(raws: list[Raw], trace: dict[int, dict], base: float, threshold: floa
     for i, it in trace.items():
         if raws[i].explicit or it.get("type") in ("toc", "table", "figure", "code", "title") or it.get("kind") in ("special", "partie", "chapitre", "section"):
             continue  # certain by construction
-        if it.get("_nomark") or it.get("type") == "list" and (raws[i].list_kind or _R["bullet"].search(raws[i].text)):
+        if it.get("_nomark") or it.get("type") == "list" and (raws[i].list_kind or _R["bullet"].search(raws[i].text) or _BULLET.match(raws[i].text)):
             continue  # a bullet is a bullet: never promoted to a heading
         k = int(pr[i].argmax())
         if pr[i, k] < threshold:
