@@ -5,7 +5,7 @@ import { api, formatXaf, operatorOf, type OrderStatus } from "@/lib/api";
 
 export const PHONE_KEY = "propre:phone";
 type Phase = "summary" | "pending" | "paid" | "failed";
-const PENDING_TIMEOUT_MS = 3 * 60 * 1000;
+const PENDING_TIMEOUT_MS = 10 * 60 * 1000; // the Fapshi payment page can take a few minutes
 type Format = "pdf" | "docx" | "png";
 
 type Props = {
@@ -30,6 +30,7 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
   });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [link, setLink] = useState<string | null>(null);
   const startedAt = useRef(0);
 
   useEffect(() => {
@@ -52,12 +53,23 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
   async function pay() {
     setError("");
     setBusy(true);
+    // Opened now, during the tap: a tab opened after the network call would be blocked on phones.
+    const tab = window.open("", "_blank");
     try {
       try { localStorage.setItem(PHONE_KEY, phone); } catch { /* ignore */ }
       const o = await api.pay(orderId, phone);
+      if (o.pay_link) {
+        // Fapshi's payment page (MoMo / Orange Money); this tab keeps waiting for the confirmation
+        setLink(o.pay_link);
+        if (tab) tab.location.href = o.pay_link;
+        else window.location.href = o.pay_link;
+      } else {
+        tab?.close();
+      }
       onStatus(o.status);
       setPhase(o.status === "PAID" ? "paid" : "pending");
     } catch (e) {
+      tab?.close();
       setError((e as Error).message);
     } finally {
       setBusy(false);
@@ -132,7 +144,7 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
               {busy ? "Envoi…" : `Payer ${formatXaf(amount)}`}
             </button>
             <p className="mt-3 text-center text-xs text-slate-500">
-              Tu recevras une demande de confirmation sur ton téléphone · Paiement sécurisé Fapshi
+              MTN MoMo ou Orange Money · Paiement sécurisé Fapshi
             </p>
           </>
         )}
@@ -143,10 +155,17 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
               <div className="absolute inset-0 animate-ping rounded-full bg-brand-200/60" />
               <div className="relative grid h-20 w-20 place-items-center rounded-full bg-brand-500 text-3xl">📱</div>
             </div>
-            <h2 className="mt-6 font-display text-xl font-bold text-ink">Confirme sur ton téléphone</h2>
-            <p className="mx-auto mt-2 max-w-xs text-[15px] text-slate-600">
-              Une demande de <b>{formatXaf(amount)}</b> a été envoyée au {phone}. Valide-la avec ton code secret.
-            </p>
+            <h2 className="mt-6 font-display text-xl font-bold text-ink">{link ? "Paie dans l'onglet Fapshi" : "Confirme sur ton téléphone"}</h2>
+            {link ? (
+              <p className="mx-auto mt-2 max-w-xs text-[15px] text-slate-600">
+                Choisis MTN MoMo ou Orange Money et paie <b>{formatXaf(amount)}</b>. Cette page se débloque toute seule dès que c&apos;est payé.{" "}
+                <a href={link} target="_blank" rel="noopener" className="font-bold text-brand-700 underline">Rouvrir la page de paiement</a>
+              </p>
+            ) : (
+              <p className="mx-auto mt-2 max-w-xs text-[15px] text-slate-600">
+                Une demande de <b>{formatXaf(amount)}</b> a été envoyée au {phone}. Valide-la avec ton code secret.
+              </p>
+            )}
             <p className="mt-5 text-xs text-slate-400">Ne ferme pas cette page…</p>
           </div>
         )}

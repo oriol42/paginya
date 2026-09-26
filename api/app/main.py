@@ -67,7 +67,16 @@ class OrderIn(CoverIn):
 
 
 class PayIn(BaseModel):
-    phone: str
+    phone: str = ""
+    return_url: str = ""  # where Fapshi's payment page sends the customer back
+
+
+def _return_url(url: str) -> str:
+    """Only our own sites (a payment page must never redirect elsewhere)."""
+    for origin in config.CORS_ORIGINS:
+        if origin and url.startswith(origin.rstrip("/") + "/"):
+            return url[:500]
+    return config.CORS_ORIGINS[0].rstrip("/") + "/paiement/"
 
 
 def _clean_svg(svg: str) -> str:
@@ -153,19 +162,21 @@ def pay(order_id: str, body: PayIn) -> dict:
         return _public(order)
     if order["status"] == "PENDING":
         raise HTTPException(409, "Un paiement est déjà en attente de confirmation")
+    phone = ""
+    if body.phone.strip():
+        try:
+            phone = fapshi.normalize_phone(body.phone)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
     try:
-        phone = fapshi.normalize_phone(body.phone)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    try:
-        trans_id = fapshi.direct_pay(
-            order["amount"], phone, external_id=fapshi.external_id(order_id),
-            message=f"Paginya - {pricing.LABELS[order['product']]}",
+        trans_id, link = fapshi.start(
+            order["amount"], phone, fapshi.external_id(order_id),
+            f"Paginya - {pricing.LABELS[order['product']]}", _return_url(body.return_url),
         )
     except fapshi.FapshiError as exc:
         raise HTTPException(502, f"Le paiement n'a pas pu démarrer : {exc}") from exc
     db.mark_pending(order_id, phone, trans_id)
-    return _public(db.get_order(order_id))
+    return {**_public(db.get_order(order_id)), "pay_link": link}
 
 
 def _sync_with_fapshi(order: dict) -> dict:

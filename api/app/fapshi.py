@@ -24,6 +24,10 @@ class FapshiError(RuntimeError):
     pass
 
 
+class DirectPayDisabled(FapshiError):
+    """Fapshi answers 403 until it approves direct-pay for the service."""
+
+
 def external_id(order_id: str) -> str:
     """What Fapshi stores for an order: the app prefix tells whose payment it is in a shared service."""
     return f"{config.FAPSHI_PREFIX}-{order_id}" if config.FAPSHI_PREFIX else order_id
@@ -82,9 +86,40 @@ def direct_pay(amount: int, phone: str, external_id: str, message: str) -> str:
         timeout=30,
     )
     data = resp.json() if resp.content else {}
+    if resp.status_code == 403:
+        raise DirectPayDisabled(data.get("message", "direct-pay non activé"))
     if resp.status_code != 200 or "transId" not in data:
         raise FapshiError(data.get("message", f"Erreur Fapshi ({resp.status_code})"))
     return data["transId"]
+
+
+def initiate_pay(amount: int, external_id: str, message: str, redirect_url: str) -> tuple[str, str]:
+    """Payment page hosted by Fapshi (MoMo / Orange Money). Returns (transId, link)."""
+    if config.FAPSHI_MODE == "mock":
+        trans_id = "mock_" + uuid.uuid4().hex[:12]
+        _mock_started[trans_id] = (time.time(), "SUCCESSFUL")
+        return trans_id, redirect_url
+    resp = httpx.post(
+        f"{config.FAPSHI_BASE_URL}/initiate-pay",
+        headers=_headers(),
+        json={"amount": amount, "externalId": external_id, "message": message, "redirectUrl": redirect_url},
+        timeout=30,
+    )
+    data = resp.json() if resp.content else {}
+    if resp.status_code != 200 or "link" not in data:
+        raise FapshiError(data.get("message", f"Erreur Fapshi ({resp.status_code})"))
+    return data["transId"], data["link"]
+
+
+def start(amount: int, phone: str, external_id: str, message: str, redirect_url: str) -> tuple[str, str | None]:
+    """Starts a payment the best available way. Returns (transId, payment page link or None)."""
+    if config.FAPSHI_PAY_METHOD != "link" and phone:
+        try:
+            return direct_pay(amount, phone, external_id, message), None
+        except DirectPayDisabled:
+            if config.FAPSHI_PAY_METHOD == "direct":
+                raise
+    return initiate_pay(amount, external_id, message, redirect_url)
 
 
 def payment_status(trans_id: str) -> dict:

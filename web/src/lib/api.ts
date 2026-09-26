@@ -11,6 +11,8 @@ export type Order = {
   form: Record<string, unknown>;
   editable: boolean;
   is_document?: boolean;
+  /** Fapshi payment page, when the payment is not confirmed on the phone directly. */
+  pay_link?: string | null;
 };
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
@@ -35,7 +37,7 @@ export const api = {
     call<Order>(`/orders/${id}`, { method: "PUT", body: JSON.stringify({ svg, form }) }),
   getOrder: (id: string) => call<Order>(`/orders/${id}`),
   pay: (id: string, phone: string) =>
-    call<Order>(`/orders/${id}/pay`, { method: "POST", body: JSON.stringify({ phone }) }),
+    call<Order>(`/orders/${id}/pay`, { method: "POST", body: JSON.stringify({ phone, return_url: `${window.location.origin}/paiement/` }) }),
   retry: (id: string) => call<Order>(`/orders/${id}/retry`, { method: "POST" }),
   fileUrl: (id: string, fmt: "pdf" | "docx" | "png") => `${API_URL}/orders/${id}/file.${fmt}`,
 };
