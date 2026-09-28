@@ -182,3 +182,12 @@ Point de départ : le fondateur a importé un cours en Markdown (`cours_module1_
 - Adresse du site : `src/lib/site.ts` (`NEXT_PUBLIC_SITE_URL`, à changer le jour où on achète un nom de domaine).
 - Google Search Console : mettre le code de la méthode « balise HTML » dans `NEXT_PUBLIC_GOOGLE_VERIFICATION` au moment du build, puis soumettre `/sitemap.xml`.
 - Le jeton Vercel a expiré le 26/09 : il faut en créer un nouveau (sans date d'expiration) avant `python3 deploy_render.py web`.
+
+## Déménagement sur Cloudflare (28/09/2026) ✅
+- **Sites** : https://paginya.pages.dev et https://affichya.pages.dev (Cloudflare Pages : gratuit, usage commercial autorisé, trafic illimité). L'offre gratuite de Vercel interdit l'usage commercial.
+- **Anciennes adresses** `*.vercel.app` : redirection permanente (308) vers les nouvelles, page par page. Script : `serveur/deploy_cloudflare.py redirect`.
+- **Mise en ligne des sites** : `python3 deploy_render.py web`, qui appelle `deploy_cloudflare.py pages` quand `CLOUDFLARE_DEPLOY_TOKEN` est dans `.env`. Pour un seul site : `python3 deploy_cloudflare.py pages affichya`. Sur une connexion lente, le script réessaie, et les fichiers déjà envoyés ne sont pas renvoyés.
+- **Réveil des serveurs** : tâche Cloudflare « keepalive » (`*/10 6-19 * * *` UTC). Affichya de 7h à 21h et Paginya de 9h à 19h, heure du Cameroun. Le workflow GitHub est supprimé : il dépassait les 2 000 min gratuites par mois.
+- Les serveurs acceptent les deux adresses (CORS) pendant la transition.
+- **Prix** : les petits montants sont passés à +50 F pour couvrir les 3 % de Fapshi. Paginya : page de garde et lettre 350 F, CV et épreuve 550 F. Affichya : affiche 250 F, vidéos 550 et 800 F. Les montants à partir de 1 000 F ne changent pas.
+- À faire par le fondateur : ajouter les propriétés `*.pages.dev` dans Google Search Console (le code de vérification est déjà dans les pages), puis envoyer `sitemap.xml`.
