@@ -5,19 +5,21 @@ export const metadata: Metadata = { title: "Mentions légales" };
 
 export default function MentionsLegales() {
   return (
-    <LegalPage title="Mentions légales" updated="23 septembre 2026">
+    <LegalPage title="Mentions légales" updated="28 septembre 2026">
       <h2>Éditeur</h2>
       <ul>
-        <li>Nom / raison sociale : <b>[À COMPLÉTER]</b></li>
-        <li>Forme juridique : <b>[À COMPLÉTER : établissement individuel, SARL…]</b></li>
-        <li>Adresse : <b>[À COMPLÉTER]</b>, Cameroun</li>
-        <li>RCCM : <b>[À COMPLÉTER]</b> · NIU : <b>[À COMPLÉTER]</b></li>
+        <li>Éditeur : <b>Zeudjo Tiyo Varela Oriol</b>, développeur, personne physique (entrepreneur individuel, pas encore immatriculé au RCCM)</li>
+        <li>Adresse : Ebolowa, Cameroun</li>
         <li>Contact : {CONTACT.email} · WhatsApp {CONTACT.whatsapp}</li>
-        <li>Responsable de la publication : <b>[À COMPLÉTER]</b></li>
+        <li>Responsable de la publication : Zeudjo Tiyo Varela Oriol</li>
       </ul>
 
       <h2>Hébergement</h2>
-      <p><b>[À COMPLÉTER à la mise en ligne : nom, adresse et pays de l&apos;hébergeur]</b></p>
+      <ul>
+        <li>Site : <b>Vercel Inc.</b>, États-Unis (vercel.com)</li>
+        <li>Serveurs de traitement : <b>Render Services, Inc.</b>, États-Unis (render.com)</li>
+        <li>Base de données et fichiers : <b>Supabase, Inc.</b>, serveurs aux États-Unis (supabase.com)</li>
+      </ul>
 
       <h2>Paiement</h2>
       <p>Paiements Mobile Money traités par Fapshi (Cameroun).</p>

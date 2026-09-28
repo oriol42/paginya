@@ -2,8 +2,8 @@ import Link from "next/link";
 import { Logo } from "./Logo";
 
 export const CONTACT = {
-  email: "contact@paginya.com", // À COMPLÉTER : adresse réelle
-  whatsapp: "+237 6XX XX XX XX", // À COMPLÉTER : numéro WhatsApp du support
+  email: "zeudjotiyo@gmail.com",
+  whatsapp: "+237 673 41 43 81",
 };
 
 export function Footer() {
