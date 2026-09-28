@@ -1,10 +1,10 @@
 """Prices are always computed server-side (never trusted from the browser)."""
 
 PRICES_XAF = {
-    "page_de_garde": 300,
-    "lettre": 300,
-    "epreuve": 500,
-    "cv": 500,
+    "page_de_garde": 350,
+    "lettre": 350,
+    "epreuve": 550,
+    "cv": 550,
     "document_court": 1000,
     "rapport": 2000,
     "memoire": 3000,

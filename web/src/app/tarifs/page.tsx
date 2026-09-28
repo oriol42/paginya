@@ -5,10 +5,10 @@ import { LegalPage } from "@/components/Footer";
 export const metadata: Metadata = { title: "Tarifs", description: "Aperçu gratuit. Tu paies seulement pour télécharger ton document, par Mobile Money." };
 
 const PRICES = [
-  { label: "Page de garde", price: "300 F", note: "Word + PDF + image" },
-  { label: "Lettre / demande", price: "300 F", note: "Word + PDF" },
-  { label: "CV", price: "500 F", note: "Word + PDF" },
-  { label: "Épreuve (enseignants)", price: "500 F", note: "Word + PDF" },
+  { label: "Page de garde", price: "350 F", note: "Word + PDF + image" },
+  { label: "Lettre / demande", price: "350 F", note: "Word + PDF" },
+  { label: "CV", price: "550 F", note: "Word + PDF" },
+  { label: "Épreuve (enseignants)", price: "550 F", note: "Word + PDF" },
   { label: "Document", price: "1 000 F", note: "jusqu'à 15 pages" },
   { label: "Rapport", price: "2 000 F", note: "16 à 40 pages" },
   { label: "Mémoire", price: "3 000 F", note: "plus de 40 pages" },

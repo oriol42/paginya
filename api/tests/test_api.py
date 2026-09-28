@@ -48,7 +48,7 @@ def test_sanitizer_rejects_entities():
 def test_price_is_set_by_server(client):
     r = client.post("/orders", json={"product": "page_de_garde", "svg": SVG, "amount": 1})
     assert r.status_code == 200
-    assert r.json()["amount"] == 300
+    assert r.json()["amount"] == 350
 
 
 def test_download_requires_payment(client):

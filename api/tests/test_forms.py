@@ -55,7 +55,7 @@ def test_letter_flow_render_pay_download(client):
     r = client.post("/forms", json={"kind": "lettre", "data": LETTER})
     assert r.status_code == 200, r.text
     doc = r.json()
-    assert doc["amount"] == 300 and doc["render"]["pages"] == 1
+    assert doc["amount"] == 350 and doc["render"]["pages"] == 1
     assert client.get(f"/forms/{doc['id']}/pages/1.png").content.startswith(b"\x89PNG")
     assert client.get(f"/orders/{doc['id']}/file.pdf").status_code == 402
     client.post(f"/orders/{doc['id']}/pay", json={"phone": "670000000"})
@@ -67,7 +67,7 @@ def test_letter_flow_render_pay_download(client):
 
 def test_exam_flow_and_edit(client):
     doc = client.post("/forms", json={"kind": "epreuve", "data": EXAM}).json()
-    assert doc["amount"] == 500 and doc["total_points"] == 20
+    assert doc["amount"] == 550 and doc["total_points"] == 20
     changed = dict(EXAM, content=EXAM["content"] + "\nExercice 3 (4 pts)\n1) Bonus.")
     r = client.put(f"/forms/{doc['id']}", json={"data": changed})
     assert r.status_code == 200 and r.json()["total_points"] == 24

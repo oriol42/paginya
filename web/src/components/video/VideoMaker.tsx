@@ -173,7 +173,7 @@ export function VideoMaker() {
       ctx.globalAlpha = k;
       ctx.drawImage(a.icon, W / 2 - 110, H / 2 - 520, 220, 220);
       text(ctx, ["C'est propre ! 🎉"], W / 2, H / 2 - 160, 96, "#0F172A");
-      text(ctx, ["Word + PDF · normes de ton école", "Dès 300 F · MoMo & Orange Money"], W / 2, H / 2 - 20, 46, "#334155", 600, 1.4);
+      text(ctx, ["Word + PDF · normes de ton école", "Dès 350 F · MoMo & Orange Money"], W / 2, H / 2 - 20, 46, "#334155", 600, 1.4);
       ctx.fillStyle = "#0E9F6E";
       const bw = 720, bh = 150;
       ctx.beginPath(); ctx.roundRect(W / 2 - bw / 2, H / 2 + 180, bw, bh, 75); ctx.fill();
