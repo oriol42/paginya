@@ -53,23 +53,14 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
   async function pay() {
     setError("");
     setBusy(true);
-    // Opened now, during the tap: a tab opened after the network call would be blocked on phones.
-    const tab = window.open("", "_blank");
     try {
       try { localStorage.setItem(PHONE_KEY, phone); } catch { /* ignore */ }
       const o = await api.pay(orderId, phone);
-      if (o.pay_link) {
-        // Fapshi's payment page (MoMo / Orange Money); this tab keeps waiting for the confirmation
-        setLink(o.pay_link);
-        if (tab) tab.location.href = o.pay_link;
-        else window.location.href = o.pay_link;
-      } else {
-        tab?.close();
-      }
+      // Normally the customer confirms on their phone (direct pay). Fapshi's payment page is only a fallback.
+      if (o.pay_link) setLink(o.pay_link);
       onStatus(o.status);
       setPhase(o.status === "PAID" ? "paid" : "pending");
     } catch (e) {
-      tab?.close();
       setError((e as Error).message);
     } finally {
       setBusy(false);
@@ -155,11 +146,11 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
               <div className="absolute inset-0 animate-ping rounded-full bg-brand-200/60" />
               <div className="relative grid h-20 w-20 place-items-center rounded-full bg-brand-500 text-3xl">📱</div>
             </div>
-            <h2 className="mt-6 font-display text-xl font-bold text-ink">{link ? "Paie dans l'onglet Fapshi" : "Confirme sur ton téléphone"}</h2>
+            <h2 className="mt-6 font-display text-xl font-bold text-ink">{link ? "Paie sur la page Fapshi" : "Confirme sur ton téléphone"}</h2>
             {link ? (
               <p className="mx-auto mt-2 max-w-xs text-[15px] text-slate-600">
                 Choisis MTN MoMo ou Orange Money et paie <b>{formatXaf(amount)}</b>. Cette page se débloque toute seule dès que c&apos;est payé.{" "}
-                <a href={link} target="_blank" rel="noopener" className="font-bold text-brand-700 underline">Rouvrir la page de paiement</a>
+                <a href={link} target="_blank" rel="noopener" className="font-bold text-brand-700 underline">Ouvrir la page de paiement</a>
               </p>
             ) : (
               <p className="mx-auto mt-2 max-w-xs text-[15px] text-slate-600">
