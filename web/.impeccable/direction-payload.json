@@ -1,0 +1,122 @@
+{
+  "title": "Choisis l'univers visuel de Paginya",
+  "question": "Le tirage a choisi « Les valves ». Garde-le, prends une autre carte, ou relance le tirage.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "Les valves",
+      "kicker": "LE TIRAGE",
+      "lineage": "Les tableaux d'affichage des facs camerounaises",
+      "thesis": "Ton document arrive froissé sur le tableau et repart propre, punaisé et tamponné « CONFORME ».",
+      "palette": ["#1E3A2B", "#FAFAF7", "#5B2A86", "#F2D43B"],
+      "materials": ["feuilles A4 punaisées", "tampon encreur violet", "cadre en bois vitré"],
+      "viewport": "Le tableau vert plein écran : ta feuille en désordre, puis la même feuille propre punaisée avec le tampon CONFORME ; le bouton principal est une étiquette épinglée.",
+      "risk": "Si les punaises et le papier deviennent de la déco, ça tourne au gadget scolaire.",
+      "raised": [
+        {"from": "challenger-notice", "raise": "Le parcours devient 3 étapes numérotées géantes, comme une notice : importer, vérifier, télécharger, sans texte inutile."},
+        {"from": "challenger-massin", "raise": "La taille du texte porte l'importance : le titre de TON document est la plus grande chose de l'écran."},
+        {"from": "challenger-terminal", "raise": "Les états s'impriment comme des tampons (EN COURS, CONFORME, PAYÉ) au lieu de bulles et de badges."}
+      ]
+    },
+    {
+      "id": "model-pick",
+      "label": "Le document officiel tamponné",
+      "kicker": "IMPECCABLE’S PICK",
+      "lineage": "Papier administratif camerounais",
+      "thesis": "Paginya parle la langue des papiers officiels : en-tête bilingue, cachet rond violet, timbre, signature.",
+      "palette": ["#FFFFFF", "#141414", "#4B2E83", "#0E9F6E"],
+      "materials": ["en-tête République du Cameroun", "cachet rond", "timbre fiscal"],
+      "viewport": "Une vraie page A4 en grand avec l'en-tête « Paix – Travail – Patrie » ; le bouton est un cachet qu'on appose.",
+      "risk": "Familier et proche du papier administratif : peut sembler austère et froid."
+    },
+    {
+      "id": "challenger-notice",
+      "label": "La notice de montage",
+      "verdict": "competitive",
+      "lineage": "Notices illustrées pas-à-pas",
+      "thesis": "Mettre en page devient une notice : des étapes numérotées géantes et des flèches, presque sans mots.",
+      "palette": ["#9CC9EE", "#111111", "#D7262B", "#F6C913"],
+      "materials": ["grille modulaire", "flèches de montage", "encadrés 1:1"],
+      "viewport": "Étape 1 en chiffre géant : ton fichier, une flèche, la page propre qui se pose.",
+      "case": "Très clair pour comprendre le parcours ; les étudiants ne s'y reconnaissent pas vraiment.",
+      "risk": "Peut faire jouet, loin du sérieux d'un mémoire."
+    },
+    {
+      "id": "challenger-massin",
+      "label": "La page-scène typographique",
+      "verdict": "declined",
+      "lineage": "Mise en page théâtrale de Massin",
+      "thesis": "Le texte joue : les tailles crient ou chuchotent selon l'importance.",
+      "palette": ["#FFFFFF", "#000000"],
+      "materials": ["encre noire", "typographie expressive"],
+      "viewport": "Des mots géants qui se bousculent.",
+      "case": "Spectaculaire mais trop artistique pour un outil de rapport.",
+      "kept": "La taille du texte qui porte l'importance.",
+      "risk": "Illisible sur petit écran."
+    },
+    {
+      "id": "challenger-terminal",
+      "label": "Le terminal phosphore",
+      "verdict": "declined",
+      "lineage": "Écran vert des vieux ordinateurs",
+      "thesis": "Tout s'écrit ligne par ligne comme sur un terminal.",
+      "palette": ["#0A0F0A", "#39FF6A"],
+      "materials": ["écran cathodique", "police monospace"],
+      "viewport": "Un curseur qui clignote.",
+      "case": "Les étudiants ne se reconnaissent pas dans un terminal ; peu clair.",
+      "kept": "Les états qui s'impriment d'eux-mêmes.",
+      "risk": "Froid et technique."
+    },
+    {
+      "id": "challenger-canopy",
+      "label": "La toile de soie colorée",
+      "verdict": "declined",
+      "lineage": "Art génératif de couleurs",
+      "thesis": "Des bandes de couleurs qui se croisent.",
+      "palette": ["#2B3A8C", "#A33A2A", "#E3A72F", "#FFFFFF"],
+      "materials": ["soie translucide"],
+      "viewport": "Des bandes de couleur animées.",
+      "case": "Beau mais sans rapport avec un document.",
+      "kept": "La couleur qui signifie un état, jamais de la déco.",
+      "risk": "Abstrait."
+    },
+    {
+      "id": "challenger-ascii",
+      "label": "La scène en caractères",
+      "verdict": "declined",
+      "lineage": "Art ASCII",
+      "thesis": "Des images faites de lettres.",
+      "palette": ["#000000", "#FFB000"],
+      "materials": ["glyphes monospace"],
+      "viewport": "Un visage fait de lettres.",
+      "case": "Gadget, sans lien avec le besoin.",
+      "kept": "Rien d'utile ici.",
+      "risk": "Incompréhensible."
+    },
+    {
+      "id": "challenger-lowbrow",
+      "label": "Le panneau lowbrow",
+      "verdict": "declined",
+      "lineage": "Peinture pop américaine",
+      "thesis": "Des personnages vernis qui se disputent la place.",
+      "palette": ["#E0322B", "#111111", "#F5C400"],
+      "materials": ["laque", "contours noirs"],
+      "viewport": "Un tableau surchargé.",
+      "case": "Surchargé, contraire à ta demande de simplicité.",
+      "kept": "Rien.",
+      "risk": "Trop chargé."
+    }
+  ],
+  "reroll": {"registers": ["safer", "bolder"]},
+  "buildPath": {"value": "code", "toggle": false},
+  "canon": true,
+  "canonCard": {
+    "label": "Le standard des outils de documents",
+    "thesis": "Ce que font les outils du genre, en très soigné : fond blanc, texte sombre, accent vert, aperçu du document.",
+    "palette": ["#FFFFFF", "#111827", "#0E9F6E"],
+    "materials": ["grille propre", "capture du document"],
+    "viewport": "Titre à gauche, aperçu du document à droite, bouton vert.",
+    "risk": "Ressemble à tous les concurrents, par définition."
+  },
+  "steer": true
+}

@@ -1,0 +1,17 @@
+{
+  "name": "Paginya",
+  "world": "Les valves",
+  "shadows": {
+    "sheet": "0 1px 1px rgba(0,0,0,.12), 0 10px 24px -8px rgba(0,0,0,.45)",
+    "pin": "0 3px 4px rgba(0,0,0,.45)",
+    "label": "0 2px 0 0 #e3bf12, 0 14px 28px -10px rgba(0,0,0,.6)"
+  },
+  "motion": {
+    "ease": "cubic-bezier(0.16, 1, 0.3, 1)",
+    "pin-in": "520ms, translateY(-18px)->0, keeps --tilt",
+    "stamp-in": "180ms, scale 1.15->1, rotate -9deg->-6deg",
+    "rise": "380ms, translateY(10px)->0",
+    "press": "120ms, translateY(1px) scale(.98)"
+  },
+  "focus": "inset 0 -3px 0 0 #e3bf12 underline on fields"
+}

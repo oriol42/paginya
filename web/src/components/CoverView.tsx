@@ -12,7 +12,7 @@ export function CoverView({
   return (
     <div
       style={{ containerType: "inline-size" }}
-      className={`relative aspect-[595/842] w-full overflow-hidden rounded-[4px] bg-white shadow-[0_1px_2px_rgba(15,23,42,.06),0_12px_32px_-8px_rgba(15,23,42,.18)] ${className}`}
+      className={`relative aspect-[595/842] w-full overflow-hidden rounded-[4px] bg-paper shadow-[0_1px_2px_rgba(15,23,42,.06),0_12px_32px_-8px_rgba(15,23,42,.18)] ${className}`}
     >
       <div className="absolute inset-0 [&>svg]:h-full [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: svg }} />
       {watermark && (

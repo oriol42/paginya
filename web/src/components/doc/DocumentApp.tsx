@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { OrderStatus } from "@/lib/api";
 import { KIND_LABEL, docs, type Block, type DocOptions, type DocStyle, type DocView, type Letterhead } from "@/lib/documents";
+import { Icon, type IconName } from "../Icon";
 import { Logo } from "../Logo";
 import { PaySheet } from "../PaySheet";
 import type { StudioState } from "../studio/state";
@@ -20,10 +21,10 @@ type Panel = "style" | "cover" | "plan";
 type View = "after" | "before" | "side";
 type Patch = Partial<{ blocks: Block[]; style: DocStyle; options: DocOptions; kind: string; letterhead: Letterhead; cover_svg: string; remove_cover: boolean }>;
 
-const PANELS: { id: Panel; icon: string; label: string }[] = [
-  { id: "style", icon: "🎨", label: "Style" },
-  { id: "cover", icon: "🏛️", label: "Garde" },
-  { id: "plan", icon: "📑", label: "Plan" },
+const PANELS: { id: Panel; icon: IconName; label: string; title: string }[] = [
+  { id: "style", icon: "palette", label: "Style", title: "Style et type" },
+  { id: "cover", icon: "landmark", label: "Garde", title: "Page de garde" },
+  { id: "plan", icon: "list-tree", label: "Plan", title: "Plan du document" },
 ];
 
 export function DocumentApp() {
@@ -194,7 +195,7 @@ export function DocumentApp() {
 
   const title = `${KIND_LABEL[doc.meta.kind] ?? "Document"} · ${pages} page${pages > 1 ? "s" : ""}`;
   const views = [
-    { value: "after" as View, label: "✨ Après" },
+    { value: "after" as View, label: "Après" },
     { value: "before" as View, label: "Avant" },
     ...(typeof window !== "undefined" && window.innerWidth >= 1024 ? [{ value: "side" as View, label: "Côte à côte" }] : []),
   ];
@@ -203,52 +204,60 @@ export function DocumentApp() {
       type="button"
       onClick={() => setPayOpen(true)}
       disabled={rendering}
-      className="shrink-0 rounded-xl bg-brand-500 px-4 py-2.5 font-display text-[15px] font-bold text-white shadow-md shadow-brand-500/25 transition hover:bg-brand-600 active:scale-[.98] disabled:opacity-60"
+      className="press inline-flex shrink-0 items-center justify-center gap-2 rounded-md bg-hi px-4 py-2.5 font-display text-[20px] leading-none font-black tracking-wide text-ink uppercase shadow-[0_2px_0_0_var(--color-hi-deep)] hover:bg-[#ffe04a] disabled:opacity-60"
     >
-      ⬇ {paid ? "Retélécharger" : "Télécharger"}
+      <Icon name="download" size={18} stroke={2.5} />
+      {paid ? "Retélécharger" : "Télécharger"}
     </button>
   );
 
   return (
-    <div className="flex h-dvh flex-col bg-[#eef1f4]">
-      {/* Top bar (Google Docs / Canva): title · before/after · corrections · download */}
-      <header className="z-30 shrink-0 border-b border-slate-200/80 bg-white pt-[env(safe-area-inset-top)]">
+    <div className="board flex h-dvh flex-col">
+      {/* Top bar: back · title · status stamp · corrections · view · download */}
+      <header className="z-30 shrink-0 border-b border-black/25 bg-board/95 pt-[env(safe-area-inset-top)]">
         <div className="flex h-14 items-center gap-2 px-2 sm:px-4">
-          <Link href="/" className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-xl text-slate-600 hover:bg-slate-100" aria-label="Accueil">←</Link>
-          <div className="hidden sm:block"><Logo /></div>
-          <span className="ml-1 min-w-0 truncate text-sm font-semibold text-slate-600 sm:ml-3">{title}</span>
+          <Link href="/" className="press grid h-10 w-10 shrink-0 place-items-center rounded-md text-white/80 hover:bg-white/10 hover:text-white" aria-label="Accueil">
+            <Icon name="arrow-left" />
+          </Link>
+          <div className="hidden sm:block"><Logo tone="board" /></div>
+          <span className="ml-1 min-w-0 truncate text-[15px] font-semibold text-white/80 sm:ml-4">{title}</span>
           <div className="ml-auto flex items-center gap-2">
-            <span className={`hidden rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 transition sm:inline ${rendering ? "opacity-100" : "opacity-0"}`}>⏳ Mise à jour…</span>
+            {rendering && <span className="stamp stamp-in hidden bg-paper/90 text-[15px] sm:inline-flex">En cours</span>}
             <ChangesPill doc={doc} />
-            <div className="hidden w-[300px] lg:block"><Segmented value={view} onChange={showView} options={views} /></div>
+            <div className="hidden w-[300px] lg:block"><BoardSegmented value={view} onChange={showView} options={views} /></div>
             <div className="hidden lg:block">{download}</div>
           </div>
         </div>
       </header>
 
       <div className="flex min-h-0 flex-1">
-        {/* Desktop: tool rail + its panel */}
-        <nav className="hidden w-[76px] shrink-0 flex-col items-center gap-1 border-r border-slate-200/80 bg-white py-3 lg:flex">
+        {/* Desktop: tool rail + its panel, on a sheet of paper */}
+        <nav className="hidden w-[78px] shrink-0 flex-col items-center gap-1 border-r border-black/10 bg-paper py-3 text-ink lg:flex">
           {PANELS.map((p) => (
-            <button key={p.id} type="button" onClick={() => setPanel(p.id)} className={`flex w-[64px] flex-col items-center gap-1 rounded-2xl py-2.5 text-[11px] font-bold transition ${panel === p.id ? "bg-brand-500/10 text-brand-700" : "text-slate-500 hover:bg-slate-50"}`}>
-              <span className="text-xl leading-none">{p.icon}</span>
-              {p.id === "cover" ? "Garde" : p.label}
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setPanel(p.id)}
+              className={`press flex w-[64px] flex-col items-center gap-1 rounded-md py-2.5 text-[12px] font-bold transition-colors ${panel === p.id ? "bg-board text-white" : "text-ink/60 hover:bg-ink/5 hover:text-ink"}`}
+            >
+              <Icon name={p.icon} size={21} />
+              {p.label}
             </button>
           ))}
           <div className="mt-auto w-full px-2"><MoreMenu onNew={reset} onDelete={remove} /></div>
         </nav>
-        <aside className="hidden w-[340px] shrink-0 flex-col border-r border-slate-200/80 bg-white lg:flex">
-          <p className="px-5 pt-5 font-display text-lg font-bold text-ink">{PANELS.find((p) => p.id === panel)?.icon} {panel === "cover" ? "Page de garde" : PANELS.find((p) => p.id === panel)?.label}</p>
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-3 pb-6">{panelBody}</div>
+        <aside className="hidden w-[350px] shrink-0 flex-col border-r border-black/10 bg-paper text-ink lg:flex">
+          <p className="px-5 pt-6 font-display text-[26px] leading-none font-black uppercase">{PANELS.find((p) => p.id === panel)?.title}</p>
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-4 pb-6">{panelBody}</div>
         </aside>
 
-        {/* The document, on its grey desk */}
+        {/* The document, pinned on the board */}
         <main className={`min-w-0 flex-1 overflow-y-auto ${drawer ? "pb-[50dvh]" : "pb-28"} lg:pb-12`}>
-          <div className="sticky top-0 z-20 bg-[#eef1f4]/90 px-3 pt-3 pb-2 backdrop-blur lg:hidden">
-            <Segmented value={view} onChange={showView} options={views} />
+          <div className="sticky top-0 z-20 bg-board/90 px-3 pt-3 pb-2 backdrop-blur lg:hidden">
+            <BoardSegmented value={view} onChange={showView} options={views} />
           </div>
-          {error && <p className="mx-auto mt-3 max-w-[720px] rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
-          <div className="px-3 pt-2 sm:px-6 lg:pt-8">
+          {error && <p className="mx-auto mt-3 flex max-w-[720px] gap-2 rounded-md bg-paper px-4 py-3 text-[15px] text-pin"><Icon name="triangle-alert" size={18} className="mt-0.5" />{error}</p>}
+          <div className="px-4 pt-3 sm:px-8 lg:pt-10">
             <Pages doc={doc} view={view} beforePages={beforePages} dim={rendering} />
           </div>
         </main>
@@ -257,21 +266,30 @@ export function DocumentApp() {
       {/* Mobile: one bottom row (tools + download) and a half-height drawer that leaves the page visible */}
       <div className="fixed inset-x-0 bottom-0 z-40 lg:hidden">
         {drawer && (
-          <div className="sheet-in flex h-[46dvh] flex-col rounded-t-[28px] border-t border-slate-200 bg-white shadow-[0_-12px_40px_-12px_rgba(15,23,42,.25)]">
-            <div className="flex items-center justify-between px-4 pt-3 pb-2">
+          <div className="sheet-in paper relative flex h-[48dvh] flex-col rounded-t-xl">
+            <span className="pin top-2 left-1/2 -translate-x-1/2" aria-hidden />
+            <div className="flex items-center justify-between px-4 pt-6 pb-2">
               <Tabs panel={panel} onPanel={setPanel} compact />
-              <button type="button" onClick={() => setDrawer(false)} className="ml-2 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-500" aria-label="Fermer">✕</button>
+              <button type="button" onClick={() => setDrawer(false)} className="press ml-2 grid h-10 w-10 shrink-0 place-items-center rounded-md text-ink/60 ring-1 ring-black/10" aria-label="Fermer">
+                <Icon name="x" size={18} />
+              </button>
             </div>
             <div className="flex-1 overflow-y-auto px-4 pb-4">{panelBody}</div>
           </div>
         )}
-        <div className="flex items-center gap-1.5 border-t border-slate-200 bg-white px-2 pt-2 pb-[max(.6rem,env(safe-area-inset-bottom))]">
+        <div className="flex items-center gap-1.5 border-t border-black/10 bg-paper px-2 pt-2 text-ink pb-[max(.6rem,env(safe-area-inset-bottom))]">
           {PANELS.map((p) => (
-            <button key={p.id} type="button" onClick={() => { setPanel(p.id); setDrawer(!(drawer && panel === p.id)); }} className={`flex w-[62px] shrink-0 flex-col items-center rounded-xl py-1.5 text-[11px] font-bold ${drawer && panel === p.id ? "bg-brand-500/10 text-brand-700" : "text-slate-600"}`}>
-              <span className="text-lg leading-6">{p.icon}</span>{p.label}
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => { setPanel(p.id); setDrawer(!(drawer && panel === p.id)); }}
+              className={`press flex w-[62px] shrink-0 flex-col items-center gap-0.5 rounded-md py-1.5 text-[12px] font-bold ${drawer && panel === p.id ? "bg-board text-white" : "text-ink/70"}`}
+            >
+              <Icon name={p.icon} size={20} />
+              {p.label}
             </button>
           ))}
-          <div className="ml-auto flex-1 [&>button]:w-full [&>button]:py-3">{download}</div>
+          <div className="ml-auto flex-1 [&>button]:w-full [&>button]:py-3.5">{download}</div>
         </div>
       </div>
 
@@ -280,7 +298,7 @@ export function DocumentApp() {
           orderId={doc.id}
           amount={doc.amount}
           status={doc.status}
-          heading="Ton document est prêt ✨"
+          heading="Ton document est prêt"
           bullets={[
             `${pages} pages mises en forme`,
             [doc.has_cover && "page de garde", doc.options.toc && "sommaire", doc.options.toc_end && "table des matières", doc.options.page_numbers && "pagination"].filter(Boolean).join(" · ") || "mise en page complète",
@@ -298,43 +316,63 @@ export function DocumentApp() {
   );
 }
 
-function Tabs({ panel, onPanel, compact = false }: { panel: Panel; onPanel: (p: Panel) => void; compact?: boolean }) {
+/** Before / after switch drawn for the board (light chips on green). */
+function BoardSegmented<T extends string>({ value, options, onChange }: { value: T; options: { value: T; label: string }[]; onChange: (v: T) => void }) {
   return (
-    <div className={`grid shrink-0 grid-cols-3 rounded-2xl bg-slate-200/70 p-1 ${compact ? "flex-1" : "w-full"}`}>
-      {PANELS.map((p) => (
+    <div className="grid rounded-md bg-black/25 p-1" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
+      {options.map((o) => (
         <button
-          key={p.id}
+          key={o.value}
           type="button"
-          onClick={() => onPanel(p.id)}
-          className={`rounded-xl py-2 text-sm font-bold transition ${panel === p.id ? "bg-white text-ink shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+          onClick={() => onChange(o.value)}
+          className={`press rounded px-2 py-2 text-[14px] font-bold transition-colors ${value === o.value ? "bg-paper text-ink" : "text-white/70 hover:text-white"}`}
         >
-          {p.icon} {p.id === "cover" && !compact ? "Page de garde" : p.label}
+          {o.label}
         </button>
       ))}
     </div>
   );
 }
 
+function Tabs({ panel, onPanel, compact = false }: { panel: Panel; onPanel: (p: Panel) => void; compact?: boolean }) {
+  return (
+    <div className={compact ? "flex-1" : "w-full"}>
+      <Segmented value={panel} onChange={onPanel} options={PANELS.map((p) => ({ value: p.id, label: compact ? p.label : p.title }))} />
+    </div>
+  );
+}
+
 function Pages({ doc, view, beforePages, dim }: { doc: DocView; view: View; beforePages: number | null; dim: boolean }) {
   const pages = doc.render?.pages ?? 0;
-  const after = (i: number) => (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={docs.pageUrl(doc.id, i + 1, doc.render!.version)} alt={`Page ${i + 1}`} loading={i < 3 ? "eager" : "lazy"} className="aspect-[210/297] w-full rounded-[4px] bg-white shadow-[0_1px_2px_rgba(15,23,42,.06),0_12px_32px_-12px_rgba(15,23,42,.25)]" />
+  const sheet = (img: React.ReactNode, i: number, faded = false) => (
+    <div className={`paper pin-in relative rounded-[2px] p-0 ${faded ? "opacity-95" : ""}`} style={{ animationDelay: `${Math.min(i, 4) * 70}ms` }}>
+      <span className="pin top-2 left-1/2 z-10 -translate-x-1/2" aria-hidden />
+      {img}
+    </div>
   );
-  const before = (i: number) => (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={docs.beforeUrl(doc.id, i + 1)} alt={`Original page ${i + 1}`} loading="lazy" className="w-full rounded-[4px] bg-white opacity-95 shadow-[0_1px_2px_rgba(15,23,42,.06),0_12px_32px_-12px_rgba(15,23,42,.2)] grayscale-[35%]" />
-  );
+  const after = (i: number) =>
+    sheet(
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={docs.pageUrl(doc.id, i + 1, doc.render!.version)} alt={`Page ${i + 1}`} loading={i < 3 ? "eager" : "lazy"} className="aspect-[210/297] w-full bg-white" />,
+      i,
+    );
+  const before = (i: number) =>
+    sheet(
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={docs.beforeUrl(doc.id, i + 1)} alt={`Original page ${i + 1}`} loading="lazy" className="w-full bg-white grayscale-[35%]" />,
+      i,
+      true,
+    );
   const loadingBefore = view !== "after" && (beforePages === null || beforePages === 0);
-  if (loadingBefore) return <p className="mt-10 text-center text-sm text-slate-500">Préparation de l&apos;original…</p>;
-  if (view !== "after" && beforePages === -1) return <p className="mt-10 text-center text-sm text-slate-500">L&apos;original n&apos;est pas disponible pour ce document.</p>;
+  if (loadingBefore) return <p className="mt-10 flex items-center justify-center gap-2 text-[15px] text-white/70"><Icon name="loader-circle" size={18} className="animate-spin" />Préparation de l&apos;original…</p>;
+  if (view !== "after" && beforePages === -1) return <p className="mt-10 text-center text-[15px] text-white/70">L&apos;original n&apos;est pas disponible pour ce document.</p>;
 
   if (view === "side") {
     const n = Math.max(pages, beforePages ?? 0);
     return (
-      <div className={`mt-2 grid grid-cols-2 gap-5 transition ${dim ? "opacity-60" : ""}`}>
-        <p className="text-center text-xs font-bold tracking-wide text-slate-400 uppercase">Ton original</p>
-        <p className="text-center text-xs font-bold tracking-wide text-brand-600 uppercase">Avec Paginya ✨</p>
+      <div className={`mt-2 grid grid-cols-2 gap-6 transition-opacity ${dim ? "opacity-60" : ""}`}>
+        <p className="text-center text-[13px] font-bold tracking-widest text-white/55 uppercase">Ton original</p>
+        <p className="text-center text-[13px] font-bold tracking-widest text-hi uppercase">Avec Paginya</p>
         {Array.from({ length: n }, (_, i) => (
           <div key={i} className="contents">
             <div>{i < (beforePages ?? 0) && before(i)}</div>
@@ -346,44 +384,45 @@ function Pages({ doc, view, beforePages, dim }: { doc: DocView; view: View; befo
   }
   const n = view === "after" ? pages : beforePages ?? 0;
   return (
-    <div className={`mx-auto mt-2 grid max-w-[760px] gap-6 transition ${dim ? "opacity-60" : ""}`}>
+    <div className={`mx-auto mt-2 grid max-w-[760px] gap-8 transition-opacity ${dim ? "opacity-60" : ""}`}>
       {view === "before" && (
-        <p className="rounded-2xl bg-amber-50 px-4 py-2.5 text-center text-sm text-amber-800 ring-1 ring-amber-100">Voici ton document tel que tu l&apos;as envoyé.</p>
+        <p className="rounded-md bg-hi/90 px-4 py-2.5 text-center text-[15px] font-semibold text-ink">Voici ton document tel que tu l&apos;as envoyé.</p>
       )}
       {Array.from({ length: n }, (_, i) => (
         <figure key={i}>
           {view === "after" ? after(i) : before(i)}
-          <figcaption className="mt-1.5 text-center text-xs text-slate-400">{i + 1} / {n}</figcaption>
+          <figcaption className="mt-2 text-center text-[13px] font-semibold text-white/55 tabular">{i + 1} / {n}</figcaption>
         </figure>
       ))}
     </div>
   );
 }
 
-/** "✨ 13 corrections" (Grammarly-style): small in the top bar, the full list on tap. */
+/** "12 corrections": small in the top bar, the full list on tap. */
 function ChangesPill({ doc }: { doc: DocView }) {
   const [open, setOpen] = useState(false);
   const changes = doc.meta.changes ?? [];
   if (!changes.length) return null;
   return (
     <div className="relative">
-      <button type="button" onClick={() => setOpen(!open)} className="rounded-full bg-brand-500/10 px-3 py-2 text-xs font-bold text-brand-700 hover:bg-brand-500/15 sm:text-sm">
-        ✨ {changes.length} correction{changes.length > 1 ? "s" : ""}
+      <button type="button" onClick={() => setOpen(!open)} className="press inline-flex items-center gap-1.5 rounded-md bg-white/10 px-3 py-2 text-[14px] font-bold text-white ring-1 ring-white/20 hover:bg-white/15">
+        <Icon name="check" size={16} stroke={2.6} className="text-hi" />
+        <span className="tabular">{changes.length}</span> correction{changes.length > 1 ? "s" : ""}
       </button>
       {open && (
         <>
           <button type="button" aria-label="Fermer" className="fixed inset-0 z-40 cursor-default" onClick={() => setOpen(false)} />
-          <div className="rise fixed inset-x-3 top-16 z-50 max-h-[70dvh] overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl ring-1 ring-slate-100 sm:absolute sm:inset-x-auto sm:top-12 sm:right-0 sm:w-[380px]">
-            <p className="font-display text-lg font-bold text-ink">Ce que Paginya a corrigé ✨</p>
-            <ul className="mt-3 space-y-2">
+          <div className="rise paper fixed inset-x-3 top-16 z-50 max-h-[70dvh] overflow-y-auto rounded-[2px] p-5 sm:absolute sm:inset-x-auto sm:top-12 sm:right-0 sm:w-[390px]">
+            <p className="font-display text-[24px] leading-none font-black uppercase">Ce que Paginya a rangé</p>
+            <ul className="mt-4 space-y-2.5">
               {changes.map((c) => (
-                <li key={c} className="flex gap-2.5 text-[14px] leading-snug text-slate-700">
-                  <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brand-500 text-[11px] font-bold text-white">✓</span>
+                <li key={c} className="flex gap-2.5 text-[15px] leading-snug">
+                  <Icon name="check" size={18} stroke={2.6} className="mt-0.5 text-board" />
                   {c}
                 </li>
               ))}
             </ul>
-            <p className="mt-4 text-xs text-slate-500">Compare avec « Avant » pour voir ton document d&apos;origine.</p>
+            <p className="mt-4 text-[13px] text-ink/55">Compare avec « Avant » pour voir ton document d&apos;origine.</p>
           </div>
         </>
       )}
@@ -396,14 +435,20 @@ function MoreMenu({ onNew, onDelete }: { onNew: () => void; onDelete: () => void
   const [confirm, setConfirm] = useState(false);
   return (
     <div className="relative">
-      <button type="button" onClick={() => setOpen(!open)} className="w-full rounded-2xl py-2.5 text-center text-lg text-slate-500 hover:bg-slate-50" aria-label="Plus">⋯</button>
+      <button type="button" onClick={() => setOpen(!open)} className="press grid w-full place-items-center rounded-md py-2.5 text-ink/55 hover:bg-ink/5" aria-label="Plus d'actions">
+        <Icon name="ellipsis" size={22} />
+      </button>
       {open && (
-        <div className="absolute bottom-12 left-0 z-50 w-56 rounded-2xl bg-white p-2 text-sm shadow-xl ring-1 ring-slate-100">
-          <button type="button" onClick={onNew} className="block w-full rounded-xl px-3 py-2 text-left font-semibold text-slate-700 hover:bg-slate-50">↺ Nouveau document</button>
+        <div className="paper absolute bottom-12 left-0 z-50 w-60 rounded-[2px] p-2 text-[15px]">
+          <button type="button" onClick={onNew} className="flex w-full items-center gap-2 rounded px-3 py-2.5 text-left font-semibold hover:bg-ink/5">
+            <Icon name="rotate-ccw" size={17} /> Nouveau document
+          </button>
           {confirm ? (
-            <button type="button" onClick={onDelete} className="block w-full rounded-xl bg-red-600 px-3 py-2 text-left font-bold text-white">Oui, supprimer définitivement</button>
+            <button type="button" onClick={onDelete} className="w-full rounded bg-pin px-3 py-2.5 text-left font-bold text-white">Oui, supprimer définitivement</button>
           ) : (
-            <button type="button" onClick={() => setConfirm(true)} className="block w-full rounded-xl px-3 py-2 text-left font-semibold text-red-600 hover:bg-red-50">🗑 Supprimer ce document</button>
+            <button type="button" onClick={() => setConfirm(true)} className="flex w-full items-center gap-2 rounded px-3 py-2.5 text-left font-semibold text-pin hover:bg-pin/10">
+              <Icon name="trash-2" size={17} /> Supprimer ce document
+            </button>
           )}
         </div>
       )}
@@ -414,11 +459,13 @@ function MoreMenu({ onNew, onDelete }: { onNew: () => void; onDelete: () => void
 function Shell({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-30 border-b border-slate-100 bg-white/85 pt-[env(safe-area-inset-top)] backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
-          <div className="flex items-center gap-2">
-            <Link href="/" className="grid h-9 w-9 place-items-center rounded-full text-xl text-slate-600 hover:bg-slate-100" aria-label="Accueil">←</Link>
-            <Logo />
+      <header className="board sticky top-0 z-30 border-b border-black/25 pt-[env(safe-area-inset-top)]">
+        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-3">
+          <div className="flex items-center gap-1">
+            <Link href="/" className="press grid h-10 w-10 place-items-center rounded-md text-white/80 hover:bg-white/10 hover:text-white" aria-label="Accueil">
+              <Icon name="arrow-left" />
+            </Link>
+            <Logo tone="board" />
           </div>
           {right}
         </div>

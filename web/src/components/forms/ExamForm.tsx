@@ -5,6 +5,7 @@ import { PALETTES } from "@/lib/cover/palettes";
 import type { FormView } from "@/lib/forms";
 import { Field, Input, TextArea, Toggle } from "../ui";
 import { FormShell } from "./FormShell";
+import { Icon } from "@/components/Icon";
 
 export type Exam = {
   country: boolean;
@@ -74,7 +75,7 @@ export function ExamApp() {
       title="Ton épreuve"
       initial={initialExam()}
       missing={missing}
-      heading="Ton épreuve est prête ✨"
+      heading="Ton épreuve est prête"
       bullets={["En-tête MINESEC, barème aligné, pages numérotées", "Word modifiable + PDF prêt à tirer", "Modifications gratuites pendant 7 jours"]}
     >
       {(e, set, view) => <ExamSteps e={e} set={set} view={view} />}
@@ -87,8 +88,8 @@ const STEPS = ["En-tête", "Exercices", "Finitions"] as const;
 function ExamSteps({ e, set, view }: { e: Exam; set: (patch: Partial<Exam>) => void; view: FormView | null }) {
   const [step, setStep] = useState(0);
   const next = step < STEPS.length - 1 && (
-    <button type="button" onClick={() => setStep(step + 1)} className="mt-2 w-full rounded-2xl bg-ink py-3.5 font-display font-bold text-white">
-      Suivant : {STEPS[step + 1]} →
+    <button type="button" onClick={() => setStep(step + 1)} className="mt-2 w-full rounded-md bg-ink py-3.5 font-display font-bold text-white">
+      Suivant : {STEPS[step + 1]} <Icon name="arrow-right" size={18} />
     </button>
   );
   return (
@@ -96,8 +97,8 @@ function ExamSteps({ e, set, view }: { e: Exam; set: (patch: Partial<Exam>) => v
       <div className="mb-6 grid grid-cols-3 gap-1.5">
         {STEPS.map((name, i) => (
           <button key={name} type="button" onClick={() => setStep(i)} className="text-left">
-            <span className={`block h-1.5 rounded-full ${i <= step ? "bg-brand-500" : "bg-slate-200"}`} />
-            <span className={`mt-1.5 block text-[12px] font-bold ${i === step ? "text-ink" : "text-slate-400"}`}>{i + 1}. {name}</span>
+            <span className={`block h-1.5 rounded-full ${i <= step ? "bg-brand-500" : "bg-ink/10"}`} />
+            <span className={`mt-1.5 block text-[12px] font-bold ${i === step ? "text-ink" : "text-ink/45"}`}>{i + 1}. {name}</span>
           </button>
         ))}
       </div>
@@ -125,11 +126,11 @@ function ExamSteps({ e, set, view }: { e: Exam; set: (patch: Partial<Exam>) => v
             <h3 className="font-display text-xl font-bold text-ink">Les exercices</h3>
             {view?.total_points !== undefined && (
               <span className={`rounded-full px-3 py-1 text-xs font-bold ${view.total_points === 20 ? "bg-brand-100 text-brand-700" : "bg-amber-100 text-amber-800"}`}>
-                Barème : {view.total_points} pts{view.total_points === 20 ? " ✓" : " (≠ 20)"}
+                Barème : {view.total_points} pts{view.total_points === 20 ? "" : " (≠ 20)"}
               </span>
             )}
           </div>
-          <p className="text-sm leading-relaxed text-slate-500">
+          <p className="text-sm leading-relaxed text-ink/60">
             Écris simplement : « Exercice 1 (5 pts) », puis « 1) … (2 pts) », « a) … » pour les sous-questions, « A) … » pour un QCM. Paginya aligne le barème tout seul.
           </p>
           <TextArea rows={16} value={e.content} className="font-mono text-[13.5px]" onChange={(x) => set({ content: x.target.value })} />
@@ -149,12 +150,12 @@ function ExamSteps({ e, set, view }: { e: Exam; set: (patch: Partial<Exam>) => v
           <Field label="Année scolaire"><Input value={e.year} onChange={(x) => set({ year: x.target.value })} /></Field>
           <Toggle label="République du Cameroun · Paix-Travail-Patrie" checked={e.country} onChange={(country) => set({ country })} />
           <div>
-            <span className="mb-1.5 block text-[13px] font-semibold text-slate-700">Couleur</span>
+            <span className="mb-1.5 block text-[13px] font-semibold text-ink/80">Couleur</span>
             <div className="flex gap-3">
               {PALETTES.map((p) => (
                 <button key={p.id} type="button" aria-label={p.name} onClick={() => set({ color: p.primary })} className={`h-9 w-9 rounded-full ${e.color === p.primary ? "ring-2 ring-ink ring-offset-2" : ""}`} style={{ background: p.primary }} />
               ))}
-              <button type="button" onClick={() => set({ color: "#1F1F1F" })} className={`h-9 rounded-full px-3 text-xs font-bold ${e.color === "#1F1F1F" ? "bg-ink text-white" : "bg-white ring-1 ring-slate-200"}`}>N&amp;B</button>
+              <button type="button" onClick={() => set({ color: "#1F1F1F" })} className={`h-9 rounded-full px-3 text-xs font-bold ${e.color === "#1F1F1F" ? "bg-ink text-white" : "bg-paper ring-1 ring-black/10"}`}>N&amp;B</button>
             </div>
           </div>
         </section>

@@ -7,7 +7,7 @@ export type FieldKey =
 
 type KindDef = {
   label: string;
-  emoji: string;
+  icon: import("@/components/Icon").IconName;
   docLabel: string;
   defaultStyle: StyleId;
   academic: boolean; // shows the institution picker + bilingual header
@@ -20,7 +20,7 @@ type KindDef = {
 
 export const KINDS: Record<DocKind, KindDef> = {
   rapport_stage: {
-    label: "Rapport de stage", emoji: "💼", docLabel: "RAPPORT DE STAGE", defaultStyle: "officiel", academic: true,
+    label: "Rapport de stage", icon: "briefcase", docLabel: "RAPPORT DE STAGE", defaultStyle: "officiel", academic: true,
     fields: ["title", "structure", "period", "degree", "specialty", "authors", "supervisors", "year", "date"],
     labels: { title: "Thème du rapport", structure: "Structure d'accueil", period: "Période du stage", degree: "Diplôme préparé", specialty: "Filière / option / niveau" },
     placeholders: {
@@ -34,7 +34,7 @@ export const KINDS: Record<DocKind, KindDef> = {
     supervisorRoles: ["Encadreur académique", "Encadreur professionnel"],
   },
   memoire: {
-    label: "Mémoire", emoji: "🎓", docLabel: "MÉMOIRE", defaultStyle: "officiel", academic: true,
+    label: "Mémoire", icon: "graduation-cap", docLabel: "MÉMOIRE", defaultStyle: "officiel", academic: true,
     fields: ["title", "degree", "specialty", "authors", "supervisors", "jury", "year", "date"],
     labels: { title: "Titre du mémoire", degree: "Diplôme", specialty: "Spécialité / option", jury: "Jury (facultatif)" },
     placeholders: {
@@ -47,7 +47,7 @@ export const KINDS: Record<DocKind, KindDef> = {
     supervisorRoles: ["Sous la direction de", "Co-directeur"],
   },
   expose: {
-    label: "Exposé / devoir", emoji: "📚", docLabel: "EXPOSÉ", defaultStyle: "moderne", academic: true,
+    label: "Exposé / devoir", icon: "book-open", docLabel: "EXPOSÉ", defaultStyle: "moderne", academic: true,
     fields: ["title", "specialty", "authors", "supervisors", "date"],
     labels: { title: "Sujet", specialty: "Matière / UE · classe", authors: "Membres du groupe" },
     placeholders: { title: "Ex. : Les énergies renouvelables au Cameroun", specialty: "Ex. : Géographie · Terminale C" },
@@ -55,7 +55,7 @@ export const KINDS: Record<DocKind, KindDef> = {
     supervisorRoles: ["Enseignant"],
   },
   rapport_projet: {
-    label: "Rapport de projet", emoji: "🛠️", docLabel: "RAPPORT DE PROJET", defaultStyle: "moderne", academic: true,
+    label: "Rapport de projet", icon: "wand-sparkles", docLabel: "RAPPORT DE PROJET", defaultStyle: "moderne", academic: true,
     fields: ["title", "degree", "specialty", "authors", "supervisors", "year", "date"],
     labels: { title: "Titre du projet", degree: "Cadre (cours, diplôme…)", specialty: "Filière / niveau" },
     placeholders: { title: "Ex. : Application mobile de suivi des cotisations", degree: "Ex. : Projet tutoré de fin de cycle" },
@@ -63,7 +63,7 @@ export const KINDS: Record<DocKind, KindDef> = {
     supervisorRoles: ["Encadreur"],
   },
   rapport_pro: {
-    label: "Rapport pro / proposition", emoji: "🏢", docLabel: "RAPPORT D'ACTIVITÉ", defaultStyle: "corporate", academic: false,
+    label: "Rapport pro / proposition", icon: "landmark", docLabel: "RAPPORT D'ACTIVITÉ", defaultStyle: "corporate", academic: false,
     fields: ["title", "structure", "authors", "place", "date"],
     labels: { title: "Titre", structure: "Destinataire / client (facultatif)", authors: "Préparé par", place: "Lieu" },
     placeholders: { title: "Ex. : Bilan des activités 2026", structure: "Ex. : Conseil d'administration", place: "Ex. : Douala" },
@@ -71,7 +71,7 @@ export const KINDS: Record<DocKind, KindDef> = {
     supervisorRoles: [],
   },
   autre: {
-    label: "Autre document", emoji: "📄", docLabel: "DOCUMENT", defaultStyle: "minimal", academic: false,
+    label: "Autre document", icon: "file-text", docLabel: "DOCUMENT", defaultStyle: "minimal", academic: false,
     fields: ["title", "authors", "place", "date"],
     labels: { title: "Titre" },
     placeholders: { title: "Ex. : Dossier de candidature" },

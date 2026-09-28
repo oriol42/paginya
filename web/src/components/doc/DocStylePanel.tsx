@@ -3,7 +3,8 @@
 import { PALETTES } from "@/lib/cover/palettes";
 import { KINDS, THEMES, type DocOptions, type DocStyle, type Letterhead } from "@/lib/documents";
 import { LetterheadPanel } from "./LetterheadPanel";
-import { Segmented, Toggle } from "../ui";
+import { Icon } from "../Icon";
+import { Segmented, Select, Toggle } from "../ui";
 
 const MARGINS: { label: string; value: number[] }[] = [
   { label: "Normales", value: [2.5, 2.5, 2.5, 2.5] },
@@ -39,17 +40,17 @@ export function DocStylePanel({ style, options, kind, onStyle, onOptions, onKind
                 key={k.id}
                 type="button"
                 onClick={() => !active && onKind(k.id)}
-                className={`rounded-xl px-3 py-2 text-left transition ${active ? "bg-brand-500 text-white shadow-md shadow-brand-500/25" : "bg-white ring-1 ring-slate-200 hover:ring-brand-300"}`}
+                className={`rounded-md px-3 py-2 text-left transition ${active ? "bg-brand-500 text-white" : "bg-paper ring-1 ring-black/10 hover:ring-brand-300"}`}
               >
                 <span className="block text-[13px] font-bold">{k.label}</span>
-                <span className={`block text-[11px] leading-tight ${active ? "text-white/85" : "text-slate-500"}`}>{k.hint}</span>
+                <span className={`block text-[11px] leading-tight ${active ? "text-white/85" : "text-ink/60"}`}>{k.hint}</span>
               </button>
             );
           })}
         </div>
       </div>
 
-      <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-100">
+      <div className="border-t border-ink/10 pt-5">
         <p className="mb-2 font-display text-sm font-bold text-ink">Ce que Paginya ajoute</p>
         <div className="grid gap-2">
           <Toggle label="Sommaire au début" checked={options.toc} onChange={(toc) => onOptions({ ...options, toc })} />
@@ -61,10 +62,10 @@ export function DocStylePanel({ style, options, kind, onStyle, onOptions, onKind
       </div>
 
       {!hasCover && (
-        <LetterheadPanel enabled={!!options.letterhead} value={letterhead} onChange={(value, on) => onLetterhead(value, { ...options, letterhead: on })} />
+        <div className="border-t border-ink/10 pt-5"><LetterheadPanel enabled={!!options.letterhead} value={letterhead} onChange={(value, on) => onLetterhead(value, { ...options, letterhead: on })} /></div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-2">
+      <div className="grid grid-cols-2 gap-x-3 gap-y-4 border-t border-ink/10 pt-5 sm:grid-cols-3 lg:grid-cols-2">
         {THEMES.map((t) => {
           const active = style.theme === t.id;
           return (
@@ -72,14 +73,15 @@ export function DocStylePanel({ style, options, kind, onStyle, onOptions, onKind
               key={t.id}
               type="button"
               onClick={() => set({ theme: t.id, font: null, size: null, line: null, justify: null })}
-              className={`group rounded-2xl p-1.5 text-left transition ${active ? "bg-brand-500 shadow-lg shadow-brand-500/25" : "bg-white ring-1 ring-slate-200 hover:ring-brand-300"}`}
+              className="group press text-left"
+              aria-pressed={active}
             >
-              <div className="aspect-[3/4] overflow-hidden rounded-xl bg-white">
+              <div className={`aspect-[3/4] overflow-hidden rounded-[2px] bg-paper shadow-[0_6px_14px_-8px_rgba(0,0,0,0.5)] transition ${active ? "ring-[3px] ring-board" : "ring-1 ring-black/10 group-hover:ring-ink/30"}`}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={`/themes/${t.id}.png`} alt="" className="w-full object-cover object-top transition group-hover:scale-105" />
               </div>
-              <span className={`mt-1.5 block px-1 font-display text-[13px] font-bold ${active ? "text-white" : "text-ink"}`}>{t.name}</span>
-              <span className={`block px-1 pb-0.5 text-[11px] ${active ? "text-white/80" : "text-slate-500"}`}>{t.hint}</span>
+              <span className="mt-1.5 flex items-center gap-1 font-display text-[13px] font-bold text-ink">{active && <Icon name="circle-check" size={14} className="text-board" />}{t.name}</span>
+              <span className="block text-[11px] text-ink/60">{t.hint}</span>
             </button>
           );
         })}
@@ -87,7 +89,7 @@ export function DocStylePanel({ style, options, kind, onStyle, onOptions, onKind
 
       {COLORED.has(style.theme) && (
         <section>
-          <h3 className="mb-2.5 text-xs font-bold tracking-wider text-slate-500 uppercase">Couleur</h3>
+          <h3 className="mb-2.5 text-xs font-bold tracking-wider text-ink/60 uppercase">Couleur</h3>
           <div className="flex gap-3">
             {PALETTES.map((p) => (
               <button
@@ -103,35 +105,35 @@ export function DocStylePanel({ style, options, kind, onStyle, onOptions, onKind
         </section>
       )}
 
-      <details className="group rounded-2xl bg-white ring-1 ring-slate-100">
-        <summary className="flex cursor-pointer list-none items-center justify-between p-4 font-display text-sm font-bold text-ink">
+      <details className="group border-y border-ink/10">
+        <summary className="flex cursor-pointer list-none items-center justify-between py-4 font-display text-sm font-bold text-ink">
           Réglages du texte (police, interligne, marges)
-          <span className="text-brand-500 transition group-open:rotate-45">+</span>
+          <Icon name="plus" size={18} className="text-board transition group-open:rotate-45" />
         </summary>
-        <div className="space-y-4 px-4 pb-4">
+        <div className="space-y-4 pb-4">
           <Segmented
             value={style.font ?? ""}
             onChange={(font) => set({ font: font || null })}
             options={[{ value: "", label: "Auto" }, { value: "Times New Roman", label: "Times" }, { value: "Arial", label: "Arial" }, { value: "Calibri", label: "Calibri" }]}
           />
           <div>
-            <p className="mb-1.5 text-xs font-semibold text-slate-500">Interligne</p>
+            <p className="mb-1.5 text-xs font-semibold text-ink/60">Interligne</p>
             <Segmented value={style.line ?? 0} onChange={(line) => set({ line: line || null })} options={[{ value: 0, label: "Auto" }, { value: 1.15, label: "1,15" }, { value: 1.5, label: "1,5" }, { value: 2, label: "2" }]} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <p className="mb-1.5 text-xs font-semibold text-slate-500">Taille</p>
+              <p className="mb-1.5 text-xs font-semibold text-ink/60">Taille</p>
               <Segmented value={style.size ?? 0} onChange={(size) => set({ size: size || null })} options={[{ value: 0, label: "Auto" }, { value: 11, label: "11" }, { value: 12, label: "12" }]} />
             </div>
             <div>
-              <p className="mb-1.5 text-xs font-semibold text-slate-500">Marges</p>
-              <select
+              <p className="mb-1.5 text-xs font-semibold text-ink/60">Marges</p>
+              <Select
                 value={marginKey}
                 onChange={(e) => set({ margins: MARGINS.find((m) => m.label === e.target.value)!.value })}
-                className="w-full rounded-xl bg-slate-100 px-3 py-2.5 text-sm font-semibold"
+                aria-label="Marges"
               >
                 {MARGINS.map((m) => <option key={m.label}>{m.label}</option>)}
-              </select>
+              </Select>
             </div>
           </div>
           <Toggle label="Texte justifié" checked={style.justify ?? style.theme !== "simple"} onChange={(justify) => set({ justify })} />

@@ -15,6 +15,7 @@ import { KindPicker } from "./KindPicker";
 import { ORDER_KEY, STORAGE_KEY, initialState, missingFields, switchKind, type StudioState } from "./state";
 import { DetailsStep, EssentialsStep } from "./Steps";
 import { StyleStep } from "./StyleStep";
+import { Icon } from "@/components/Icon";
 
 const STEPS = [
   { title: "L'essentiel", hint: "3 infos et c'est presque fini." },
@@ -116,11 +117,11 @@ export function Studio() {
   const last = step === 3;
   const primary = last ? (
     backToDocument ? (
-      <Link href={backToDocument} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-ink px-5 py-4 font-display text-lg font-bold text-white shadow-lg active:scale-[.98]">
-        Utiliser dans mon document →
+      <Link href={backToDocument} className="flex flex-1 items-center justify-center gap-2 rounded-md bg-ink px-5 py-4 font-display text-lg font-bold text-white shadow-lg active:scale-[.98]">
+        Utiliser dans mon document <Icon name="arrow-right" size={18} />
       </Link>
     ) : (
-      <button type="button" onClick={download} disabled={busy} className="flex flex-1 items-center justify-between rounded-2xl bg-brand-500 px-5 py-3.5 text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 active:scale-[.98] disabled:opacity-60">
+      <button type="button" onClick={download} disabled={busy} className="flex flex-1 items-center justify-between rounded-md bg-brand-500 px-5 py-3.5 text-white transition hover:bg-brand-600 active:scale-[.98] disabled:opacity-60">
         <span className="text-left">
           <span className="block font-display text-lg leading-tight font-bold">{busy ? "Préparation…" : paid ? "Télécharger à nouveau" : "Télécharger ma page de garde"}</span>
           <span className="block text-xs text-white/80">Word + PDF · qualité impression</span>
@@ -129,8 +130,8 @@ export function Studio() {
       </button>
     )
   ) : (
-    <button type="button" onClick={() => setStep(step + 1)} className="flex-1 rounded-2xl bg-brand-500 px-5 py-4 font-display text-lg font-bold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 active:scale-[.98]">
-      {step === 2 ? "Voir les styles →" : "Continuer →"}
+    <button type="button" onClick={() => setStep(step + 1)} className="flex-1 rounded-md bg-brand-500 px-5 py-4 font-display text-lg font-bold text-white transition hover:bg-brand-600 active:scale-[.98]">
+      {step === 2 ? "Voir les styles" : "Continuer"} <Icon name="arrow-right" size={18} />
     </button>
   );
 
@@ -142,8 +143,8 @@ export function Studio() {
           <div className="grid grid-cols-3 gap-1.5">
             {STEPS.map((s, i) => (
               <button key={s.title} type="button" onClick={() => setStep(i + 1)} className="group text-left" aria-label={s.title}>
-                <span className={`block h-1.5 rounded-full transition ${i + 1 <= step ? "bg-brand-500" : "bg-slate-200 group-hover:bg-slate-300"}`} />
-                <span className={`mt-1.5 block text-[11px] font-bold ${i + 1 === step ? "text-brand-700" : "text-slate-400"}`}>{s.title}</span>
+                <span className={`block h-1.5 rounded-full transition ${i + 1 <= step ? "bg-brand-500" : "bg-ink/10 group-hover:bg-slate-300"}`} />
+                <span className={`mt-1.5 block text-[11px] font-bold ${i + 1 === step ? "text-brand-700" : "text-ink/45"}`}>{s.title}</span>
               </button>
             ))}
           </div>
@@ -151,12 +152,12 @@ export function Studio() {
           <div className="mt-5 flex items-start gap-4">
             <div className="flex-1">
               <h1 className="font-display text-[1.7rem] leading-tight font-extrabold text-ink">{current.title}</h1>
-              <p className="mt-1 text-[15px] text-slate-500">{current.hint}</p>
+              <p className="mt-1 text-[15px] text-ink/60">{current.hint}</p>
             </div>
             {/* Mobile live preview (desktop has the big one) */}
             {!last && (
               <button type="button" onClick={() => setZoom(true)} className="relative w-[92px] shrink-0 lg:hidden" aria-label="Agrandir l'aperçu">
-                {svg ? <CoverView svg={svg} watermark={!paid} /> : <div className="aspect-[595/842] rounded bg-white shadow" />}
+                {svg ? <CoverView svg={svg} watermark={!paid} /> : <div className="aspect-[595/842] rounded bg-paper shadow" />}
                 <span className="absolute -right-1.5 -bottom-1.5 grid h-7 w-7 place-items-center rounded-full bg-ink text-xs text-white shadow">⤢</span>
               </button>
             )}
@@ -180,40 +181,40 @@ export function Studio() {
             )}
           </div>
 
-          {error && <p className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
+          {error && <p className="mt-4 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 
           {/* Desktop actions */}
           <div className="mt-8 hidden gap-3 lg:flex">
-            <button type="button" onClick={() => setStep(step - 1)} className="rounded-2xl bg-white px-5 font-bold text-slate-600 ring-1 ring-slate-200" aria-label="Retour">←</button>
+            <button type="button" onClick={() => setStep(step - 1)} className="rounded-md bg-paper px-5 font-bold text-ink/70 ring-1 ring-black/10" aria-label="Retour"><Icon name="arrow-left" /></button>
             {primary}
           </div>
           {step === 2 && (
-            <button type="button" onClick={() => setStep(3)} className="mt-4 hidden w-full text-center text-sm font-semibold text-slate-500 lg:block">Passer cette étape</button>
+            <button type="button" onClick={() => setStep(3)} className="mt-4 hidden w-full text-center text-sm font-semibold text-ink/60 lg:block">Passer cette étape</button>
           )}
         </div>
 
         {/* Desktop preview */}
         <div className="hidden lg:block">
           <div className="sticky top-20 pt-8">
-            <div className="rounded-[32px] bg-[radial-gradient(circle_at_50%_20%,#d1fae5,transparent_70%)] p-8">
+            <div className="rounded-md bg-[radial-gradient(circle_at_50%_20%,#d1fae5,transparent_70%)] p-8">
               <div className="mx-auto w-full max-w-[440px]">
-                {svg ? <CoverView svg={svg} watermark={!paid} /> : <div className="aspect-[595/842] animate-pulse rounded bg-white shadow" />}
+                {svg ? <CoverView svg={svg} watermark={!paid} /> : <div className="aspect-[595/842] animate-pulse rounded bg-paper shadow" />}
               </div>
             </div>
-            <p className="mt-3 text-center text-xs text-slate-500">
-              {paid ? "✅ Payé · modifications gratuites 7 jours" : "Aperçu en direct · les textes d'exemple ne seront pas imprimés"}
+            <p className="mt-3 text-center text-xs text-ink/60">
+              {paid ? "Payé · modifications gratuites 7 jours" : "Aperçu en direct · les textes d'exemple ne seront pas imprimés"}
             </p>
           </div>
         </div>
       </div>
 
       {/* Mobile action bar */}
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-100 bg-white/95 px-4 pt-3 pb-[max(.75rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden">
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-black/10 bg-paper/95 px-4 pt-3 pb-[max(.75rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden">
         {step === 2 && (
-          <button type="button" onClick={() => setStep(3)} className="mb-2 w-full text-center text-sm font-semibold text-slate-500">Passer cette étape</button>
+          <button type="button" onClick={() => setStep(3)} className="mb-2 w-full text-center text-sm font-semibold text-ink/60">Passer cette étape</button>
         )}
         <div className="flex gap-2.5">
-          <button type="button" onClick={() => setStep(step - 1)} className="grid w-14 shrink-0 place-items-center rounded-2xl bg-slate-100 text-lg font-bold text-slate-600" aria-label="Retour">←</button>
+          <button type="button" onClick={() => setStep(step - 1)} className="grid w-14 shrink-0 place-items-center rounded-md bg-ink/5 text-lg font-bold text-ink/70" aria-label="Retour"><Icon name="arrow-left" /></button>
           {primary}
         </div>
       </div>
@@ -232,7 +233,7 @@ export function Studio() {
           orderId={order.id}
           amount={order.amount}
           status={order.status}
-          heading="Ta page de garde est prête ✨"
+          heading="Ta page de garde est prête"
           bullets={["Word + PDF + image, sans filigrane", "Qualité impression (300 dpi)", "Modifications gratuites pendant 7 jours"]}
           formats={["pdf", "docx", "png"]}
           sharePath={`/garde?commande=${order.id}`}
@@ -248,14 +249,14 @@ export function Studio() {
 function Frame({ children, kind, onKind }: { children: React.ReactNode; kind?: string; onKind?: () => void }) {
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-30 border-b border-slate-100 bg-white/85 pt-[env(safe-area-inset-top)] backdrop-blur">
+      <header className="board sticky top-0 z-30 border-b border-black/25 pt-[env(safe-area-inset-top)]">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
           <div className="flex items-center gap-2">
-            <Link href="/" className="grid h-9 w-9 place-items-center rounded-full text-xl text-slate-600 hover:bg-slate-100" aria-label="Accueil">←</Link>
-            <Logo />
+            <Link href="/" className="press grid h-10 w-10 place-items-center rounded-md text-white/80 hover:bg-paper/10 hover:text-white" aria-label="Accueil"><Icon name="arrow-left" /></Link>
+            <Logo tone="board" />
           </div>
           {kind && onKind && (
-            <button type="button" onClick={onKind} className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-200">
+            <button type="button" onClick={onKind} className="rounded-full bg-ink/5 px-3 py-1.5 text-xs font-bold text-ink/70 hover:bg-ink/10">
               {kind} ▾
             </button>
           )}

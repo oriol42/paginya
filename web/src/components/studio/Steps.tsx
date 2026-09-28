@@ -4,7 +4,8 @@ import { useState } from "react";
 import { DEFAULT_LABELS, KINDS, type FieldKey } from "@/lib/cover/kinds";
 import type { CoverForm, Person } from "@/lib/cover/types";
 import { INSTITUTIONS, institution, logoData } from "@/lib/institutions";
-import { Field, Input, TextArea, Toggle } from "../ui";
+import { Field, Input, Select, TextArea, Toggle } from "../ui";
+import { Icon } from "@/components/Icon";
 
 type StepProps = { form: CoverForm; onChange: (patch: Partial<CoverForm>) => void };
 
@@ -25,8 +26,6 @@ export async function readLogo(file: File): Promise<string> {
   }
 }
 
-const selectCls =
-  "w-full appearance-none rounded-2xl border-0 bg-white bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%228%22><path d=%22M1 1l5 5 5-5%22 stroke=%22%2364748b%22 stroke-width=%222%22 fill=%22none%22/></svg>')] bg-[length:12px] bg-[right_1rem_center] bg-no-repeat px-4 py-3.5 pr-10 text-[15px] ring-1 ring-slate-200 focus:ring-2 focus:ring-brand-500 focus:outline-none";
 
 /** Step 1: only what every cover needs. */
 export function EssentialsStep({ form, onChange }: StepProps) {
@@ -39,7 +38,7 @@ export function EssentialsStep({ form, onChange }: StepProps) {
     <div className="space-y-5">
       {def.academic ? (
         <Field label="Ton établissement">
-          <select
+          <Select
             value={form.institutionId}
             onChange={async (e) => {
               const inst = institution(e.target.value);
@@ -51,15 +50,14 @@ export function EssentialsStep({ form, onChange }: StepProps) {
                 if (logo) onChange({ logo });
               }
             }}
-            className={selectCls}
           >
-            {INSTITUTIONS.map((i) => <option key={i.id} value={i.id}>{i.id === "autre" ? "➕ Mon école n'est pas dans la liste" : i.short}</option>)}
-          </select>
+            {INSTITUTIONS.map((i) => <option key={i.id} value={i.id}>{i.id === "autre" ? "Mon école n'est pas dans la liste" : i.short}</option>)}
+          </Select>
           {custom && (
-            <div className="mt-3 grid gap-3 rounded-2xl bg-brand-50/60 p-3 ring-1 ring-brand-100">
+            <div className="mt-3 grid gap-3 border-l-2 border-board/30 pl-3">
               <TextArea rows={3} value={form.headerFr} placeholder={"UNIVERSITÉ DE …\nFACULTÉ DE …\nDÉPARTEMENT DE …"} onChange={(e) => onChange({ headerFr: e.target.value })} />
               <TextArea rows={3} value={form.headerEn} placeholder={"UNIVERSITY OF …\nFACULTY OF …\nDEPARTMENT OF …"} onChange={(e) => onChange({ headerEn: e.target.value })} />
-              <p className="text-xs text-slate-500">Une ligne par niveau : français en haut, anglais en bas.</p>
+              <p className="text-xs text-ink/60">Une ligne par niveau : français en haut, anglais en bas.</p>
             </div>
           )}
         </Field>
@@ -113,7 +111,7 @@ export function DetailsStep({ form, onChange }: StepProps) {
       {form.supervisors.length > 0 && (
         <Group title="Encadrement">
           {form.supervisors.map((s, i) => (
-            <div key={i} className="grid gap-2 rounded-2xl bg-white p-3 ring-1 ring-slate-100">
+            <div key={i} className="grid gap-2 rounded-md bg-paper p-3 ring-1 ring-black/5">
               <p className="text-xs font-bold tracking-wide text-brand-700 uppercase">{s.role}</p>
               <Input value={s.name} placeholder="Ex. : Dr MBALLA Paul" onChange={(e) => setPerson("supervisors", i, { name: e.target.value })} />
               <Input value={s.info ?? ""} placeholder="Grade / fonction (facultatif)" onChange={(e) => setPerson("supervisors", i, { info: e.target.value })} />
@@ -128,12 +126,12 @@ export function DetailsStep({ form, onChange }: StepProps) {
             <div key={i} className="flex gap-2">
               <Input value={a.name} placeholder={`Membre ${i + 1}`} onChange={(e) => setPerson("authors", i, { name: e.target.value })} />
               {i > 0 && (
-                <button type="button" onClick={() => onChange({ authors: form.authors.filter((_, j) => j !== i) })} className="shrink-0 rounded-2xl px-4 text-slate-400 ring-1 ring-slate-200" aria-label="Retirer">✕</button>
+                <button type="button" onClick={() => onChange({ authors: form.authors.filter((_, j) => j !== i) })} className="shrink-0 rounded-md px-4 text-ink/45 ring-1 ring-black/10" aria-label="Retirer"><Icon name="x" size={16} /></button>
               )}
             </div>
           ))}
           {form.authors.length < 8 && (
-            <button type="button" onClick={() => onChange({ authors: [...form.authors, { name: "", info: "" }] })} className="w-full rounded-2xl border border-dashed border-brand-300 py-3 text-sm font-bold text-brand-700">
+            <button type="button" onClick={() => onChange({ authors: [...form.authors, { name: "", info: "" }] })} className="w-full rounded-md border border-dashed border-brand-300 py-3 text-sm font-bold text-brand-700">
               + Ajouter un membre
             </button>
           )}
@@ -169,7 +167,7 @@ export function DetailsStep({ form, onChange }: StepProps) {
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-3">
-      <h3 className="text-xs font-bold tracking-wider text-slate-500 uppercase">{title}</h3>
+      <h3 className="text-xs font-bold tracking-wider text-ink/60 uppercase">{title}</h3>
       {children}
     </section>
   );
@@ -177,22 +175,22 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 
 export function LogoPicker({ logo, onChange }: { logo?: string; onChange: (l?: string) => void }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl bg-white p-3 ring-1 ring-slate-100">
+    <div className="flex flex-wrap items-center gap-3 border-t border-ink/10 pt-3">
       {logo ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={logo} alt="Logo" className="h-14 w-14 rounded-xl object-contain" />
+        <img src={logo} alt="Logo" className="h-14 w-14 rounded-md object-contain" />
       ) : (
-        <span className="grid h-14 w-14 place-items-center rounded-xl bg-slate-50 text-2xl">🏛️</span>
+        <span className="grid h-14 w-14 place-items-center rounded-md bg-ink/5 text-board"><Icon name="landmark" size={26} /></span>
       )}
-      <div className="flex-1">
+      <div className="min-w-[9rem] flex-1">
         <p className="text-sm font-semibold text-ink">{logo ? "Logo ajouté" : "Logo de l'école"}</p>
-        <p className="text-xs text-slate-500">Photo ou image, fond blanc de préférence</p>
+        <p className="text-xs text-ink/60">Photo ou image, fond blanc de préférence</p>
       </div>
-      <label className="cursor-pointer rounded-xl bg-brand-50 px-3.5 py-2 text-sm font-bold text-brand-700">
+      <label className="cursor-pointer press rounded-md bg-board px-3.5 py-2.5 text-sm font-bold text-white">
         {logo ? "Changer" : "Ajouter"}
         <input type="file" accept="image/*" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (f) onChange(await readLogo(f)); }} />
       </label>
-      {logo && <button type="button" onClick={() => onChange(undefined)} className="text-slate-400" aria-label="Retirer le logo">✕</button>}
+      {logo && <button type="button" onClick={() => onChange(undefined)} className="text-ink/45" aria-label="Retirer le logo"><Icon name="x" size={16} /></button>}
     </div>
   );
 }

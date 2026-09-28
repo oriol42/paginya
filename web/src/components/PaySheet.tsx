@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api, formatXaf, operatorOf, type OrderStatus } from "@/lib/api";
+import { Icon } from "./Icon";
+import { PinLabel } from "./ui";
 
 export const PHONE_KEY = "propre:phone";
 type Phase = "summary" | "pending" | "paid" | "failed";
@@ -77,102 +79,100 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm sm:items-center"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-board/75 sm:items-center"
       onClick={phase === "pending" ? undefined : onClose}
     >
       <div
-        className="sheet-in w-full max-w-md rounded-t-[28px] bg-white p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-2xl sm:rounded-[28px]"
+        className="sheet-in paper relative w-full max-w-md rounded-t-xl px-6 pt-9 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:rounded-[2px]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mx-auto mb-5 h-1.5 w-10 rounded-full bg-slate-200 sm:hidden" />
+        <span className="pin top-3 left-1/2 -translate-x-1/2" aria-hidden />
 
         {phase === "summary" && (
           <>
-            <p className="text-sm font-semibold text-brand-600">{heading}</p>
-            <h2 className="mt-1 font-display text-[26px] leading-tight font-extrabold text-ink">C&apos;est propre !</h2>
-            <ul className="mt-4 space-y-2.5 text-[15px] text-slate-700">
+            <p className="text-[15px] font-semibold text-ink/60">{heading}</p>
+            <h2 className="mt-1 font-display text-[34px] leading-[0.95] font-black uppercase">C&apos;est propre.</h2>
+            <ul className="mt-4 space-y-2.5 text-[16px]">
               {bullets.map((b) => (
                 <li key={b} className="flex gap-2.5">
-                  <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brand-100 text-[11px] font-bold text-brand-700">✓</span>
+                  <Icon name="check" size={18} stroke={2.6} className="mt-0.5 text-board" />
                   {b}
                 </li>
               ))}
             </ul>
 
             {missing.length > 0 && (
-              <p className="mt-4 rounded-2xl bg-amber-50 px-3.5 py-3 text-sm text-amber-800 ring-1 ring-amber-200">
+              <p className="mt-4 flex gap-2 rounded-md bg-hi/40 px-3.5 py-3 text-[14px]">
+                <Icon name="info" size={18} className="mt-0.5" />
                 Il manque encore {missing.join(", ")}. Tu pourras compléter après (7 jours gratuits).
               </p>
             )}
 
-            <label className="mt-5 block">
-              <span className="mb-1.5 block text-[13px] font-semibold text-slate-700">Ton numéro Mobile Money</span>
-              <div className="flex items-center rounded-2xl bg-slate-50 ring-1 ring-slate-200 focus-within:bg-white focus-within:ring-2 focus-within:ring-brand-500">
-                <span className="pl-4 text-[15px] font-semibold text-slate-500">+237</span>
+            <div className="mt-5 flex items-end justify-between border-t border-dashed border-ink/25 pt-4">
+              <span className="text-[15px] font-semibold text-ink/60">À payer</span>
+              <span className="font-display text-[40px] leading-none font-black tabular">{formatXaf(amount)}</span>
+            </div>
+
+            <label className="mt-4 block">
+              <span className="mb-1.5 block text-[13px] font-bold text-ink/80">Ton numéro Mobile Money</span>
+              <div className="flex items-center rounded-md bg-paper shadow-[inset_0_-2px_0_0_rgba(22,24,26,0.18)] ring-1 ring-black/10 focus-within:shadow-[inset_0_-3px_0_0_var(--color-hi-deep)]">
+                <span className="pl-3.5 text-[16px] font-bold text-ink/55">+237</span>
                 <input
                   inputMode="tel"
                   autoComplete="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="6 70 00 00 00"
-                  className="w-full border-0 bg-transparent px-2 py-3.5 text-lg tracking-wide focus:outline-none"
+                  className="w-full border-0 bg-transparent px-2 py-3.5 text-[19px] tracking-wide tabular focus:outline-none"
                 />
                 {operator && (
-                  <span className={`mr-2 shrink-0 rounded-lg px-2 py-1 text-xs font-bold ${operator === "MTN MoMo" ? "bg-yellow-300 text-ink" : "bg-orange-500 text-white"}`}>
+                  <span className={`mr-2 shrink-0 rounded px-2 py-1 text-[12px] font-bold ${operator === "MTN MoMo" ? "bg-[#ffcc00] text-ink" : "bg-[#ff7900] text-white"}`}>
                     {operator}
                   </span>
                 )}
               </div>
             </label>
-            {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+            {error && <p className="mt-2 flex gap-1.5 text-[14px] text-pin"><Icon name="triangle-alert" size={16} className="mt-0.5" />{error}</p>}
 
-            <button
-              type="button"
-              disabled={busy || phone.replace(/\D/g, "").length < 9}
-              onClick={pay}
-              className="mt-5 w-full rounded-2xl bg-brand-500 py-4 font-display text-lg font-bold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 active:scale-[.98] disabled:opacity-50"
-            >
+            <PinLabel className="mt-5 w-full" disabled={busy || phone.replace(/\D/g, "").length < 9} onClick={pay}>
               {busy ? "Envoi…" : `Payer ${formatXaf(amount)}`}
-            </button>
-            <p className="mt-3 text-center text-xs text-slate-500">
-              MTN MoMo ou Orange Money · Paiement sécurisé Fapshi
+            </PinLabel>
+            <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[13px] text-ink/55">
+              <Icon name="shield-check" size={15} /> MTN MoMo ou Orange Money · paiement sécurisé Fapshi
             </p>
           </>
         )}
 
         {phase === "pending" && (
-          <div className="py-4 text-center">
-            <div className="relative mx-auto h-20 w-20">
-              <div className="absolute inset-0 animate-ping rounded-full bg-brand-200/60" />
-              <div className="relative grid h-20 w-20 place-items-center rounded-full bg-brand-500 text-3xl">📱</div>
-            </div>
-            <h2 className="mt-6 font-display text-xl font-bold text-ink">{link ? "Paie sur la page Fapshi" : "Confirme sur ton téléphone"}</h2>
+          <div className="py-2 text-center">
+            <Icon name="smartphone" size={56} stroke={1.5} className="mx-auto animate-pulse text-board" />
+            <h2 className="mt-4 font-display text-[30px] leading-[0.95] font-black uppercase">{link ? "Paie sur la page Fapshi" : "Confirme sur ton téléphone"}</h2>
             {link ? (
-              <p className="mx-auto mt-2 max-w-xs text-[15px] text-slate-600">
+              <p className="mx-auto mt-3 max-w-xs text-[16px] text-ink/75">
                 Choisis MTN MoMo ou Orange Money et paie <b>{formatXaf(amount)}</b>. Cette page se débloque toute seule dès que c&apos;est payé.{" "}
-                <a href={link} target="_blank" rel="noopener" className="font-bold text-brand-700 underline">Ouvrir la page de paiement</a>
+                <a href={link} target="_blank" rel="noopener" className="font-bold text-pen underline">Ouvrir la page de paiement</a>
               </p>
             ) : (
-              <p className="mx-auto mt-2 max-w-xs text-[15px] text-slate-600">
+              <p className="mx-auto mt-3 max-w-xs text-[16px] text-ink/75">
                 Une demande de <b>{formatXaf(amount)}</b> a été envoyée au {phone}. Valide-la avec ton code secret.
               </p>
             )}
-            <p className="mt-5 text-xs text-slate-400">Ne ferme pas cette page…</p>
+            <p className="mt-5 flex items-center justify-center gap-2 text-[14px] text-ink/55"><Icon name="loader-circle" size={16} className="animate-spin" />On attend la confirmation…</p>
           </div>
         )}
 
         {phase === "paid" && (
-          <div className="text-center">
-            <div className="pop mx-auto grid h-20 w-20 place-items-center rounded-full bg-brand-500 text-4xl text-white shadow-lg shadow-brand-500/30">✓</div>
-            <h2 className="mt-5 font-display text-2xl font-extrabold text-ink">C&apos;est propre ! 🎉</h2>
-            <p className="mt-1 text-[15px] text-slate-600">Télécharge ton fichier :</p>
+          <div className="relative text-center">
+            <span className="stamp stamp-in mx-auto text-[44px]">Payé</span>
+            <h2 className="mt-6 font-display text-[30px] leading-[0.95] font-black uppercase">Ton document est à toi</h2>
             <div className={`mt-5 grid gap-2 ${formats.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
               {formats.map((fmt) => (
                 <a
                   key={fmt}
                   href={api.fileUrl(orderId, fmt)}
-                  className="rounded-2xl bg-brand-50 py-3.5 font-display font-bold text-brand-700 ring-1 ring-brand-100 hover:bg-brand-100"
+                  className="press inline-flex items-center justify-center gap-2 rounded-md bg-hi py-3.5 font-display text-[20px] leading-none font-black text-ink uppercase shadow-[0_2px_0_0_var(--color-hi-deep)]"
                 >
+                  <Icon name="download" size={18} stroke={2.5} />
                   {FORMAT_LABEL[fmt]}
                 </a>
               ))}
@@ -181,24 +181,22 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
               href={`https://wa.me/?text=${encodeURIComponent(`Mon document Paginya (modifiable 7 jours) : ${shareUrl}`)}`}
               target="_blank"
               rel="noreferrer"
-              className="mt-3 block rounded-2xl bg-[#25D366] py-3.5 font-bold text-white"
+              className="press mt-3 flex items-center justify-center gap-2 rounded-md bg-[#1FAF55] py-3.5 text-[16px] font-bold text-white"
             >
               Garder le lien sur WhatsApp
             </a>
-            <p className="mt-3 text-xs text-slate-500">Modifications et téléchargements gratuits pendant 7 jours avec ce lien.</p>
-            <button type="button" onClick={onClose} className="mt-3 text-sm font-semibold text-slate-600">Fermer</button>
+            <p className="mt-3 text-[13px] text-ink/55">Modifications et téléchargements gratuits pendant 7 jours avec ce lien.</p>
+            <button type="button" onClick={onClose} className="mt-3 text-[15px] font-semibold text-ink/60 underline">Fermer</button>
           </div>
         )}
 
         {phase === "failed" && (
           <div className="py-2 text-center">
-            <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-amber-100 text-3xl">⚠️</div>
-            <h2 className="mt-4 font-display text-xl font-bold text-ink">Le paiement n&apos;a pas abouti</h2>
-            <p className="mt-2 text-[15px] text-slate-600">Rien n&apos;a été débité. Vérifie ton solde ou essaie un autre numéro.</p>
-            <button type="button" onClick={retry} className="mt-5 w-full rounded-2xl bg-brand-500 py-4 font-display text-lg font-bold text-white">
-              Réessayer
-            </button>
-            <button type="button" onClick={onClose} className="mt-3 text-sm font-semibold text-slate-600">Plus tard</button>
+            <Icon name="triangle-alert" size={48} stroke={1.5} className="mx-auto text-pin" />
+            <h2 className="mt-4 font-display text-[30px] leading-[0.95] font-black uppercase">Le paiement n&apos;a pas abouti</h2>
+            <p className="mt-2 text-[16px] text-ink/70">Rien n&apos;a été débité. Vérifie ton solde ou essaie un autre numéro.</p>
+            <PinLabel className="mt-5 w-full" onClick={retry}>Réessayer</PinLabel>
+            <button type="button" onClick={onClose} className="mt-3 text-[15px] font-semibold text-ink/60 underline">Plus tard</button>
           </div>
         )}
       </div>

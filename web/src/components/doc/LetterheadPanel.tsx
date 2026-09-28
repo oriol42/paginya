@@ -6,7 +6,7 @@ import {
   ARMOIRIES, INSTITUTIONS, MINESEC_EN, MINESEC_FR, MINISTRY_EN, MINISTRY_FR, REPUBLIC_EN, REPUBLIC_FR, institution, logoData,
 } from "@/lib/institutions";
 import { LogoPicker } from "../studio/Steps";
-import { TextArea, Toggle } from "../ui";
+import { Select, TextArea, Toggle } from "../ui";
 
 type Props = { enabled: boolean; value: Letterhead | null; onChange: (value: Letterhead, enabled: boolean) => void };
 
@@ -46,26 +46,26 @@ export function LetterheadPanel({ enabled, value, onChange }: Props) {
   };
 
   return (
-    <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-100">
+    <div>
       <Toggle label="En-tête officiel (République du Cameroun, école, logo)" checked={enabled} onChange={(on) => save({}, on)} />
       {enabled && (
         <div className="mt-3 grid gap-3">
-          <select
+          <Select
             value={form.institutionId}
             onChange={async (e) => {
               const inst = institution(e.target.value);
               const logo = inst.logo ? await logoData(inst.logo) : form.logo;
               save({ institutionId: inst.id, fr: inst.id === "autre" ? "" : inst.fr.join("\n"), en: inst.id === "autre" ? "" : inst.en.join("\n"), logo });
             }}
-            className="w-full rounded-xl bg-slate-50 px-3 py-2.5 text-sm ring-1 ring-slate-200"
+            aria-label="Établissement"
           >
-            {INSTITUTIONS.map((i) => <option key={i.id} value={i.id}>{i.id === "autre" ? "✏️ Autre (je tape le nom)" : i.short}</option>)}
-          </select>
-          <label className="grid gap-1 text-xs font-semibold text-slate-500">
+            {INSTITUTIONS.map((i) => <option key={i.id} value={i.id}>{i.id === "autre" ? "Autre (je tape le nom)" : i.short}</option>)}
+          </Select>
+          <label className="grid gap-1 text-xs font-semibold text-ink/60">
             Français (une ligne par niveau)
             <TextArea rows={2} value={form.fr} placeholder={"UNIVERSITÉ DE …\nFACULTÉ DE …"} onChange={(e) => save({ fr: e.target.value })} />
           </label>
-          <label className="grid gap-1 text-xs font-semibold text-slate-500">
+          <label className="grid gap-1 text-xs font-semibold text-ink/60">
             Anglais
             <TextArea rows={2} value={form.en} placeholder={"UNIVERSITY OF …\nFACULTY OF …"} onChange={(e) => save({ en: e.target.value })} />
           </label>
@@ -73,7 +73,7 @@ export function LetterheadPanel({ enabled, value, onChange }: Props) {
           <Toggle label="Ministère" checked={form.ministry} onChange={(ministry) => save({ ministry })} />
           <LogoPicker logo={form.logo} onChange={(logo) => save({ logo })} />
           {!form.logo && (
-            <button type="button" onClick={async () => save({ logo: await logoData(ARMOIRIES) })} className="text-left text-xs font-semibold text-brand-700 underline">
+            <button type="button" onClick={async () => save({ logo: await logoData(ARMOIRIES) })} className="text-left text-xs font-semibold text-pen underline">
               Mettre les armoiries du Cameroun au centre
             </button>
           )}

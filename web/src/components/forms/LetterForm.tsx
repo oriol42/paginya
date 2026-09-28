@@ -4,6 +4,7 @@ import { useState } from "react";
 import { todayFr } from "@/lib/forms";
 import { Field, Input, TextArea, Toggle } from "../ui";
 import { FormShell } from "./FormShell";
+import { Icon, type IconName } from "@/components/Icon";
 
 type LetterType = "emploi" | "stage" | "conge" | "absence" | "explication" | "libre";
 
@@ -21,13 +22,13 @@ export type Letter = {
   bodyEdited: boolean;
 };
 
-const TYPES: { id: LetterType; emoji: string; label: string; subject: string; attachments: string[] }[] = [
-  { id: "emploi", emoji: "💼", label: "Demande d'emploi", subject: "Demande d'emploi", attachments: ["Curriculum vitae", "Copie certifiée du diplôme", "Copie de la CNI"] },
-  { id: "stage", emoji: "🎓", label: "Demande de stage", subject: "Demande de stage académique", attachments: ["Curriculum vitae", "Lettre de recommandation de l'établissement"] },
-  { id: "conge", emoji: "🌴", label: "Demande de congé", subject: "Demande de congé annuel", attachments: [] },
-  { id: "absence", emoji: "📅", label: "Autorisation d'absence", subject: "Demande d'autorisation d'absence", attachments: [] },
-  { id: "explication", emoji: "📝", label: "Réponse à une demande d'explication", subject: "Réponse à la demande d'explication n° [numéro] du [date]", attachments: [] },
-  { id: "libre", emoji: "✉️", label: "Autre demande", subject: "Demande de [objet]", attachments: [] },
+const TYPES: { id: LetterType; icon: IconName; label: string; subject: string; attachments: string[] }[] = [
+  { id: "emploi", icon: "briefcase", label: "Demande d'emploi", subject: "Demande d'emploi", attachments: ["Curriculum vitae", "Copie certifiée du diplôme", "Copie de la CNI"] },
+  { id: "stage", icon: "graduation-cap", label: "Demande de stage", subject: "Demande de stage académique", attachments: ["Curriculum vitae", "Lettre de recommandation de l'établissement"] },
+  { id: "conge", icon: "calendar", label: "Demande de congé", subject: "Demande de congé annuel", attachments: [] },
+  { id: "absence", icon: "timer", label: "Autorisation d'absence", subject: "Demande d'autorisation d'absence", attachments: [] },
+  { id: "explication", icon: "pen-line", label: "Réponse à une demande d'explication", subject: "Réponse à la demande d'explication n° [numéro] du [date]", attachments: [] },
+  { id: "libre", icon: "mail", label: "Autre demande", subject: "Demande de [objet]", attachments: [] },
 ];
 
 function appellation(l: Letter): string {
@@ -86,7 +87,7 @@ export function LetterApp() {
       title="Ta lettre ou demande"
       initial={initialLetter()}
       missing={missing}
-      heading="Ta lettre est prête ✨"
+      heading="Ta lettre est prête"
       bullets={["Format administratif camerounais", "Word modifiable + PDF prêt à imprimer", "Modifications gratuites pendant 7 jours"]}
     >
       {(l, set) => <LetterSteps l={l} set={set} />}
@@ -105,8 +106,8 @@ function LetterSteps({ l, set }: { l: Letter; set: (patch: Partial<Letter>) => v
     set({ ...patch, body: regen(next) });
   };
   const next = (
-    <button type="button" onClick={() => setStep((s) => Math.min(s + 1, STEPS.length - 1))} className="mt-2 w-full rounded-2xl bg-ink py-3.5 font-display font-bold text-white">
-      Suivant : {STEPS[step + 1]} →
+    <button type="button" onClick={() => setStep((s) => Math.min(s + 1, STEPS.length - 1))} className="mt-2 w-full rounded-md bg-ink py-3.5 font-display font-bold text-white">
+      Suivant : {STEPS[step + 1]} <Icon name="arrow-right" size={18} />
     </button>
   );
   return (
@@ -114,8 +115,8 @@ function LetterSteps({ l, set }: { l: Letter; set: (patch: Partial<Letter>) => v
       <div className="mb-6 grid grid-cols-4 gap-1.5">
         {STEPS.map((name, i) => (
           <button key={name} type="button" onClick={() => setStep(i)} className="text-left">
-            <span className={`block h-1.5 rounded-full ${i <= step ? "bg-brand-500" : "bg-slate-200"}`} />
-            <span className={`mt-1.5 block truncate text-[12px] font-bold ${i === step ? "text-ink" : "text-slate-400"}`}>{i + 1}. {name}</span>
+            <span className={`block h-1.5 rounded-full ${i <= step ? "bg-brand-500" : "bg-ink/10"}`} />
+            <span className={`mt-1.5 block truncate text-[12px] font-bold ${i === step ? "text-ink" : "text-ink/45"}`}>{i + 1}. {name}</span>
           </button>
         ))}
       </div>
@@ -129,9 +130,9 @@ function LetterSteps({ l, set }: { l: Letter; set: (patch: Partial<Letter>) => v
                 key={t.id}
                 type="button"
                 onClick={() => { setAndRegen({ type: t.id, subject: t.subject, attachments: t.attachments }); setStep(1); }}
-                className={`rounded-2xl p-4 text-left text-sm font-semibold transition ${l.type === t.id ? "bg-ink text-white" : "bg-white text-slate-700 ring-1 ring-slate-200 hover:ring-brand-300"}`}
+                className={`rounded-md p-4 text-left text-sm font-semibold transition ${l.type === t.id ? "bg-ink text-white" : "bg-paper text-ink/80 ring-1 ring-black/10 hover:ring-brand-300"}`}
               >
-                <span className="mb-1 block text-2xl">{t.emoji}</span>{t.label}
+                <Icon name={t.icon} size={22} className="mb-1.5 block" />{t.label}
               </button>
             ))}
           </div>
@@ -143,8 +144,8 @@ function LetterSteps({ l, set }: { l: Letter; set: (patch: Partial<Letter>) => v
           <h3 className="font-display text-xl font-bold text-ink">Qui écrit la lettre ?</h3>
           <Field label="Nom et prénom"><Input value={l.sender.name} placeholder="MBALLA Junior" onChange={(e) => set({ sender: { ...l.sender, name: e.target.value } })} /></Field>
           <Field label="Téléphone"><Input value={l.sender.phone} inputMode="tel" placeholder="6XX XX XX XX" onChange={(e) => set({ sender: { ...l.sender, phone: e.target.value } })} /></Field>
-          <details className="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-100">
-            <summary className="cursor-pointer text-sm font-bold text-slate-600">+ Plus de détails (fonction, adresse, e-mail)</summary>
+          <details className="rounded-md bg-paper px-4 py-3 ring-1 ring-black/5">
+            <summary className="cursor-pointer text-sm font-bold text-ink/70">+ Plus de détails (fonction, adresse, e-mail)</summary>
             <div className="mt-3 space-y-3">
               <Field label="Fonction / matricule"><Input value={l.sender.extra} placeholder="Ex. : Agent commercial, Mle 123456" onChange={(e) => set({ sender: { ...l.sender, extra: e.target.value } })} /></Field>
               <Field label="Adresse"><Input value={l.sender.address} placeholder="BP 1234 Yaoundé" onChange={(e) => set({ sender: { ...l.sender, address: e.target.value } })} /></Field>
@@ -160,7 +161,7 @@ function LetterSteps({ l, set }: { l: Letter; set: (patch: Partial<Letter>) => v
           <h3 className="font-display text-xl font-bold text-ink">À qui ?</h3>
           <div className="flex gap-2">
             {(["Monsieur", "Madame"] as const).map((c) => (
-              <button key={c} type="button" onClick={() => setAndRegen({ recipient: { ...l.recipient, civility: c } })} className={`rounded-full px-4 py-2 text-sm font-bold ${l.recipient.civility === c ? "bg-ink text-white" : "bg-white text-slate-600 ring-1 ring-slate-200"}`}>
+              <button key={c} type="button" onClick={() => setAndRegen({ recipient: { ...l.recipient, civility: c } })} className={`rounded-full px-4 py-2 text-sm font-bold ${l.recipient.civility === c ? "bg-ink text-white" : "bg-paper text-ink/70 ring-1 ring-black/10"}`}>
                 {c}
               </button>
             ))}
@@ -168,8 +169,8 @@ function LetterSteps({ l, set }: { l: Letter; set: (patch: Partial<Letter>) => v
           <Field label="Titre"><Input value={l.recipient.title} placeholder="le Directeur Général" onChange={(e) => setAndRegen({ recipient: { ...l.recipient, title: e.target.value } })} /></Field>
           <Field label="Structure"><Input value={l.recipient.org} placeholder="de ENEO Cameroun" onChange={(e) => set({ recipient: { ...l.recipient, org: e.target.value } })} /></Field>
           <Field label="Ville"><Input value={l.recipient.city} placeholder="Douala" onChange={(e) => set({ recipient: { ...l.recipient, city: e.target.value } })} /></Field>
-          <details className="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-100">
-            <summary className="cursor-pointer text-sm font-bold text-slate-600">+ Sous couvert d&apos;un chef (facultatif)</summary>
+          <details className="rounded-md bg-paper px-4 py-3 ring-1 ring-black/5">
+            <summary className="cursor-pointer text-sm font-bold text-ink/70">+ Sous couvert d&apos;un chef (facultatif)</summary>
             <div className="mt-3"><Field label="Sous couvert de" hint="Quand la lettre doit passer par un chef intermédiaire"><Input value={l.via} placeholder="Monsieur le Chef du personnel" onChange={(e) => set({ via: e.target.value })} /></Field></div>
           </details>
           {next}
@@ -179,16 +180,16 @@ function LetterSteps({ l, set }: { l: Letter; set: (patch: Partial<Letter>) => v
       {step === 3 && (
         <section className="space-y-3">
           <h3 className="font-display text-xl font-bold text-ink">Ta lettre</h3>
-          <p className="text-sm text-slate-500">Déjà rédigée dans le style administratif : remplace seulement les passages entre [crochets].</p>
+          <p className="text-sm text-ink/60">Déjà rédigée dans le style administratif : remplace seulement les passages entre [crochets].</p>
           <Field label="Objet"><Input value={l.subject} onChange={(e) => set({ subject: e.target.value })} /></Field>
           <Field label="Texte">
             <TextArea rows={11} value={l.body} onChange={(e) => set({ body: e.target.value, bodyEdited: true })} />
           </Field>
           {l.bodyEdited && (
-            <button type="button" onClick={() => set({ body: templateBody(l), bodyEdited: false })} className="text-sm font-semibold text-brand-700">↺ Revenir au modèle</button>
+            <button type="button" onClick={() => set({ body: templateBody(l), bodyEdited: false })} className="text-sm font-semibold text-brand-700"><Icon name="undo-2" size={16} className="mr-1 inline" />Revenir au modèle</button>
           )}
-          <details className="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-100">
-            <summary className="cursor-pointer text-sm font-bold text-slate-600">+ Lieu, date, pièces jointes, timbre</summary>
+          <details className="rounded-md bg-paper px-4 py-3 ring-1 ring-black/5">
+            <summary className="cursor-pointer text-sm font-bold text-ink/70">+ Lieu, date, pièces jointes, timbre</summary>
             <div className="mt-3 space-y-3">
               <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] gap-3">
                 <Field label="Lieu"><Input value={l.place} onChange={(e) => set({ place: e.target.value })} /></Field>

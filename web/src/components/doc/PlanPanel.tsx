@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { API_URL } from "@/lib/api";
 import type { Block } from "@/lib/documents";
+import { Icon } from "@/components/Icon";
 
 type Props = {
   docId: string;
@@ -33,11 +34,11 @@ export function PlanPanel({ docId, blocks, onChange }: Props) {
   return (
     <div>
       <div className="mb-3 flex items-center justify-between gap-2">
-        <p className="text-sm text-slate-500">Touche un élément pour changer son type.</p>
+        <p className="text-sm text-ink/60">Touche un élément pour changer son type.</p>
         <button
           type="button"
           onClick={() => setOnlyHeadings((v) => !v)}
-          className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200"
+          className="shrink-0 rounded-full bg-paper px-3 py-1.5 text-xs font-bold text-ink/70 ring-1 ring-black/10"
         >
           {onlyHeadings ? "Tout afficher" : "Titres seulement"}
         </button>
@@ -51,8 +52,8 @@ export function PlanPanel({ docId, blocks, onChange }: Props) {
               <button
                 type="button"
                 onClick={() => setOpen(isOpen ? null : b.id)}
-                className={`flex w-full items-start gap-2.5 rounded-2xl px-3 py-2.5 text-left transition ${
-                  isOpen ? "bg-white ring-2 ring-brand-500" : "bg-white ring-1 ring-slate-100 hover:ring-slate-200"
+                className={`flex w-full items-start gap-2.5 rounded-md px-3 py-2.5 text-left transition ${
+                  isOpen ? "bg-paper ring-2 ring-brand-500" : "bg-paper ring-1 ring-black/5 hover:ring-black/10"
                 } ${b.hidden ? "opacity-45" : ""}`}
               >
                 <BlockBadge b={b} />
@@ -61,7 +62,7 @@ export function PlanPanel({ docId, blocks, onChange }: Props) {
                 </span>
               </button>
               {isOpen && (
-                <div className="sheet-in mt-1.5 mb-2 rounded-2xl bg-brand-50/70 p-2.5 ring-1 ring-brand-100">
+                <div className="sheet-in mt-1.5 mb-2 rounded-md bg-brand-50/70 p-2.5 ring-1 ring-brand-100">
                   {EDITABLE.has(b.type) && (
                     <div className="flex flex-wrap gap-1.5">
                       {TARGETS.map((t) => (
@@ -70,7 +71,7 @@ export function PlanPanel({ docId, blocks, onChange }: Props) {
                           type="button"
                           onClick={() => update(b.id, t.apply)}
                           className={`rounded-full px-3 py-1.5 text-[13px] font-semibold transition ${
-                            t.active(b) ? "bg-ink text-white" : "bg-white text-slate-700 ring-1 ring-slate-200 hover:ring-brand-300"
+                            t.active(b) ? "bg-ink text-white" : "bg-paper text-ink/80 ring-1 ring-black/10 hover:ring-brand-300"
                           }`}
                         >
                           {t.label}
@@ -81,9 +82,9 @@ export function PlanPanel({ docId, blocks, onChange }: Props) {
                   <button
                     type="button"
                     onClick={() => update(b.id, (x) => ({ ...x, hidden: !x.hidden }))}
-                    className="mt-2 text-[13px] font-semibold text-slate-600"
+                    className="mt-2 text-[13px] font-semibold text-ink/70"
                   >
-                    {b.hidden ? "↺ Remettre dans le document" : "🗑 Retirer du document"}
+                    <span className="inline-flex items-center gap-1.5"><Icon name={b.hidden ? "undo-2" : "trash-2"} size={15} />{b.hidden ? "Remettre dans le document" : "Retirer du document"}</span>
                   </button>
                 </div>
               )}
@@ -97,34 +98,34 @@ export function PlanPanel({ docId, blocks, onChange }: Props) {
 
 function BlockBadge({ b }: { b: Block }) {
   const map: Record<string, [string, string]> = {
-    heading: [b.special ? "★" : `T${b.level ?? 1}`, "bg-ink text-white"],
-    paragraph: ["¶", "bg-slate-100 text-slate-500"],
+    heading: [b.special ? "S" : `T${b.level ?? 1}`, "bg-ink text-white"],
+    paragraph: ["¶", "bg-ink/5 text-ink/60"],
     list: [b.ordered ? "1." : "•", "bg-sky-100 text-sky-700"],
     table: ["▦", "bg-amber-100 text-amber-700"],
-    figure: ["🖼", "bg-violet-100 text-violet-700"],
+    figure: ["Img", "bg-violet-100 text-violet-700"],
     caption: ["Lég", "bg-amber-50 text-amber-700"],
-    source: ["Src", "bg-slate-100 text-slate-500"],
-    quote: ["❝", "bg-slate-100 text-slate-600"],
+    source: ["Src", "bg-ink/5 text-ink/60"],
+    quote: ["« »", "bg-ink/5 text-ink/70"],
     code: ["</>", "bg-slate-800 text-white"],
     title: ["Tt", "bg-brand-500 text-white"],
   };
-  const [label, cls] = map[b.type] ?? ["?", "bg-slate-100"];
+  const [label, cls] = map[b.type] ?? ["?", "bg-ink/5"];
   return <span className={`mt-0.5 grid h-6 min-w-6 shrink-0 place-items-center rounded-lg px-1 text-[11px] font-bold ${cls}`}>{label}</span>;
 }
 
 function BlockText({ docId, b }: { docId: string; b: Block }) {
   if (b.type === "table") {
     const rows = b.rows ?? [];
-    return <span className="text-sm text-slate-600">Tableau · {rows.length} lignes × {rows[0]?.length ?? 0} colonnes</span>;
+    return <span className="text-sm text-ink/70">Tableau · {rows.length} lignes × {rows[0]?.length ?? 0} colonnes</span>;
   }
   if (b.type === "figure") {
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={`${API_URL}/documents/${docId}/images/${b.image}`} alt="" className="max-h-16 rounded-lg" />;
   }
-  if (b.role === "sigle") return <span className="line-clamp-1 text-sm text-slate-600"><b>{b.term}</b> : {b.definition}</span>;
+  if (b.role === "sigle") return <span className="line-clamp-1 text-sm text-ink/70"><b>{b.term}</b> : {b.definition}</span>;
   if (b.type === "title") return <span className={`line-clamp-2 text-ink ${b.sub ? "text-sm italic" : "text-[15px] font-bold"}`}>{b.text}</span>;
-  if (b.type === "code") return <code className="line-clamp-2 whitespace-pre rounded bg-slate-100 px-1.5 text-xs text-slate-700">{b.text}</code>;
+  if (b.type === "code") return <code className="line-clamp-2 whitespace-pre rounded bg-ink/5 px-1.5 text-xs text-ink/80">{b.text}</code>;
   if (b.type === "heading") return <span className={`line-clamp-2 font-semibold text-ink ${b.level === 1 ? "text-[15px]" : "text-sm"}`}>{b.text}</span>;
   if (b.type === "caption") return <span className="line-clamp-1 text-sm text-amber-800">{b.of === "table" ? "Tableau" : "Figure"} : {b.text}</span>;
-  return <span className="line-clamp-1 text-sm text-slate-500">{b.text}</span>;
+  return <span className="line-clamp-1 text-sm text-ink/60">{b.text}</span>;
 }

@@ -7,6 +7,7 @@ import type { OrderStatus } from "@/lib/api";
 import { forms, type FormKind, type FormView } from "@/lib/forms";
 import { Logo } from "../Logo";
 import { PaySheet } from "../PaySheet";
+import { Icon } from "@/components/Icon";
 
 type Props<T> = {
   kind: FormKind;
@@ -98,32 +99,32 @@ export function FormShell<T extends object>({ kind, title, initial, missing, chi
 
   const preview = (
     <div className={`relative space-y-4 transition ${busy ? "opacity-60" : ""}`}>
-      {!view && <div className="aspect-[210/297] animate-pulse rounded bg-white shadow" />}
+      {!view && <div className="aspect-[210/297] animate-pulse rounded bg-paper shadow" />}
       {view && Array.from({ length: pages }, (_, i) => (
         // eslint-disable-next-line @next/next/no-img-element
-        <img key={`${i}-${view.render!.version}`} src={forms.pageUrl(view.id, i + 1, view.render!.version)} alt={`Page ${i + 1}`} className="aspect-[210/297] w-full rounded-[4px] bg-white shadow-[0_1px_2px_rgba(15,23,42,.06),0_12px_32px_-12px_rgba(15,23,42,.25)]" />
+        <img key={`${i}-${view.render!.version}`} src={forms.pageUrl(view.id, i + 1, view.render!.version)} alt={`Page ${i + 1}`} className="aspect-[210/297] w-full rounded-[4px] bg-paper shadow-[0_1px_2px_rgba(15,23,42,.06),0_12px_32px_-12px_rgba(15,23,42,.25)]" />
       ))}
     </div>
   );
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-30 border-b border-slate-100 bg-white/85 pt-[env(safe-area-inset-top)] backdrop-blur">
+      <header className="board sticky top-0 z-30 border-b border-black/25 pt-[env(safe-area-inset-top)]">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
           <div className="flex items-center gap-2">
-            <Link href="/" className="grid h-9 w-9 place-items-center rounded-full text-xl text-slate-600 hover:bg-slate-100" aria-label="Accueil">←</Link>
-            <Logo />
+            <Link href="/" className="press grid h-10 w-10 place-items-center rounded-md text-white/80 hover:bg-paper/10 hover:text-white" aria-label="Accueil"><Icon name="arrow-left" /></Link>
+            <Logo tone="board" />
           </div>
-          <span className={`rounded-full bg-ink px-3 py-1.5 text-xs font-bold text-white transition ${busy ? "opacity-100" : "opacity-0"}`}>⏳ Mise à jour…</span>
+          {busy && <span className="stamp stamp-in bg-paper/90 text-[15px]">En cours</span>}
         </div>
       </header>
 
       {/* Mobile: form | preview switch */}
-      <div className="sticky top-14 z-20 border-b border-slate-100 bg-[#f7faf9]/95 px-4 py-2 backdrop-blur lg:hidden">
-        <div className="grid grid-cols-2 rounded-2xl bg-slate-200/70 p-1">
+      <div className="sticky top-14 z-20 border-b border-black/10 bg-wall/95 px-4 py-2 backdrop-blur lg:hidden">
+        <div className="grid grid-cols-2 rounded-md bg-ink/10 p-1">
           {(["form", "preview"] as const).map((t) => (
-            <button key={t} type="button" onClick={() => setTab(t)} className={`rounded-xl py-2 text-sm font-bold ${tab === t ? "bg-white text-ink shadow-sm" : "text-slate-500"}`}>
-              {t === "form" ? "✏️ Remplir" : "👀 Aperçu"}
+            <button key={t} type="button" onClick={() => setTab(t)} className={`rounded-md py-2 text-sm font-bold ${tab === t ? "bg-paper text-ink shadow-sm" : "text-ink/60"}`}>
+              <span className="inline-flex items-center justify-center gap-1.5"><Icon name={t === "form" ? "pencil" : "eye"} size={16} />{t === "form" ? "Remplir" : "Aperçu"}</span>
             </button>
           ))}
         </div>
@@ -135,20 +136,20 @@ export function FormShell<T extends object>({ kind, title, initial, missing, chi
           {/* `set` is only called from event handlers inside the form, never while rendering. */}
           {/* eslint-disable-next-line react-hooks/refs */}
           <div className="mt-6">{children(data, set, view)}</div>
-          {error && <p className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
+          {error && <p className="mt-4 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
         </div>
         <div className={tab === "preview" ? "" : "hidden lg:block"}>
           <div className="lg:sticky lg:top-20">{preview}</div>
         </div>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-100 bg-white/95 px-4 pt-3 pb-[max(.75rem,env(safe-area-inset-bottom))] backdrop-blur">
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-black/10 bg-paper/95 px-4 pt-3 pb-[max(.75rem,env(safe-area-inset-bottom))] backdrop-blur">
         <div className="mx-auto max-w-6xl lg:flex lg:justify-end">
           <button
             type="button"
             onClick={() => setPayOpen(true)}
             disabled={!view || busy}
-            className="w-full rounded-2xl bg-brand-500 px-5 py-3.5 text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 active:scale-[.98] disabled:opacity-60 lg:w-[420px]"
+            className="w-full rounded-md bg-brand-500 px-5 py-3.5 text-white transition hover:bg-brand-600 active:scale-[.98] disabled:opacity-60 lg:w-[420px]"
           >
             <span className="block font-display text-lg leading-tight font-bold">{paid ? "Télécharger à nouveau" : "Télécharger"}</span>
             <span className="block text-xs text-white/80">Word + PDF · sans filigrane</span>

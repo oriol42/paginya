@@ -107,14 +107,14 @@ export function CoverEditor({ docId, meta, enabled, onEnabled, onSvg, onState }:
           <div className="flex items-start gap-4">
             <div className="w-28 shrink-0">{preview && <CoverView svg={preview} />}</div>
             <div className="flex-1 space-y-2">
-              <p className="text-sm text-slate-600">Tes changements s&apos;appliquent automatiquement à la première page.</p>
+              <p className="text-sm text-ink/70">Tes changements s&apos;appliquent automatiquement à la première page.</p>
               <div className="flex flex-wrap gap-1.5">
                 {STYLES.map((s) => (
                   <button
                     key={s.id}
                     type="button"
                     onClick={() => setState((x) => ({ ...x, style: s.id, styleTouched: true }))}
-                    className={`rounded-full px-3 py-1.5 text-xs font-bold ${state.style === s.id ? "bg-ink text-white" : "bg-white text-slate-600 ring-1 ring-slate-200"}`}
+                    className={`rounded-full px-3 py-1.5 text-xs font-bold ${state.style === s.id ? "bg-ink text-white" : "bg-paper text-ink/70 ring-1 ring-black/10"}`}
                   >
                     {s.name}
                   </button>

@@ -6,7 +6,7 @@ import { emptyForm } from "@/lib/cover/kinds";
 import { PALETTES } from "@/lib/cover/palettes";
 import type { CoverForm, StyleId } from "@/lib/cover/types";
 import { INSTITUTIONS, institution } from "@/lib/institutions";
-import { Field, Input, Segmented } from "../ui";
+import { Field, Input, Segmented, Select } from "../ui";
 
 const W = 1080;
 const H = 1920;
@@ -214,14 +214,13 @@ export function VideoMaker() {
     <div className="mx-auto grid w-full max-w-5xl gap-8 px-5 py-8 lg:grid-cols-[1fr_360px]">
       <div className="space-y-5">
         <div>
-          <p className="text-sm font-bold tracking-wide text-brand-600 uppercase">Outil marketing</p>
           <h1 className="font-display text-3xl font-extrabold text-ink">Générateur de vidéos TikTok</h1>
-          <p className="mt-2 text-slate-600">Vidéo verticale 1080×1920 de 15 s, fabriquée avec le vrai moteur de Paginya. Change l&apos;école pour faire une vidéo par établissement.</p>
+          <p className="mt-2 text-ink/70">Vidéo verticale 1080×1920 de 15 s, fabriquée avec le vrai moteur de Paginya. Change l&apos;école pour faire une vidéo par établissement.</p>
         </div>
         <Field label="Établissement">
-          <select value={instId} onChange={(e) => setInstId(e.target.value)} className="w-full rounded-xl bg-white px-3.5 py-3 ring-1 ring-slate-200">
+          <Select value={instId} onChange={(e) => setInstId(e.target.value)}>
             {INSTITUTIONS.filter((i) => i.id !== "autre").map((i) => <option key={i.id} value={i.id}>{i.short}</option>)}
-          </select>
+          </Select>
         </Field>
         <Field label="Thème affiché"><Input value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
         <Field label="Nom de l'étudiant (exemple)"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
@@ -241,22 +240,22 @@ export function VideoMaker() {
           type="button"
           onClick={record}
           disabled={status === "prep" || status === "rec"}
-          className="w-full rounded-2xl bg-brand-500 py-4 font-display text-lg font-bold text-white shadow-lg shadow-brand-500/25 disabled:opacity-60"
+          className="w-full rounded-md bg-brand-500 py-4 font-display text-lg font-bold text-white disabled:opacity-60"
         >
-          {status === "prep" ? "Préparation…" : status === "rec" ? "Enregistrement (15 s)…" : "🎬 Générer la vidéo"}
+          {status === "prep" ? "Préparation…" : status === "rec" ? "Enregistrement (15 s)…" : "Générer la vidéo"}
         </button>
         {video && (
-          <a href={video.url} download={`paginya-${instId}.${video.ext}`} className="block rounded-2xl bg-ink py-4 text-center font-display text-lg font-bold text-white">
+          <a href={video.url} download={`paginya-${instId}.${video.ext}`} className="block rounded-md bg-ink py-4 text-center font-display text-lg font-bold text-white">
             ⬇ Télécharger la vidéo ({video.ext.toUpperCase()})
           </a>
         )}
         {video?.ext === "webm" && (
-          <p className="text-xs text-slate-500">Pour convertir en MP4 : <code>ffmpeg -i paginya-{instId}.webm -c:v libx264 -pix_fmt yuv420p propre.mp4</code></p>
+          <p className="text-xs text-ink/60">Pour convertir en MP4 : <code>ffmpeg -i paginya-{instId}.webm -c:v libx264 -pix_fmt yuv420p propre.mp4</code></p>
         )}
       </div>
       <div>
-        <canvas ref={canvas} width={W} height={H} className="aspect-[9/16] w-full rounded-3xl bg-brand-50 shadow-xl ring-1 ring-slate-200" />
-        {video && <video src={video.url} controls className="mt-4 aspect-[9/16] w-full rounded-3xl bg-black" />}
+        <canvas ref={canvas} width={W} height={H} className="aspect-[9/16] w-full rounded-md bg-brand-50 shadow-xl ring-1 ring-black/10" />
+        {video && <video src={video.url} controls className="mt-4 aspect-[9/16] w-full rounded-md bg-black" />}
       </div>
     </div>
   );
