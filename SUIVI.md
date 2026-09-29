@@ -191,3 +191,12 @@ Point de départ : le fondateur a importé un cours en Markdown (`cours_module1_
 - Les serveurs acceptent les deux adresses (CORS) pendant la transition.
 - **Prix** : les petits montants sont passés à +50 F pour couvrir les 3 % de Fapshi. Paginya : page de garde et lettre 350 F, CV et épreuve 550 F. Affichya : affiche 250 F, vidéos 550 et 800 F. Les montants à partir de 1 000 F ne changent pas.
 - À faire par le fondateur : ajouter les propriétés `*.pages.dev` dans Google Search Console (le code de vérification est déjà dans les pages), puis envoyer `sitemap.xml`.
+
+## Nouvelle interface « Les valves » (29/09/2026) ✅ en ligne
+- Refaite de zéro avec les skills Impeccable / Emil Kowalski / Taste. Univers : le tableau d'affichage de la fac (vert tableau, cadre bois, feuilles épinglées, tampon violet CONFORME / EN COURS / PAYÉ, surligneur jaune pour l'action principale, stylo bleu pour les notes).
+- Règles écrites dans `web/DESIGN.md` (+ `web/.impeccable/design.json`, brief dans `web/.impeccable/surfaces/`). À lire avant toute nouvelle page.
+- Plus aucun emoji : icônes Lucide embarquées dans `web/src/components/Icon.tsx` (ajouter un icône = coller son SVG dans PATHS).
+- Polices : Sofia Sans + Sofia Sans Extra Condensed (woff2 locales). Tout le décor est en CSS (rien à télécharger).
+- Composants : `PinLabel` (bouton jaune épinglé), `Stamp`, `Select` (chevron), `TextArea` qui grandit toute seule, dans `components/ui.tsx`.
+- Relecture finale faite ; défauts corrigés (cadre bois, feuille « avant » froissée, boutons épinglés, rythme des sections, panneaux de l'éditeur sans cartes imbriquées).
+- Piège : les classes maison de `globals.css` ne sont pas dans un `@layer` ; si une classe maison met `position`, elle écrase `absolute` de Tailwind.
