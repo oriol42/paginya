@@ -116,7 +116,7 @@ export function compose(form: CoverForm): CoverModel {
   const mention: string[] = [];
   if (form.kind === "rapport_stage") {
     if (form.structure || form.period)
-      mention.push(`Stage effectué ${form.structure ? `à ${form.structure}` : ""} ${form.period}`.replace(/\s+/g, " ").trim());
+      mention.push(`Stage effectué ${form.structure ? `à ${form.structure}` : ""} ${form.period.replace(/^(Du|Période)\b/, (w) => w.toLowerCase())}`.replace(/\s+/g, " ").trim());
     if (form.degree) mention.push(`Présenté en vue de l'obtention du diplôme de ${form.degree}`);
   } else if (form.kind === "memoire") {
     if (form.degree) mention.push(`Mémoire présenté et soutenu en vue de l'obtention du diplôme de ${form.degree}`);
