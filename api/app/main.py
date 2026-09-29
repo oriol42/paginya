@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import config, db, doc_routes, fapshi, forms_routes, pricing, storage
+from . import config, db, doc_routes, fapshi, forms_routes, guard, pricing, storage
 from .render import render_cover
 from .svg_safe import UnsafeSvg, sanitize_svg
 
@@ -40,6 +40,16 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Paginya API", lifespan=lifespan)
+guard.LIMITS[:] = [
+    ("POST", r"/documents", 30, 3600),  # new documents
+    ("POST", r"/documents/[^/]+/render", 150, 3600),
+    ("POST", r"/documents/[^/]+/before", 30, 3600),
+    ("POST", r"/scans", 80, 3600),  # OCR of photos
+    ("POST", r"/orders", 30, 3600),
+    ("POST", r"/(orders|documents|forms)/[^/]+/pay", 20, 3600),
+    ("POST", r"/forms", 40, 3600),
+]
+app.middleware("http")(guard.middleware)  # before CORS: a refusal still carries the CORS headers
 app.include_router(doc_routes.router)
 app.include_router(doc_routes.scan_router)
 app.include_router(forms_routes.router)
