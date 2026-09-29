@@ -214,3 +214,12 @@ Reste à faire, dans l'ordre :
 2. Logos de facultés manquants (Wikimedia n'en a presque pas) : sites officiels.
 3. Étudier de vrais rapports/mémoires en ligne pour améliorer le moteur.
 4. Affichya : récupération de boutique (lien WhatsApp + Google via Supabase), moteur de pub plus riche (idées : HyperFrames/GSAP, Lottie).
+
+## Étude de vrais rapports (DICAMES, 29/09/2026) ✅
+Rapports de stage réels d'étudiants camerounais (dépôt DICAMES du CAMES) passés dans le moteur. Corrigé :
+- PDF : en-têtes/pieds de page répétés (« OCTOBRE 2022 », nom de l'entreprise) et numéros de page retirés ; ancien sommaire tapé à la main (lignes « ....... ») retiré ; « 2. » seul sur sa ligne recollé à son titre ; texte des organigrammes regroupé sur une ligne (plus de faux titres) ; phrases coupées en fin de ligne, autour d'une image ou avec « Sciences et / Techniques » recollées (`extract.pdf_cleanup`, `_cut`).
+- Puces Word « ❖ ◆ ■ ● ➤ » reconnues.
+- Page de garde : lignes coupées (« REPUBLIQUE DU / CAMEROUN »), « Rédigé et soutenu par », « Sous l'encadrement professionnel de », « Filière : » + valeur à la ligne, niveau, période/structure/diplôme sur plusieurs lignes, doublons ; titre laissé vide plutôt que faux.
+- PDF abîmé : réparé par Ghostscript ; polices sans table (« 6WDJH ») décodées ; PDF scanné : OCR Tesseract (25 pages max).
+Résultat sur un vrai rapport : 166 → 66 titres (le vrai plan), garde entièrement lue. Benchmark synthétique inchangé (97,6 %).
+Téléchargement lent : les PDF DICAMES font 2-4 Mo (≈2 Ko/s ici) ; le serveur ne gère pas la reprise.

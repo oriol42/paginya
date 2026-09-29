@@ -386,8 +386,35 @@ def from_pdf(path: Path) -> list[Raw]:
     text, _ = fix_shifted_fonts(raw)
     text = pdf_cleanup(text)
     if len(text.strip()) < 20:
-        raise ExtractError("Ce PDF ne contient pas de texte (c'est peut-être un scan). Les photos et scans arrivent bientôt.")
+        text = _ocr_pdf(path)  # a scanned document: read its pages like photos
     return from_text(text, source="pdf")
+
+
+OCR_MAX_PAGES = 25  # the free server reads ~1 page every few seconds
+
+
+def _ocr_pdf(path: Path) -> str:
+    """Scanned PDF (only pictures of pages): each page rasterised then read by Tesseract, pages kept apart."""
+    import tempfile
+
+    from .scan import ScanError, ocr_local
+
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            subprocess.run(["pdftoppm", "-r", "200", "-gray", "-jpeg", "-l", str(OCR_MAX_PAGES), str(path), f"{tmp}/p"],
+                           capture_output=True, timeout=300, check=True)
+        except (subprocess.SubprocessError, FileNotFoundError) as exc:
+            raise ExtractError("Impossible de lire ce PDF : il est peut-être abîmé. Réessaie avec le fichier Word.") from exc
+        pages = []
+        for jpg in sorted(Path(tmp).glob("p-*.jpg")):
+            try:
+                pages.append(ocr_local(jpg.read_bytes())[0])
+            except ScanError:
+                continue
+    text = "\n\n".join(p for p in pages if p.strip())
+    if len(text.strip()) < 20:
+        raise ExtractError("Ce PDF ne contient pas de texte lisible. Prends plutôt tes pages en photo, bien à plat.")
+    return text
 
 
 # --- Word ------------------------------------------------------------------
