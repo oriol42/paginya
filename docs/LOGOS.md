@@ -32,6 +32,15 @@ les retire sur simple demande (contact dans les mentions légales). L'utilisateu
 | cuib.png | Catholic University Institute of Buea | site officiel cuib-cameroon.org |
 | iujns.png | Institut Universitaire Joseph Ndi Samba | Wikimedia Commons |
 | iutfv.png | IUT Fotso Victor | site officiel (non utilisé par défaut : bannière) |
+| iutd.png | IUT de Douala | Wikimedia Commons « Logo IUT Douala.png » (CC BY-SA 4.0) |
+| un.png | Université de Ngaoundéré | site officiel de l'Université d'Ebolowa (unv-ebolowa.cm) |
+| ueb.png | Université d'Ebolowa | site officiel unv-ebolowa.cm |
+| supptic.png | SUP'PTIC | site officiel e-supptic.cm |
+| essec.png | ESSEC Douala | site officiel essec-dla.com |
+| iuc.png | IUC Douala | site officiel myiuc.com (rogné : sans les mentions d'accréditation) |
+| siantou.png | Institut Universitaire Siantou | site officiel siantou-univ.com |
+| upac.png | UPAC | site officiel upac.cm |
 
-Sans logo pour l'instant (l'utilisateur importe le sien) : Ngaoundéré, ENSAI, Ebolowa, SUP'PTIC, ISSEA, IUC, Siantou, UPAC.
+Sans logo propre pour l'instant (l'utilisateur importe le sien) : ISSEA (site hors ligne), facultés de UY1/UY2/Dschang (leurs sites n'affichent que le logo de l'université).
+Méthode : trouver le site officiel, prendre l'image « logo » de sa page d'accueil (script dans l'historique : find.py).
 Traitement : fond blanc rogné, 400 px max, PNG 256 couleurs (≈ 390 Ko pour tout le dossier).

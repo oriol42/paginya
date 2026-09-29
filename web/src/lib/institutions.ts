@@ -21,7 +21,7 @@ const UY1 = ["UNIVERSITÉ DE YAOUNDÉ I", "THE UNIVERSITY OF YAOUNDE I", "uy1"];
 const UY2 = ["UNIVERSITÉ DE YAOUNDÉ II – SOA", "THE UNIVERSITY OF YAOUNDE II – SOA", "uy2"];
 const UDO = ["UNIVERSITÉ DE DOUALA", "THE UNIVERSITY OF DOUALA", "udo"];
 const UDS = ["UNIVERSITÉ DE DSCHANG", "UNIVERSITY OF DSCHANG", "uds"];
-const UN = ["UNIVERSITÉ DE NGAOUNDÉRÉ", "THE UNIVERSITY OF NGAOUNDERE", ""];
+const UN = ["UNIVERSITÉ DE NGAOUNDÉRÉ", "THE UNIVERSITY OF NGAOUNDERE", "un"];
 const UMA = ["UNIVERSITÉ DE MAROUA", "THE UNIVERSITY OF MAROUA", "uma"];
 
 /** A faculty/school of a university carries both logos: the university's and its own (when we have it). */
@@ -49,7 +49,7 @@ export const INSTITUTIONS: Institution[] = [
   school("udo", "Université de Douala", null, UDO[0], UDO[1], "udo"),
   school("udo-iut", "IUT de Douala", UDO, "INSTITUT UNIVERSITAIRE DE TECHNOLOGIE", "UNIVERSITY INSTITUTE OF TECHNOLOGY", "iutd"),
   school("udo-enspd", "ENSP Douala (ENSPD)", UDO, "ÉCOLE NATIONALE SUPÉRIEURE POLYTECHNIQUE DE DOUALA", "NATIONAL HIGHER POLYTECHNIC SCHOOL OF DOUALA", "enspd"),
-  school("udo-essec", "ESSEC Douala", UDO, "ÉCOLE SUPÉRIEURE DES SCIENCES ÉCONOMIQUES ET COMMERCIALES", "HIGHER SCHOOL OF ECONOMICS AND COMMERCE", "udo"),
+  school("udo-essec", "ESSEC Douala", UDO, "ÉCOLE SUPÉRIEURE DES SCIENCES ÉCONOMIQUES ET COMMERCIALES", "HIGHER SCHOOL OF ECONOMICS AND COMMERCE", "essec"),
   school("udo-enset", "ENSET Douala", UDO, "ÉCOLE NORMALE SUPÉRIEURE D'ENSEIGNEMENT TECHNIQUE", "HIGHER TECHNICAL TEACHER TRAINING COLLEGE", "udo"),
   school("udo-fgi", "Faculté de Génie Industriel (Douala)", UDO, "FACULTÉ DE GÉNIE INDUSTRIEL", "FACULTY OF INDUSTRIAL ENGINEERING", "udo"),
   school("udo-fse", "UDo · Sciences Économiques et Gestion Appliquée", UDO, "FACULTÉ DES SCIENCES ÉCONOMIQUES ET DE GESTION APPLIQUÉE", "FACULTY OF ECONOMICS AND APPLIED MANAGEMENT", "udo"),
@@ -58,17 +58,17 @@ export const INSTITUTIONS: Institution[] = [
   school("uds-iutfv", "IUT Fotso Victor de Bandjoun", UDS, "INSTITUT UNIVERSITAIRE DE TECHNOLOGIE FOTSO VICTOR", "FOTSO VICTOR UNIVERSITY INSTITUTE OF TECHNOLOGY", "uds"),
   school("ub", "University of Buea", null, "UNIVERSITÉ DE BUEA", "UNIVERSITY OF BUEA", "ub"),
   school("uba", "University of Bamenda", null, "UNIVERSITÉ DE BAMENDA", "THE UNIVERSITY OF BAMENDA", "uba"),
-  school("un", "Université de Ngaoundéré", null, UN[0], UN[1]),
+  school("un", "Université de Ngaoundéré", null, UN[0], UN[1], "un"),
   school("un-ensai", "ENSAI Ngaoundéré", UN, "ÉCOLE NATIONALE SUPÉRIEURE DES SCIENCES AGRO-INDUSTRIELLES", "NATIONAL SCHOOL OF AGRO-INDUSTRIAL SCIENCES"),
   school("uma", "Université de Maroua", null, UMA[0], UMA[1], "uma"),
   school("uma-enspm", "Polytechnique Maroua (ENSPM)", UMA, "ÉCOLE NATIONALE SUPÉRIEURE POLYTECHNIQUE DE MAROUA", "NATIONAL ADVANCED SCHOOL OF ENGINEERING OF MAROUA", "uma"),
   school("ug", "Université de Garoua", null, "UNIVERSITÉ DE GAROUA", "THE UNIVERSITY OF GAROUA", "ug"),
   school("ubt", "Université de Bertoua", null, "UNIVERSITÉ DE BERTOUA", "THE UNIVERSITY OF BERTOUA", "ubt"),
-  school("ueb", "Université d'Ebolowa", null, "UNIVERSITÉ D'EBOLOWA", "THE UNIVERSITY OF EBOLOWA"),
+  school("ueb", "Université d'Ebolowa", null, "UNIVERSITÉ D'EBOLOWA", "THE UNIVERSITY OF EBOLOWA", "ueb"),
   // --- Grandes écoles
   school("enam", "ENAM", null, "ÉCOLE NATIONALE D'ADMINISTRATION ET DE MAGISTRATURE", "NATIONAL SCHOOL OF ADMINISTRATION AND MAGISTRACY", "enam"),
   school("enstp", "ENSTP Yaoundé (Travaux Publics)", null, "ÉCOLE NATIONALE SUPÉRIEURE DES TRAVAUX PUBLICS", "NATIONAL ADVANCED SCHOOL OF PUBLIC WORKS", "enstp"),
-  school("supptic", "SUP'PTIC", null, "ÉCOLE NATIONALE SUPÉRIEURE DES POSTES, DES TÉLÉCOMMUNICATIONS ET DES TIC", "NATIONAL ADVANCED SCHOOL OF POSTS, TELECOMMUNICATIONS AND ICT"),
+  school("supptic", "SUP'PTIC", null, "ÉCOLE NATIONALE SUPÉRIEURE DES POSTES, DES TÉLÉCOMMUNICATIONS ET DES TIC", "NATIONAL ADVANCED SCHOOL OF POSTS, TELECOMMUNICATIONS AND ICT", "supptic"),
   school("issea", "ISSEA", null, "INSTITUT SOUS-RÉGIONAL DE STATISTIQUE ET D'ÉCONOMIE APPLIQUÉE", "SUB-REGIONAL INSTITUTE OF STATISTICS AND APPLIED ECONOMICS"),
   school("iai", "IAI Cameroun", null, "INSTITUT AFRICAIN D'INFORMATIQUE – CAMEROUN", "AFRICAN INSTITUTE OF COMPUTER SCIENCES – CAMEROON", "iai"),
   // --- Private universities and institutes
@@ -78,9 +78,9 @@ export const INSTITUTIONS: Institution[] = [
   school("ictu", "The ICT University", null, "THE ICT UNIVERSITY", "THE ICT UNIVERSITY", "ictu"),
   school("cuib", "Catholic University Institute of Buea", null, "INSTITUT UNIVERSITAIRE CATHOLIQUE DE BUEA", "CATHOLIC UNIVERSITY INSTITUTE OF BUEA", "cuib"),
   school("iujns", "Institut Universitaire Joseph Ndi Samba", null, "INSTITUT UNIVERSITAIRE JOSEPH NDI SAMBA", "JOSEPH NDI SAMBA UNIVERSITY INSTITUTE", "iujns"),
-  school("iuc", "IUC Douala", null, "INSTITUT UNIVERSITAIRE DE LA CÔTE", "UNIVERSITY INSTITUTE OF THE COAST"),
-  school("siantou", "Institut Universitaire Siantou", null, "INSTITUT UNIVERSITAIRE SIANTOU", "SIANTOU UNIVERSITY INSTITUTE"),
-  school("upac", "UPAC (Université Protestante d'Afrique Centrale)", null, "UNIVERSITÉ PROTESTANTE D'AFRIQUE CENTRALE", "PROTESTANT UNIVERSITY OF CENTRAL AFRICA"),
+  school("iuc", "IUC Douala", null, "INSTITUT UNIVERSITAIRE DE LA CÔTE", "UNIVERSITY INSTITUTE OF THE COAST", "iuc"),
+  school("siantou", "Institut Universitaire Siantou", null, "INSTITUT UNIVERSITAIRE SIANTOU", "SIANTOU UNIVERSITY INSTITUTE", "siantou"),
+  school("upac", "UPAC (Université Protestante d'Afrique Centrale)", null, "UNIVERSITÉ PROTESTANTE D'AFRIQUE CENTRALE", "PROTESTANT UNIVERSITY OF CENTRAL AFRICA", "upac"),
   // --- Secondary
   { id: "lycee", short: "Lycée / collège", fr: ["LYCÉE DE …"], en: ["… HIGH SCHOOL"], secondary: true },
   { id: "autre", short: "Autre établissement / entreprise", fr: ["NOM DE L'ÉTABLISSEMENT"], en: ["NAME OF THE INSTITUTION"] },
