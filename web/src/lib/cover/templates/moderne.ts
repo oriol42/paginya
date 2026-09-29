@@ -20,6 +20,7 @@ export function moderne(m: CoverModel, o: RenderOptions): string {
 
   // Institution (top right)
   logo(out, m.logo, W - 62 - 58, 40, 58);
+  if (m.logo2) logo(out, m.logo2, W - 62 - 58 - 66, 40, 58);
   const orgF: FontSpec = { family: "Poppins", weight: 600, size: 9, letterSpacing: 1 };
   const orgLines = wrap(m.org.toUpperCase(), orgF, 230);
   textBlock(out, orgLines.slice(0, 3), W - 62, m.logo ? 118 : 60, orgF, "#475569", { anchor: "end", lineHeight: 12 });

@@ -83,12 +83,16 @@ def main():
         ):
             insert_index(doc, marker, service, setup)
         indexes = doc.getDocumentIndexes()
-        for _ in range(2):
+        # Page numbers in the indexes settle after a second pass; without indexes one field refresh is enough.
+        for _ in range(2 if indexes.getCount() else 1):
             doc.getTextFields().refresh()
             for i in range(indexes.getCount()):
                 indexes.getByIndex(i).update()
-        doc.storeToURL(uno.systemPathToFileUrl(os.path.abspath(out_docx)), (pv("FilterName", "MS Word 2007 XML"),))
-        doc.storeToURL(uno.systemPathToFileUrl(os.path.abspath(out_pdf)), (pv("FilterName", "writer_pdf_Export"),))
+        # "-" skips an export: previews only need the PDF, the Word file is made when it is downloaded.
+        if out_docx != "-":
+            doc.storeToURL(uno.systemPathToFileUrl(os.path.abspath(out_docx)), (pv("FilterName", "MS Word 2007 XML"),))
+        if out_pdf != "-":
+            doc.storeToURL(uno.systemPathToFileUrl(os.path.abspath(out_pdf)), (pv("FilterName", "writer_pdf_Export"),))
     finally:
         doc.close(True)
 

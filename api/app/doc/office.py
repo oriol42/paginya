@@ -4,6 +4,8 @@ from __future__ import annotations
 import os
 import subprocess
 import threading
+import time
+from functools import lru_cache
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -15,21 +17,26 @@ PIPE = os.getenv("PROPRE_LO_PIPE", "propre_lo")
 WORKER = Path(__file__).with_name("uno_worker.py")
 _lock = threading.Lock()  # one LibreOffice instance: one document at a time
 
+PREVIEW_DPI = 120  # sharp enough to read on a phone or a desktop screen, still light as WebP
+FIRST_PAGES = 3  # rendered before answering; the rest follow in the background
+
 
 class OfficeError(RuntimeError):
     pass
 
 
-def finalize(src_docx: Path, out_docx: Path, out_pdf: Path) -> None:
+def finalize(src_docx: Path, out_docx: Path | None, out_pdf: Path | None) -> None:
+    """Real indexes + exports. Pass None to skip an output (previews only need the PDF)."""
     profile = DATA_DIR / "lo-profile"
     profile.mkdir(parents=True, exist_ok=True)
+    expected = out_pdf or out_docx
     with _lock:
         for attempt in range(2):
             proc = subprocess.run(
-                [UNO_PYTHON, str(WORKER), PIPE, str(profile), str(src_docx), str(out_docx), str(out_pdf)],
+                [UNO_PYTHON, str(WORKER), PIPE, str(profile), str(src_docx), str(out_docx or "-"), str(out_pdf or "-")],
                 capture_output=True, timeout=240,
             )
-            if proc.returncode == 0 and out_pdf.is_file():
+            if proc.returncode == 0 and expected is not None and expected.is_file():
                 return
             if attempt == 0:
                 # A crashed soffice leaves a dead pipe: kill it and retry once.
@@ -45,34 +52,70 @@ def page_count(pdf: Path) -> int:
     return 0
 
 
-def previews(pdf: Path, out_dir: Path, watermark: bool, dpi: int = 96) -> int:
-    out_dir.mkdir(parents=True, exist_ok=True)
-    for old in out_dir.glob("*.png"):
-        old.unlink()
-    subprocess.run(["pdftoppm", "-r", str(dpi), "-png", str(pdf), str(out_dir / "p")], check=True, capture_output=True)
-    pages = sorted(out_dir.glob("p-*.png"))
-    for i, page in enumerate(pages, start=1):
-        target = out_dir / f"{i}.png"
+def _rasterize(pdf: Path, out_dir: Path, first: int, last: int, watermark: bool, dpi: int) -> None:
+    prefix = out_dir / f"r{first}"
+    # Raw PPM output: pdftoppm's own PNG compression costs ~15x the drawing itself.
+    subprocess.run(["pdftoppm", "-r", str(dpi), "-f", str(first), "-l", str(last), str(pdf), str(prefix)],
+                   check=True, capture_output=True)
+    for raw in sorted(out_dir.glob(f"r{first}-*.ppm")):
+        n = int(raw.stem.rsplit("-", 1)[1])
+        with Image.open(raw) as img:
+            page = img.convert("RGB")
         if watermark:
-            _watermark(page, target)
-            page.unlink()
-        else:
-            page.rename(target)
-    return len(pages)
+            page = Image.alpha_composite(page.convert("RGBA"), _watermark_layer(page.size)).convert("RGB")
+        tmp = out_dir / f".{n}.webp"
+        page.save(tmp, "WEBP", quality=80, method=2)
+        tmp.replace(out_dir / f"{n}.webp")  # atomic: a reader never sees half a file
+        raw.unlink()
 
 
-def _watermark(src: Path, dst: Path) -> None:
-    with Image.open(src).convert("RGBA") as img:
-        layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
-        size = max(14, img.width // 11)
-        try:
-            font = ImageFont.truetype(str(FONTS_DIR / "poppins-ExtraBold.ttf"), size)
-        except OSError:
-            font = ImageFont.load_default()
-        text = "APERÇU · PAGINYA"
-        stamp = Image.new("RGBA", (int(size * 9.5), int(size * 1.6)), (0, 0, 0, 0))
-        ImageDraw.Draw(stamp).text((0, 0), text, font=font, fill=(6, 95, 70, 38))
-        stamp = stamp.rotate(35, expand=True)
-        for y in range(-stamp.height // 3, img.height, int(stamp.height * 0.9)):
-            layer.alpha_composite(stamp, (max(0, (img.width - stamp.width) // 2), max(0, y)))
-        Image.alpha_composite(img, layer).convert("RGB").save(dst, optimize=True)
+def previews(pdf: Path, out_dir: Path, watermark: bool, dpi: int = PREVIEW_DPI, pages: int | None = None) -> int:
+    """First pages now, the others in a background thread (the page route waits for them)."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for old in [*out_dir.glob("*.webp"), *out_dir.glob("*.png")]:
+        old.unlink(missing_ok=True)
+    total = pages or page_count(pdf)
+    if total == 0:
+        return 0
+    head = min(FIRST_PAGES, total)
+    _rasterize(pdf, out_dir, 1, head, watermark, dpi)
+    if total > head:
+        marker = out_dir / ".pending"
+        marker.write_text(str(total))
+
+        def rest() -> None:
+            try:
+                for start in range(head + 1, total + 1, 8):
+                    _rasterize(pdf, out_dir, start, min(start + 7, total), watermark, dpi)
+            finally:
+                marker.unlink(missing_ok=True)
+
+        threading.Thread(target=rest, daemon=True).start()
+    return total
+
+
+def wait_for_page(out_dir: Path, n: int, timeout: float = 60) -> Path | None:
+    """A page still being rendered in the background: wait for it rather than answer 404."""
+    path = out_dir / f"{n}.webp"
+    end = time.time() + timeout
+    while not path.is_file() and (out_dir / ".pending").is_file() and time.time() < end:
+        time.sleep(0.25)
+    return path if path.is_file() else None
+
+
+@lru_cache(maxsize=4)
+def _watermark_layer(size: tuple[int, int]) -> Image.Image:
+    """Built once per page size (all pages of a document share it), then just composited."""
+    width, height = size
+    layer = Image.new("RGBA", size, (0, 0, 0, 0))
+    font_size = max(14, width // 11)
+    try:
+        font = ImageFont.truetype(str(FONTS_DIR / "poppins-ExtraBold.ttf"), font_size)
+    except OSError:
+        font = ImageFont.load_default()
+    stamp = Image.new("RGBA", (int(font_size * 9.5), int(font_size * 1.6)), (0, 0, 0, 0))
+    ImageDraw.Draw(stamp).text((0, 0), "APERÇU · PAGINYA", font=font, fill=(6, 95, 70, 38))
+    stamp = stamp.rotate(35, expand=True)
+    for y in range(-stamp.height // 3, height, int(stamp.height * 0.9)):
+        layer.alpha_composite(stamp, (max(0, (width - stamp.width) // 2), max(0, y)))
+    return layer

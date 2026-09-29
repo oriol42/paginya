@@ -138,6 +138,7 @@ export function compose(form: CoverForm): CoverModel {
     headerEn,
     headerMissing: def.academic && !form.headerFr.trim(),
     logo: form.logo,
+    logo2: form.logo2,
     org: orgLine,
     docLabel: form.docLabel || def.docLabel,
     title: form.title.trim(),

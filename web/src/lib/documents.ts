@@ -44,6 +44,23 @@ export type DocMeta = {
   lists: number;
   title?: string;
   changes?: string[];
+  /** Read from the student's own cover page (hidden from the text, used to fill Paginya's cover). */
+  cover?: DocCoverInfo;
+};
+
+export type DocCoverInfo = {
+  header_fr?: string[];
+  header_en?: string[];
+  title?: string;
+  doc_label?: string;
+  authors?: { name: string; info?: string }[];
+  supervisors?: { name: string; role?: string; info?: string }[];
+  matricule?: string;
+  year?: string;
+  degree?: string;
+  specialty?: string;
+  structure?: string;
+  period?: string;
 };
 
 export type DocView = {
@@ -59,7 +76,7 @@ export type DocView = {
   options: DocOptions;
   has_cover: boolean;
   letterhead?: Letterhead | null;
-  render: { pages: number; version: number } | null;
+  render: { pages: number; version: number; stale?: boolean } | null;
 };
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
@@ -91,9 +108,9 @@ export const docs = {
   update: (id: string, patch: Partial<{ blocks: Block[]; style: DocStyle; options: DocOptions; kind: string; letterhead: Letterhead; cover_svg: string; remove_cover: boolean }>) =>
     call<DocView>(`/documents/${id}`, { method: "PUT", body: JSON.stringify(patch) }),
   render: (id: string) => call<DocView>(`/documents/${id}/render`, { method: "POST" }),
-  pageUrl: (id: string, n: number, version: number) => `${API_URL}/documents/${id}/pages/${n}.png?v=${version}`,
+  pageUrl: (id: string, n: number, version: number) => `${API_URL}/documents/${id}/pages/${n}.webp?v=${version}`,
   before: (id: string) => call<{ pages: number }>(`/documents/${id}/before`, { method: "POST" }),
-  beforeUrl: (id: string, n: number) => `${API_URL}/documents/${id}/before/${n}.png`,
+  beforeUrl: (id: string, n: number) => `${API_URL}/documents/${id}/before/${n}.webp`,
   remove: (id: string) => call<{ deleted: boolean }>(`/documents/${id}`, { method: "DELETE" }),
 };
 

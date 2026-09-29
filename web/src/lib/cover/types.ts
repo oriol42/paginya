@@ -6,7 +6,7 @@ export type DocKind =
   | "rapport_pro"
   | "autre";
 
-export type StyleId = "officiel" | "moderne" | "corporate" | "minimal";
+export type StyleId = "officiel" | "moderne" | "corporate" | "minimal" | "bandeau" | "cadre" | "lateral" | "vague";
 
 /** Author (info = matricule) or supervisor (role + info = grade/fonction). */
 export type Person = { name: string; role?: string; info?: string };
@@ -19,7 +19,8 @@ export type CoverForm = {
   headerEn: string;
   showRepublic: boolean;
   showMinistry: boolean;
-  logo?: string; // data: URL
+  logo?: string; // data: URL (university, or the only logo)
+  logo2?: string; // second logo: faculty / school, drawn on the other side
   docLabel: string;
   title: string;
   structure: string; // host company (internship) or client (pro)
@@ -48,6 +49,7 @@ export type CoverModel = {
   headerFr: string[][]; // groups of lines, separated by decorative stars
   headerEn: string[][];
   logo?: string;
+  logo2?: string;
   org: string; // single-line institution/company name for modern styles
   docLabel: string;
   title: string;

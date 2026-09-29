@@ -200,3 +200,17 @@ Point de départ : le fondateur a importé un cours en Markdown (`cours_module1_
 - Composants : `PinLabel` (bouton jaune épinglé), `Stamp`, `Select` (chevron), `TextArea` qui grandit toute seule, dans `components/ui.tsx`.
 - Relecture finale faite ; défauts corrigés (cadre bois, feuille « avant » froissée, boutons épinglés, rythme des sections, panneaux de l'éditeur sans cartes imbriquées).
 - Piège : les classes maison de `globals.css` ne sont pas dans un `@layer` ; si une classe maison met `position`, elle écrase `absolute` de Tailwind.
+
+## En cours (29/09/2026, nuit) — PAS encore déployé
+Fait (local, tests API 49/49 OK, tsc OK) :
+- Titre du document : placé en haut de la page 1 (ou sur la page de garde), plus après le sommaire (`render.py build_docx`).
+- Lecture de la page de garde de l'étudiant (`api/app/doc/cover_info.py`) : école, titre, auteurs + matricule, encadreurs, structure, période, année → `meta.cover` ; les lignes de l'ancienne garde sont masquées (`hidden`).
+- Éditeur : panneau Garde = studio complet (type, 8 modèles, 9 couleurs, détails, 2 logos), pré-rempli depuis `meta.cover`, école reconnue automatiquement (`CoverEditor.tsx`). Page 1 dessinée en direct dans le navigateur ; une modif de garde ne relance plus LibreOffice (`render.stale`, reconstruit au téléchargement).
+- 4 nouveaux modèles (`lib/cover/templates/extra.ts` : bandeau, cadre, latéral, vagues), 4 palettes, second logo (`logo2`, faculté) ; logo IUT Douala ajouté.
+- Vitesse : aperçus WebP 120 dpi (plus nets), rendus en PPM puis WebP (≈4× plus rapide), 3 premières pages tout de suite puis le reste en fond ; Word exporté seulement au téléchargement ; un seul passage d'index s'il n'y a pas de sommaire.
+- Zoom « Agrandir » dans l'éditeur, transitions (panneaux, pages qui apparaissent en fondu).
+Reste à faire, dans l'ordre :
+1. Vérifier visuellement l'éditeur (capture `ed-cover.png` faite, pas encore regardée), puis commit + déploiement (API Render + web Cloudflare).
+2. Logos de facultés manquants (Wikimedia n'en a presque pas) : sites officiels.
+3. Étudier de vrais rapports/mémoires en ligne pour améliorer le moteur.
+4. Affichya : récupération de boutique (lien WhatsApp + Google via Supabase), moteur de pub plus riche (idées : HyperFrames/GSAP, Lottie).

@@ -61,7 +61,7 @@ def _render(order_id: str, kind: str, data: dict, paid: bool) -> dict:
         office.finalize(folder / "raw.docx", folder / "final.docx", folder / "final.pdf")
     except office.OfficeError as exc:
         raise HTTPException(500, "La mise en page a échoué, réessaie") from exc
-    pages = office.previews(folder / "final.pdf", folder / "pages", watermark=not paid, dpi=96)
+    pages = office.previews(folder / "final.pdf", folder / "pages", watermark=not paid)
     return {"pages": pages, "version": int(time.time() * 1000)}
 
 
@@ -111,13 +111,13 @@ def _rebuild_if_lost(order_id: str) -> None:
         _render(order_id, fd["kind"], fd["data"], paid=order["status"] == "PAID")
 
 
-@router.get("/{order_id}/pages/{n}.png")
-def page(order_id: str, n: int) -> FileResponse:
+@router.get("/{order_id}/pages/{n}.{ext}")
+def page(order_id: str, n: int, ext: str) -> FileResponse:
     _rebuild_if_lost(order_id)
-    path = form_dir(order_id) / "pages" / f"{n}.png"
-    if not path.is_file():
+    path = office.wait_for_page(form_dir(order_id) / "pages", n)
+    if ext not in ("png", "webp") or path is None:
         raise HTTPException(404, "Page introuvable")
-    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "no-cache"})
+    return FileResponse(path, media_type="image/webp", headers={"Cache-Control": "no-cache"})
 
 
 def final_file(order_id: str, fmt: str) -> Path:

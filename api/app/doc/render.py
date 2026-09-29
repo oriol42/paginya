@@ -784,11 +784,20 @@ def build_docx(document: dict, images_dir: Path) -> bytes:
 
     started = False
     has_cover = opts["cover"] and document.get("cover_svg")
+    # The document's own title (and subtitle) above the first heading always opens the document:
+    # on the cover when there is one (so it is not repeated), otherwise at the top of page 1, before any sommaire.
+    first_heading = next((i for i, x in enumerate(blocks) if x.get("type") == "heading"), len(blocks))
+    titles = [x for x in blocks[:first_heading] if x.get("type") == "title"]
+    blocks = [x for x in blocks if not (x.get("type") == "title" and any(x is t for t in titles))]
     if opts.get("letterhead") and document.get("letterhead") and not has_cover:
         b.letterhead(_letterhead_data(document["letterhead"]))
     if has_cover:
         b.cover(cover_render.svg_to_png(document["cover_svg"], 200))
         started = True
+    elif titles:
+        for t in titles:
+            b.title(t)
+        b.first_in_section = True  # the sommaire or the text follows on the same page
 
     # Split: preliminary blocks (before the first non-preliminary heading) / body.
     split = next(

@@ -122,9 +122,21 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
     dropped: list[int] = []
     skip_toc = False
     stats = {"toc_lines": 0, "captions_moved": 0}
+    from .cover_info import extract as cover_fields
+
+    cover, old_cover = cover_fields(raws)  # the student's own cover page: read, then kept hidden
+    stats["cover_lines"] = len(old_cover)
 
     for idx, r in enumerate(raws):
         nxt = raws[idx + 1] if idx + 1 < len(raws) else None
+        if idx in old_cover:
+            if r.rows:
+                items.append({"type": "table", "rows": r.rows, "hidden": True, "_explicit": True})
+            elif r.image:
+                items.append({"type": "figure", "image": r.image, "hidden": True, "_explicit": True})
+            elif r.text.strip():
+                items.append({"type": "paragraph", "text": r.text.strip(), "hidden": True, "_explicit": True, "_src": idx})
+            continue
         if r.rows:
             skip_toc = False
             items.append({"type": "table", "rows": r.rows})
@@ -200,8 +212,10 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
         it.pop("kind", None)
         it["id"] = i + 1
         blocks.append(it)
-    meta = _meta(blocks)
-    meta["title"] = _guess_title(blocks)
+    meta = _meta(blocks)  # the old cover says best what the document is ("Rapport de stage", "Mémoire")
+    meta["title"] = cover.get("title") or _guess_title([b for b in blocks if not b.get("hidden")])
+    if cover:
+        meta["cover"] = cover
     meta["changes"] = _changes(blocks, stats)
     out = {"blocks": blocks, "meta": meta}
     if trace:
@@ -256,6 +270,8 @@ def _changes(blocks: list[dict], stats: dict) -> list[str]:
         out.append(f"Liste de {sigles} sigles mise en tableau")
     if stats["toc_lines"]:
         out.append("Ancien sommaire tapé à la main remplacé par un sommaire automatique")
+    if stats.get("cover_lines"):
+        out.append("Ta page de garde lue : école, titre, noms et année remplis automatiquement")
     links = sum(len(LINKS.findall(b.get("text", ""))) for b in blocks)
     if links:
         out.append(f"{links} lien{'s' if links > 1 else ''} rendu{'s' if links > 1 else ''} cliquable{'s' if links > 1 else ''}")

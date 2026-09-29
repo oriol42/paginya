@@ -31,7 +31,7 @@ export const forms = {
   update: (id: string, data: object) => call<FormView>(`/forms/${id}`, { method: "PUT", body: JSON.stringify({ data }) }),
   get: (id: string) => call<FormView>(`/forms/${id}`),
   refresh: (id: string) => call<FormView>(`/forms/${id}/refresh`, { method: "POST" }),
-  pageUrl: (id: string, n: number, v: number) => `${API_URL}/forms/${id}/pages/${n}.png?v=${v}`,
+  pageUrl: (id: string, n: number, v: number) => `${API_URL}/forms/${id}/pages/${n}.webp?v=${v}`,
 };
 
 export function todayFr(): string {

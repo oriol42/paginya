@@ -10,7 +10,8 @@ import { Logo } from "../Logo";
 import { PaySheet } from "../PaySheet";
 import type { StudioState } from "../studio/state";
 import { Segmented } from "../ui";
-import { CoverEditor, coverIncomplete, coverSvgPreview, initialCover } from "./CoverEditor";
+import { CoverView } from "../CoverView";
+import { CoverEditor, coverIncomplete, coverSvgPreview, prepareCover } from "./CoverEditor";
 import { DocStylePanel } from "./DocStylePanel";
 import { ImportScreen } from "./ImportScreen";
 import { PlanPanel } from "./PlanPanel";
@@ -39,7 +40,9 @@ export function DocumentApp() {
   const [view, setView] = useState<View>("after");
   const [beforePages, setBeforePages] = useState<number | null>(null);
   const [payOpen, setPayOpen] = useState(false);
-    const [cover, setCover] = useState<StudioState | null>(null);
+  const [cover, setCover] = useState<StudioState | null>(null);
+  const [liveCover, setLiveCover] = useState(""); // page 1 drawn in the browser while the cover is edited
+  const [zoom, setZoom] = useState(false);
   const pending = useRef<Patch>({});
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chain = useRef<Promise<unknown>>(Promise.resolve());
@@ -54,14 +57,14 @@ export function DocumentApp() {
       if (fromStudio) {
         try { localStorage.removeItem(`propre:doc:cover:${view.id}`); } catch { /* ignore */ }
       }
-      current = await docs.update(view.id, { cover_svg: await coverSvgPreview(initialCover(view.id, view.meta)) });
+      current = await docs.update(view.id, { cover_svg: await coverSvgPreview(await prepareCover(view.id, view.meta)) });
     }
     if (!current.render || needsCover) {
       setRendering(true);
       current = await docs.render(view.id);
       setRendering(false);
     }
-    setCover(initialCover(view.id, view.meta));
+    setCover(await prepareCover(view.id, view.meta));
     setDoc(current);
     setPhase("editor");
   }, [router]);
@@ -113,9 +116,11 @@ export function DocumentApp() {
       setRendering(true);
       setError("");
       try {
-        await docs.update(id, patch);
+        const saved = await docs.update(id, patch);
         if (Object.keys(pending.current).length) return; // a newer edit will render
-        setDoc(await docs.render(id));
+        // Only the cover changed: page 1 is already drawn here, the full layout waits for the download.
+        const coverOnly = Object.keys(patch).every((k) => k === "cover_svg");
+        setDoc(coverOnly && saved.render ? saved : await docs.render(id));
       } catch (e) {
         setError((e as Error).message);
       } finally {
@@ -186,6 +191,7 @@ export function DocumentApp() {
             }
           }}
           onSvg={(svg) => change({ cover_svg: svg })}
+          onPreview={setLiveCover}
           onState={setCover}
         />
       )}
@@ -224,6 +230,9 @@ export function DocumentApp() {
           <div className="ml-auto flex items-center gap-2">
             {rendering && <span className="stamp stamp-in hidden bg-paper/90 text-[15px] sm:inline-flex">En cours</span>}
             <ChangesPill doc={doc} />
+            <button type="button" onClick={() => setZoom(!zoom)} aria-pressed={zoom} className="press hidden h-10 items-center gap-1.5 rounded-md px-3 text-[14px] font-bold text-white/80 ring-1 ring-white/20 hover:bg-white/10 hover:text-white lg:inline-flex" title="Agrandir les pages pour mieux lire">
+              <Icon name={zoom ? "zoom-out" : "zoom-in"} size={18} />{zoom ? "Réduire" : "Agrandir"}
+            </button>
             <div className="hidden w-[300px] lg:block"><BoardSegmented value={view} onChange={showView} options={views} /></div>
             <div className="hidden lg:block">{download}</div>
           </div>
@@ -248,7 +257,7 @@ export function DocumentApp() {
         </nav>
         <aside className="hidden w-[350px] shrink-0 flex-col border-r border-black/10 bg-paper text-ink lg:flex">
           <p className="px-5 pt-6 font-display text-[26px] leading-none font-black uppercase">{PANELS.find((p) => p.id === panel)?.title}</p>
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-4 pb-6">{panelBody}</div>
+          <div key={panel} className="panel-in min-h-0 flex-1 overflow-y-auto px-5 pt-4 pb-6">{panelBody}</div>
         </aside>
 
         {/* The document, pinned on the board */}
@@ -258,7 +267,7 @@ export function DocumentApp() {
           </div>
           {error && <p className="mx-auto mt-3 flex max-w-[720px] gap-2 rounded-md bg-paper px-4 py-3 text-[15px] text-pin"><Icon name="triangle-alert" size={18} className="mt-0.5" />{error}</p>}
           <div className="px-4 pt-3 sm:px-8 lg:pt-10">
-            <Pages doc={doc} view={view} beforePages={beforePages} dim={rendering} />
+            <Pages doc={doc} view={view} beforePages={beforePages} dim={rendering} cover={doc.has_cover && doc.options.cover ? liveCover : ""} zoom={zoom} />
           </div>
         </main>
       </div>
@@ -274,7 +283,7 @@ export function DocumentApp() {
                 <Icon name="x" size={18} />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto px-4 pb-4">{panelBody}</div>
+            <div key={panel} className="panel-in flex-1 overflow-y-auto px-4 pb-4">{panelBody}</div>
           </div>
         )}
         <div className="flex items-center gap-1.5 border-t border-black/10 bg-paper px-2 pt-2 text-ink pb-[max(.6rem,env(safe-area-inset-bottom))]">
@@ -342,7 +351,7 @@ function Tabs({ panel, onPanel, compact = false }: { panel: Panel; onPanel: (p: 
   );
 }
 
-function Pages({ doc, view, beforePages, dim }: { doc: DocView; view: View; beforePages: number | null; dim: boolean }) {
+function Pages({ doc, view, beforePages, dim, cover, zoom }: { doc: DocView; view: View; beforePages: number | null; dim: boolean; cover: string; zoom: boolean }) {
   const pages = doc.render?.pages ?? 0;
   const sheet = (img: React.ReactNode, i: number, faded = false) => (
     <div className={`paper pin-in relative rounded-[2px] p-0 ${faded ? "opacity-95" : ""}`} style={{ animationDelay: `${Math.min(i, 4) * 70}ms` }}>
@@ -352,8 +361,11 @@ function Pages({ doc, view, beforePages, dim }: { doc: DocView; view: View; befo
   );
   const after = (i: number) =>
     sheet(
-      // eslint-disable-next-line @next/next/no-img-element
-      <img src={docs.pageUrl(doc.id, i + 1, doc.render!.version)} alt={`Page ${i + 1}`} loading={i < 3 ? "eager" : "lazy"} className="aspect-[210/297] w-full bg-white" />,
+      i === 0 && cover ? (
+        <CoverView svg={cover} watermark={doc.status !== "PAID"} />
+      ) : (
+        <PageImage key={`${doc.render!.version}-${i}`} src={docs.pageUrl(doc.id, i + 1, doc.render!.version)} alt={`Page ${i + 1}`} eager={i < 3} />
+      ),
       i,
     );
   const before = (i: number) =>
@@ -384,7 +396,7 @@ function Pages({ doc, view, beforePages, dim }: { doc: DocView; view: View; befo
   }
   const n = view === "after" ? pages : beforePages ?? 0;
   return (
-    <div className={`mx-auto mt-2 grid max-w-[760px] gap-8 transition-opacity ${dim ? "opacity-60" : ""}`}>
+    <div className={`mx-auto mt-2 grid gap-8 transition-[opacity,max-width] duration-300 ${zoom ? "max-w-[1100px]" : "max-w-[760px]"} ${dim ? "opacity-60" : ""}`}>
       {view === "before" && (
         <p className="rounded-md bg-hi/90 px-4 py-2.5 text-center text-[15px] font-semibold text-ink">Voici ton document tel que tu l&apos;as envoyé.</p>
       )}
@@ -394,6 +406,18 @@ function Pages({ doc, view, beforePages, dim }: { doc: DocView; view: View; befo
           <figcaption className="mt-2 text-center text-[13px] font-semibold text-white/55 tabular">{i + 1} / {n}</figcaption>
         </figure>
       ))}
+    </div>
+  );
+}
+
+/** A page fades in when its (new) image has arrived, instead of popping in half-drawn. */
+function PageImage({ src, alt, eager }: { src: string; alt: string; eager: boolean }) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <div className="relative aspect-[210/297] w-full overflow-hidden bg-white">
+      {!loaded && <div className="absolute inset-0 animate-pulse bg-[repeating-linear-gradient(180deg,#fff_0_22px,#f1f2ee_22px_30px)] [background-position:0_60px] opacity-60" />}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt={alt} loading={eager ? "eager" : "lazy"} onLoad={() => setLoaded(true)} className={`page-img h-full w-full ${loaded ? "is-loaded" : ""}`} />
     </div>
   );
 }

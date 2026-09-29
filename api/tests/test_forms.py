@@ -56,7 +56,7 @@ def test_letter_flow_render_pay_download(client):
     assert r.status_code == 200, r.text
     doc = r.json()
     assert doc["amount"] == 350 and doc["render"]["pages"] == 1
-    assert client.get(f"/forms/{doc['id']}/pages/1.png").content.startswith(b"\x89PNG")
+    assert client.get(f"/forms/{doc["id"]}/pages/1.webp").content[8:12] == b"WEBP"
     assert client.get(f"/orders/{doc['id']}/file.pdf").status_code == 402
     client.post(f"/orders/{doc['id']}/pay", json={"phone": "670000000"})
     assert client.get(f"/orders/{doc['id']}").json()["status"] == "PAID"

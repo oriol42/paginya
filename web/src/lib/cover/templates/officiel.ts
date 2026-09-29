@@ -1,7 +1,7 @@
 import { inks } from "../palettes";
 import { fit, textBlock, wrap, type FontSpec } from "../text";
 import type { CoverModel, RenderOptions } from "../types";
-import { H, W, close, logo, open, people } from "./common";
+import { H, W, close, logos, open, people } from "./common";
 
 /** A block is drawn at y=0 into its own buffer; returns its height. */
 type Block = { out: string[]; height: number };
@@ -28,7 +28,8 @@ export function officiel(m: CoverModel, o: RenderOptions): string {
   }
 
   // --- Bilingual header -------------------------------------------------
-  const colW = 212;
+  const two = !!(m.logo && m.logo2);
+  const colW = two ? 190 : 212;
   const head: FontSpec = { family: "Tinos", weight: 700, size: 9.5 };
   const motto: FontSpec = { family: "Tinos", weight: 400, size: 9.5, italic: true };
   const star: FontSpec = { family: "Tinos", size: 8 };
@@ -47,7 +48,7 @@ export function officiel(m: CoverModel, o: RenderOptions): string {
   };
   const yL = drawColumn(m.headerFr, M + colW / 2);
   const yR = drawColumn(m.headerEn, W - M - colW / 2);
-  logo(out, m.logo, W / 2 - 36, 46, 72);
+  logos(out, m, W / 2, 46, 72, 6);
   const top = Math.max(yL, yR, 130) + 10;
 
   // --- Footer -----------------------------------------------------------

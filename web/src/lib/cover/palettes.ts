@@ -6,6 +6,10 @@ export const PALETTES: Palette[] = [
   { id: "bordeaux", name: "Bordeaux", primary: "#9F1239", secondary: "#4C0519", accent: "#D4AF37", light: "#FFF1F2" },
   { id: "terracotta", name: "Terracotta", primary: "#C2410C", secondary: "#431407", accent: "#0D9488", light: "#FFF7ED" },
   { id: "graphite", name: "Graphite", primary: "#334155", secondary: "#0F172A", accent: "#38BDF8", light: "#F1F5F9" },
+  { id: "cameroun", name: "Vert-rouge-jaune", primary: "#007A3D", secondary: "#CE1126", accent: "#FCD116", light: "#F0FAF4" },
+  { id: "violet", name: "Violet", primary: "#6D28D9", secondary: "#2E1065", accent: "#F472B6", light: "#F5F3FF" },
+  { id: "or", name: "Noir et or", primary: "#1C1917", secondary: "#0C0A09", accent: "#C9A227", light: "#FAF7EF" },
+  { id: "ocean", name: "Océan", primary: "#0E7490", secondary: "#083344", accent: "#F97316", light: "#ECFEFF" },
 ];
 
 const MONO: Palette = {

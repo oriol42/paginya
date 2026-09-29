@@ -207,6 +207,26 @@ h1, h2, h3 {
 .pop {
   animation: stamp-in 180ms var(--ease-out-expo) both;
 }
+/* Canva-like transitions: a panel slides in, a page image fades and settles when it arrives. */
+.panel-in {
+  animation: panel-in 260ms var(--ease-out-expo) both;
+}
+@keyframes panel-in {
+  from { transform: translateX(-10px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.page-img {
+  opacity: 0;
+  transform: scale(1.015);
+  filter: blur(4px);
+  transition: opacity 320ms var(--ease-out-expo), transform 420ms var(--ease-out-expo), filter 320ms var(--ease-out-expo);
+}
+.page-img.is-loaded {
+  opacity: 1;
+  transform: none;
+  filter: none;
+}
+
 /* Pinned labels: pressing pushes the pin into the board. */
 .pin-label .pin {
   transition: transform 120ms var(--ease-out-expo), box-shadow 120ms var(--ease-out-expo);

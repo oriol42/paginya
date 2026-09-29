@@ -44,11 +44,9 @@ export function EssentialsStep({ form, onChange }: StepProps) {
               const inst = institution(e.target.value);
               onChange({ institutionId: inst.id, headerFr: inst.fr.join("\n"), headerEn: inst.en.join("\n") });
               setCustom(inst.id === "autre" || inst.id === "lycee");
-              // the school's logo comes with it (the user can still change or remove it)
-              if (inst.logo) {
-                const logo = await logoData(inst.logo);
-                if (logo) onChange({ logo });
-              }
+              // the school's logos come with it (the user can still change or remove them)
+              const [logo, logo2] = await Promise.all([inst.logo ? logoData(inst.logo) : undefined, inst.logo2 ? logoData(inst.logo2) : undefined]);
+              onChange({ logo, logo2 });
             }}
           >
             {INSTITUTIONS.map((i) => <option key={i.id} value={i.id}>{i.id === "autre" ? "Mon école n'est pas dans la liste" : i.short}</option>)}
@@ -151,8 +149,9 @@ export function DetailsStep({ form, onChange }: StepProps) {
         </div>
       </Group>
 
-      <Group title="Logo et en-tête">
-        <LogoPicker logo={form.logo} onChange={(logo) => onChange({ logo })} />
+      <Group title="Logos et en-tête">
+        <LogoPicker logo={form.logo} onChange={(logo) => onChange({ logo })} label={def.academic ? "Logo de l'université" : "Logo"} />
+        {def.academic && <LogoPicker logo={form.logo2} onChange={(logo2) => onChange({ logo2 })} label="Logo de la faculté / de l'école" />}
         {def.academic && (
           <div className="grid gap-2">
             <Toggle label="République du Cameroun · Paix-Travail-Patrie" checked={form.showRepublic} onChange={(v) => onChange({ showRepublic: v })} />
@@ -167,13 +166,13 @@ export function DetailsStep({ form, onChange }: StepProps) {
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-3">
-      <h3 className="text-xs font-bold tracking-wider text-ink/60 uppercase">{title}</h3>
+      <h3 className="font-display text-[19px] leading-none font-black text-ink uppercase">{title}</h3>
       {children}
     </section>
   );
 }
 
-export function LogoPicker({ logo, onChange }: { logo?: string; onChange: (l?: string) => void }) {
+export function LogoPicker({ logo, onChange, label = "Logo de l'école" }: { logo?: string; onChange: (l?: string) => void; label?: string }) {
   return (
     <div className="flex flex-wrap items-center gap-3 border-t border-ink/10 pt-3">
       {logo ? (
@@ -183,8 +182,8 @@ export function LogoPicker({ logo, onChange }: { logo?: string; onChange: (l?: s
         <span className="grid h-14 w-14 place-items-center rounded-md bg-ink/5 text-board"><Icon name="landmark" size={26} /></span>
       )}
       <div className="min-w-[9rem] flex-1">
-        <p className="text-sm font-semibold text-ink">{logo ? "Logo ajouté" : "Logo de l'école"}</p>
-        <p className="text-xs text-ink/60">Photo ou image, fond blanc de préférence</p>
+        <p className="text-sm font-semibold text-ink">{label}</p>
+        <p className="text-xs text-ink/60">{logo ? "Ajouté" : "Photo ou image, fond blanc de préférence"}</p>
       </div>
       <label className="cursor-pointer press rounded-md bg-board px-3.5 py-2.5 text-sm font-bold text-white">
         {logo ? "Changer" : "Ajouter"}

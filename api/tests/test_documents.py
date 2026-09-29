@@ -110,7 +110,7 @@ def test_full_flow_text_to_paid_download(client):
     info = r.json()
     assert info["render"]["pages"] >= 10
     assert info["product"] == "document_court" and info["amount"] == 1000
-    assert client.get(f"/documents/{doc['id']}/pages/1.png").content.startswith(b"\x89PNG")
+    assert client.get(f"/documents/{doc['id']}/pages/1.webp").content[8:12] == b"WEBP"
     assert client.get(f"/orders/{doc['id']}/file.pdf").status_code == 402
 
     client.post(f"/orders/{doc['id']}/pay", json={"phone": "670000000"})
@@ -246,7 +246,7 @@ def test_survives_a_server_restart(client, tmp_path):
     assert client.get(f"/orders/{doc['id']}").json()["status"] == "PAID"
 
     shutil.rmtree(tmp_path / "docs")  # the restart: only the database and durable storage are left
-    assert client.get(f"/documents/{doc['id']}/pages/1.png").content.startswith(b"\x89PNG")
+    assert client.get(f"/documents/{doc['id']}/pages/1.webp").content[8:12] == b"WEBP"
     fig = next(b for b in doc["blocks"] if b["type"] == "figure")
     assert client.get(f"/documents/{doc['id']}/images/{fig['image']}").status_code == 200
 
@@ -263,4 +263,4 @@ def test_form_survives_a_server_restart(client, tmp_path):
 
     f = client.post("/forms", json={"kind": "lettre", "data": LETTER}).json()
     shutil.rmtree(tmp_path / "forms")
-    assert client.get(f"/forms/{f['id']}/pages/1.png").content.startswith(b"\x89PNG")
+    assert client.get(f"/forms/{f['id']}/pages/1.webp").content[8:12] == b"WEBP"

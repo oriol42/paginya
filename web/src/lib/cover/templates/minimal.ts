@@ -11,6 +11,7 @@ export function minimal(m: CoverModel, o: RenderOptions): string {
   const ink = "#1A1A1A";
 
   logo(out, m.logo, X, 56, 44);
+  if (m.logo2) logo(out, m.logo2, W - X - 60, 50, 44);
   const orgF: FontSpec = { family: "Inter", weight: 600, size: 8.5, letterSpacing: 1.6 };
   textBlock(out, wrap(m.org.toUpperCase(), orgF, W - 2 * X - 60).slice(0, 2), m.logo ? X + 58 : X, 74, orgF, "#6B7280", { lineHeight: 12 });
 
@@ -40,6 +41,6 @@ export function minimal(m: CoverModel, o: RenderOptions): string {
   const foot: FontSpec = { family: "Inter", size: 9.5, letterSpacing: 0.5 };
   textBlock(out, [m.footerLeft], X, H - 58, foot, ink);
   if (m.footerRight) textBlock(out, [m.footerRight], W - X, H - 58, foot, "#6B7280", { anchor: "end" });
-  out.push(`<rect x="${W - X - 8}" y="56" width="8" height="8" fill="${c.primary}"/>`);
+  if (!m.logo2) out.push(`<rect x="${W - X - 8}" y="56" width="8" height="8" fill="${c.primary}"/>`);
   return close(out);
 }

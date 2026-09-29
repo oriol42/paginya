@@ -11,19 +11,25 @@ export type Institution = {
   short: string;
   fr: string[];
   en: string[];
-  logo?: string;
+  logo?: string; // university (or the school's only logo)
+  logo2?: string; // the faculty / school's own logo, drawn on the other side of the cover
   secondary?: boolean; // secondary school: Ministry of Secondary Education
 };
 
-const UY1 = ["UNIVERSITÉ DE YAOUNDÉ I", "THE UNIVERSITY OF YAOUNDE I"];
-const UY2 = ["UNIVERSITÉ DE YAOUNDÉ II – SOA", "THE UNIVERSITY OF YAOUNDE II – SOA"];
-const UDO = ["UNIVERSITÉ DE DOUALA", "THE UNIVERSITY OF DOUALA"];
-const UDS = ["UNIVERSITÉ DE DSCHANG", "UNIVERSITY OF DSCHANG"];
-const UN = ["UNIVERSITÉ DE NGAOUNDÉRÉ", "THE UNIVERSITY OF NGAOUNDERE"];
-const UMA = ["UNIVERSITÉ DE MAROUA", "THE UNIVERSITY OF MAROUA"];
+// [french, english, university logo]
+const UY1 = ["UNIVERSITÉ DE YAOUNDÉ I", "THE UNIVERSITY OF YAOUNDE I", "uy1"];
+const UY2 = ["UNIVERSITÉ DE YAOUNDÉ II – SOA", "THE UNIVERSITY OF YAOUNDE II – SOA", "uy2"];
+const UDO = ["UNIVERSITÉ DE DOUALA", "THE UNIVERSITY OF DOUALA", "udo"];
+const UDS = ["UNIVERSITÉ DE DSCHANG", "UNIVERSITY OF DSCHANG", "uds"];
+const UN = ["UNIVERSITÉ DE NGAOUNDÉRÉ", "THE UNIVERSITY OF NGAOUNDERE", ""];
+const UMA = ["UNIVERSITÉ DE MAROUA", "THE UNIVERSITY OF MAROUA", "uma"];
 
+/** A faculty/school of a university carries both logos: the university's and its own (when we have it). */
 function school(id: string, short: string, uni: string[] | null, fr: string, en: string, logo?: string): Institution {
-  return { id, short, fr: uni ? [uni[0], fr] : [fr], en: uni ? [uni[1], en] : [en], logo };
+  if (!uni) return { id, short, fr: [fr], en: [en], logo };
+  const uniLogo = uni[2] || undefined;
+  const own = logo && logo !== uniLogo ? logo : undefined;
+  return { id, short, fr: [uni[0], fr], en: [uni[1], en], logo: uniLogo ?? own, logo2: uniLogo ? own : undefined };
 }
 
 export const INSTITUTIONS: Institution[] = [
@@ -41,7 +47,7 @@ export const INSTITUTIONS: Institution[] = [
   school("uy2-esstic", "UY2 · ESSTIC", UY2, "ÉCOLE SUPÉRIEURE DES SCIENCES ET TECHNIQUES DE L'INFORMATION ET DE LA COMMUNICATION (ESSTIC)", "ADVANCED SCHOOL OF MASS COMMUNICATION (ASMAC)", "esstic"),
   school("uy2-iric", "UY2 · IRIC", UY2, "INSTITUT DES RELATIONS INTERNATIONALES DU CAMEROUN", "INTERNATIONAL RELATIONS INSTITUTE OF CAMEROON", "iric"),
   school("udo", "Université de Douala", null, UDO[0], UDO[1], "udo"),
-  school("udo-iut", "IUT de Douala", UDO, "INSTITUT UNIVERSITAIRE DE TECHNOLOGIE", "UNIVERSITY INSTITUTE OF TECHNOLOGY", "udo"),
+  school("udo-iut", "IUT de Douala", UDO, "INSTITUT UNIVERSITAIRE DE TECHNOLOGIE", "UNIVERSITY INSTITUTE OF TECHNOLOGY", "iutd"),
   school("udo-enspd", "ENSP Douala (ENSPD)", UDO, "ÉCOLE NATIONALE SUPÉRIEURE POLYTECHNIQUE DE DOUALA", "NATIONAL HIGHER POLYTECHNIC SCHOOL OF DOUALA", "enspd"),
   school("udo-essec", "ESSEC Douala", UDO, "ÉCOLE SUPÉRIEURE DES SCIENCES ÉCONOMIQUES ET COMMERCIALES", "HIGHER SCHOOL OF ECONOMICS AND COMMERCE", "udo"),
   school("udo-enset", "ENSET Douala", UDO, "ÉCOLE NORMALE SUPÉRIEURE D'ENSEIGNEMENT TECHNIQUE", "HIGHER TECHNICAL TEACHER TRAINING COLLEGE", "udo"),

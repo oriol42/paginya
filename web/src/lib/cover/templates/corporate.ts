@@ -19,6 +19,10 @@ export function corporate(m: CoverModel, o: RenderOptions): string {
     out.push(`<rect x="${X - 6}" y="46" width="76" height="76" rx="10" fill="#ffffff"/>`);
     logo(out, m.logo, X, 52, 64);
   }
+  if (m.logo2) {
+    out.push(`<rect x="${W - X - 70}" y="46" width="76" height="76" rx="10" fill="#ffffff"/>`);
+    logo(out, m.logo2, W - X - 64, 52, 64);
+  }
   const orgF: FontSpec = { family: "Poppins", weight: 600, size: 10, letterSpacing: 1.2 };
   textBlock(out, wrap(m.org.toUpperCase(), orgF, 300).slice(0, 2), m.logo ? X + 90 : X, m.logo ? 80 : 70, orgF, "#FFFFFF", { lineHeight: 13 });
 

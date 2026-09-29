@@ -172,10 +172,10 @@ export default function Home() {
             <h2 className="font-display text-[2.6rem] leading-[0.95] font-black uppercase sm:text-[3.4rem]">L&apos;en-tête de ton école, en français et en anglais.</h2>
             <div>
             <p className="max-w-md text-[17px] leading-relaxed text-ink/75">
-              République du Cameroun, ministère, université, faculté : choisis ton établissement parmi près de 50, le logo se place tout seul. Tu décides de le mettre ou non.
+              République du Cameroun, ministère, université, faculté : Paginya lit la page de garde de ton document et reconnaît ton école : les deux logos se placent tout seuls. 8 modèles et 9 couleurs au choix.
             </p>
-            <Link href="/garde" className="press mt-6 inline-flex items-center gap-2 rounded-md bg-board px-5 py-3.5 text-[16px] font-bold text-white hover:bg-board-2">
-              Créer ma page de garde <Icon name="arrow-right" size={18} />
+            <Link href="/document" className="press mt-6 inline-flex items-center gap-2 rounded-md bg-board px-5 py-3.5 text-[16px] font-bold text-white hover:bg-board-2">
+              Essayer avec mon document <Icon name="arrow-right" size={18} />
             </Link>
             </div>
           </div>

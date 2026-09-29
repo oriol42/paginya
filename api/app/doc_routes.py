@@ -260,6 +260,10 @@ def update(order_id: str, body: DocPatch) -> dict:
             doc["cover_svg"] = sanitize_svg(body.cover_svg)
         except UnsafeSvg as exc:
             raise HTTPException(400, str(exc)) from exc
+        only_cover = all(v is None for v in (body.blocks, body.style, body.options, body.letterhead, body.kind))
+        if only_cover and doc.get("render"):
+            # The app shows the new cover itself: no full LibreOffice pass now, the files are rebuilt at download.
+            doc["render"]["stale"] = True
     db.update_payload(order_id, {"doc": doc})
     return view(db.get_order(order_id))
 
@@ -273,8 +277,9 @@ def render(order_id: str) -> dict:
     build = folder / "build"
     build.mkdir(parents=True, exist_ok=True)
     (build / "raw.docx").write_bytes(build_docx(doc, folder / "images"))
+    (build / "final.docx").unlink(missing_ok=True)  # made again from raw.docx when downloaded
     try:
-        office.finalize(build / "raw.docx", build / "final.docx", build / "final.pdf")
+        office.finalize(build / "raw.docx", None, build / "final.pdf")
     except office.OfficeError as exc:
         raise HTTPException(500, "La mise en page a échoué, réessaie") from exc
     pages = office.page_count(build / "final.pdf")
@@ -287,21 +292,23 @@ def render(order_id: str) -> dict:
     elif fresh["status"] != "PENDING":
         db.set_product(order_id, tier, pricing.price_for(tier))
 
-    office.previews(build / "final.pdf", build / "pages", watermark=fresh["status"] != "PAID")
+    office.previews(build / "final.pdf", build / "pages", watermark=fresh["status"] != "PAID", pages=pages)
     doc["render"] = {"pages": pages, "version": int(time.time() * 1000)}
     db.update_payload(order_id, {"doc": doc})
     return view(db.get_order(order_id))
 
 
-@router.get("/{order_id}/pages/{n}.png")
-def page(order_id: str, n: int) -> FileResponse:
+@router.get("/{order_id}/pages/{n}.{ext}")
+def page(order_id: str, n: int, ext: str) -> FileResponse:
     order = _load(order_id)
-    path = doc_dir(order_id) / "build" / "pages" / f"{n}.png"
-    if not path.is_file() and order["payload"]["doc"].get("render"):
+    pages_dir = doc_dir(order_id) / "build" / "pages"
+    path = office.wait_for_page(pages_dir, n)
+    if path is None and order["payload"]["doc"].get("render") and not (doc_dir(order_id) / "build" / "final.pdf").is_file():
         render(order_id)  # the server restarted: rebuild the pages once
-    if not path.is_file():
+        path = office.wait_for_page(pages_dir, n)
+    if ext not in ("png", "webp") or path is None:
         raise HTTPException(404, "Page introuvable")
-    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "no-cache"})
+    return FileResponse(path, media_type="image/webp", headers={"Cache-Control": "no-cache"})
 
 
 @router.get("/{order_id}/images/{name}")
@@ -317,9 +324,16 @@ def image(order_id: str, name: str) -> FileResponse:
 
 
 def final_file(order_id: str, fmt: str) -> Path:
-    path = doc_dir(order_id) / "build" / f"final.{fmt}"
-    if fmt in ("pdf", "docx") and not path.is_file() and _load(order_id)["payload"]["doc"].get("render"):
-        render(order_id)  # rebuilt after a restart
+    build = doc_dir(order_id) / "build"
+    path = build / f"final.{fmt}"
+    doc = _load(order_id)["payload"]["doc"]
+    if fmt in ("pdf", "docx") and doc.get("render") and (not (build / "final.pdf").is_file() or doc["render"].get("stale")):
+        render(order_id)  # rebuilt after a restart, or after edits that skipped the full render (cover)
+    if fmt == "docx" and not path.is_file() and (build / "raw.docx").is_file():
+        try:
+            office.finalize(build / "raw.docx", path, None)
+        except office.OfficeError as exc:
+            raise HTTPException(500, "La création du fichier Word a échoué, réessaie") from exc
     if fmt not in ("pdf", "docx") or not path.is_file():
         raise HTTPException(409, "Lance d'abord la mise en page")
     return path
@@ -334,8 +348,9 @@ def before(order_id: str) -> dict:
     folder = doc_dir(order_id)
     out = folder / "before"
     pages_dir = out / "pages"
-    if pages_dir.is_dir() and any(pages_dir.iterdir()):
-        return {"pages": len(list(pages_dir.glob("*.png")))}
+    if pages_dir.is_dir() and any(pages_dir.glob("*.webp")):
+        pdf = out / "before.pdf"
+        return {"pages": office.page_count(pdf) if pdf.is_file() else len(list(pages_dir.glob("*.webp")))}
     out.mkdir(parents=True, exist_ok=True)
     source = next((p for p in folder.glob("source.*")), None)
     if source is None:
@@ -352,19 +367,19 @@ def before(order_id: str) -> dict:
                 plain.add_paragraph(line)
             plain.save(docx)
         try:
-            office.finalize(docx, out / "before.docx", pdf)
+            office.finalize(docx, None, pdf)
         except office.OfficeError as exc:
             raise HTTPException(500, "Aperçu de l'original indisponible") from exc
     return {"pages": office.previews(pdf, pages_dir, watermark=False)}
 
 
-@router.get("/{order_id}/before/{n}.png")
-def before_page(order_id: str, n: int) -> FileResponse:
+@router.get("/{order_id}/before/{n}.{ext}")
+def before_page(order_id: str, n: int, ext: str) -> FileResponse:
     _load(order_id)
-    path = doc_dir(order_id) / "before" / "pages" / f"{n}.png"
-    if not path.is_file():
+    path = office.wait_for_page(doc_dir(order_id) / "before" / "pages", n)
+    if ext not in ("png", "webp") or path is None:
         raise HTTPException(404, "Page introuvable")
-    return FileResponse(path, media_type="image/png")
+    return FileResponse(path, media_type="image/webp")
 
 
 # --- Deletion (right to erasure) and automatic cleanup ------------------------

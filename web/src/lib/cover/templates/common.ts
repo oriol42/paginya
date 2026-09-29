@@ -24,6 +24,16 @@ export function logo(out: string[], href: string | undefined, x: number, y: numb
   );
 }
 
+/** One logo centred on cx, or two side by side (university + faculty). Returns the drawn width. */
+export function logos(out: string[], m: CoverModel, cx: number, y: number, size: number, gap = 10): number {
+  const list = [m.logo, m.logo2].filter(Boolean) as string[];
+  if (!list.length) return 0;
+  const s = list.length === 2 ? size * 0.78 : size;
+  const total = list.length * s + (list.length - 1) * gap;
+  list.forEach((href, i) => logo(out, href, cx - total / 2 + i * (s + gap), y + (size - s) / 2, s));
+  return total;
+}
+
 /** Authors and supervisors laid out side by side (or stacked when alone). */
 export function people(
   out: string[],
