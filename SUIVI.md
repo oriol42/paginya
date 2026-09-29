@@ -223,3 +223,11 @@ Rapports de stage réels d'étudiants camerounais (dépôt DICAMES du CAMES) pas
 - PDF abîmé : réparé par Ghostscript ; polices sans table (« 6WDJH ») décodées ; PDF scanné : OCR Tesseract (25 pages max).
 Résultat sur un vrai rapport : 166 → 66 titres (le vrai plan), garde entièrement lue. Benchmark synthétique inchangé (97,6 %).
 Téléchargement lent : les PDF DICAMES font 2-4 Mo (≈2 Ko/s ici) ; le serveur ne gère pas la reprise.
+
+## Publier soi-même (sans Claude)
+Depuis un terminal :
+```
+cd ~/Documents/serveur
+./publier.sh paginya "ce que j'ai changé"     # ou affichya, ou tout
+```
+Le script lance les tests du serveur (s'ils échouent, rien n'est publié), enregistre les modifications (commit), les pousse sur GitHub (Render reconstruit le serveur tout seul en 5-10 min) puis construit et publie le site sur Cloudflare Pages. Les clés restent dans `serveur/.env`. Si la connexion coupe, relancer simplement la commande.
