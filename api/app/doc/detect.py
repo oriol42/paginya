@@ -82,7 +82,7 @@ NUM_NODOT = re.compile(r"^(\d{1,2})\s+([A-ZÀ-Ý][^\d].*)$")  # "1 Historique" (
 ROMAN = re.compile(r"^([IVX]{1,5})\s*[.\-–—)/]\s*(\S.*)$")
 LETTER = re.compile(r"^([A-H])\s*[.\-–—)/]\s+(\S.*)$")
 LOWER_ITEM = re.compile(r"^([a-z])\s*[.)]\s+(\S.*)$")
-BULLET = re.compile(r"^\s*(=>|->|-->|\+(?=\s*[A-Za-zÀ-ÿ])|[-–—•*➢►▪▫◦✓✔→>§]|||||o(?=\s))\s*(\S.*)$")
+BULLET = re.compile(r"^\s*(=>|->|-->|\+(?=\s*[A-Za-zÀ-ÿ])|[-–—•*➢►▪▫◦✓✔→>§❖◆◇■□●○➤➔⇒✗✘☐☑✪★☆♦·]|||||o(?=\s))\s*(\S.*)$")
 
 
 def _special_of(text: str) -> str | None:

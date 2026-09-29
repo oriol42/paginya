@@ -14,6 +14,7 @@ import unicodedata
 HEADER = re.compile(
     r"^(the\s+)?(r[ée]publique|republic|paix|peace|minist[èe]re|ministry|universit[ée]|university|facult[ée]|faculty|"
     r"[ée]cole|school|institut|institute|d[ée]partement|department|division|centre|college|lyc[ée]e|high school|"
+    r"advanced|higher|national|facult[yé]|"
     r"\*{3,}|-{3,})",
     re.I,
 )
@@ -24,10 +25,10 @@ DOC_LABEL = re.compile(
     re.I,
 )
 THEME = re.compile(r"^(th[èe]me|sujet|intitul[ée]|titre)\s*[:\-–]\s*(.*)$", re.I)
-AUTHORS = re.compile(r"^(pr[ée]sent[ée]e?s?|r[ée]dig[ée]e?s?|r[ée]alis[ée]e?s?|[ée]labor[ée]e?s?|soutenue?s?|fait)\s+(par)\b\s*[:\-–]?\s*(.*)$|^(par|auteurs?|[ée]tudiants?|membres du groupe|groupe)\s*[:\-–]\s*(.*)$", re.I)
+AUTHORS = re.compile(r"^(pr[ée]sent[ée]e?s?|r[ée]dig[ée]e?s?|r[ée]alis[ée]e?s?|[ée]labor[ée]e?s?|soutenue?s?|fait)(\s+et\s+\w+)?\s+(par)\b\s*[:\-–]?\s*(.*)$|^(par|auteurs?|[ée]tudiants?|membres du groupe|groupe)\s*[:\-–]\s*(.*)$", re.I)
 SUPERVISORS = re.compile(
-    r"^(sous la (direction|supervision|co-?direction)( de)?|encadr(eur|ant|ement|[ée]e? par)[^:]*|superviseur|"
-    r"directeur de (m[ée]moire|th[èe]se)|ma[îi]tre de stage|tuteur[^:]*|rapporteur|co-?directeur)\s*[:\-–]?\s*(.*)$",
+    r"^(sous l['’]encadrement( \w+)?( de)?|sous la (direction|supervision|co-?direction)( \w+)?( de)?|encadr(eur|ant|ement|[ée]e? par)[^:]*|superviseur|"
+    r"directeur de (m[ée]moire|th[èe]se)|ma[îi]tre de stage|tuteur[^:]*|rapporteur|co-?directeur)\s*[:\-–]?\s*(?P<rest>.*)$",
     re.I,
 )
 MATRICULE = re.compile(r"\bmatricule\s*[:\-–]?\s*([A-Z0-9]{5,12})\b", re.I)
@@ -64,7 +65,25 @@ def _lines(raws) -> tuple[list[tuple[int, str]], int]:
             break
         out.extend((i, ln.strip()) for ln in text.split("\n") if ln.strip())
         end = i + 1
-    return out, end
+    return _join_wrapped(out), end
+
+
+_CONNECTOR = re.compile(r"\b(du|de|des|d['’]|et|la|le|l['’]|of|and|the|en|pour)$", re.I)
+
+
+def _join_wrapped(lines: list[tuple[int, str]]) -> list[tuple[int, str]]:
+    """Header lines cut in two by a narrow column: "REPUBLIQUE DU" + "CAMEROUN", "UNIVERSITE DE YAOUNDE" + "II"."""
+    out: list[tuple[int, str]] = []
+    for idx, ln in lines:
+        if out:
+            pi, prev = out[-1]
+            upper = prev.isupper() and ln.isupper()
+            cont = _CONNECTOR.search(prev) or (len(ln.split()) <= 2 and not HEADER.match(ln) and not ln.startswith(("(", "*")))
+            if upper and cont and not re.match(r"^(\*|-){3,}$", ln) and len(prev) + len(ln) < 110:
+                out[-1] = (pi, f"{prev} {ln}")
+                continue
+        out.append((idx, ln))
+    return out
 
 
 def _is_name(line: str) -> bool:
@@ -102,16 +121,16 @@ def extract(raws) -> tuple[dict, set[int]]:
             mode = None
             continue
         if m := AUTHORS.match(line):
-            rest = (m.group(3) or m.group(5) or "").strip()
+            rest = (m.group(4) or m.group(6) or "").strip()
             if rest and _is_name(rest):
                 f["authors"].append({"name": rest})
             mode = "authors"
             signals += 1
             continue
         if m := SUPERVISORS.match(line):
-            role = re.sub(r"\s*[:\-–]\s*$", "", line[: m.start(5)] if m.group(5) else line).strip()
+            role = re.sub(r"\s*[:\-–]\s*$", "", line[: m.start("rest")] if m.group("rest") else line).strip()
             role = role[:1].upper() + role[1:] if role else "Encadreur"
-            rest = (m.group(5) or "").strip()
+            rest = (m.group("rest") or "").strip()
             if rest and _is_name(rest):
                 f["supervisors"].append({"name": rest, "role": role})
             mode = "supervisors"
@@ -156,9 +175,17 @@ def extract(raws) -> tuple[dict, set[int]]:
             continue
         mode = None
         # Title: a longish line in capitals or the region's explicit title, never a sentence.
-        if "title" not in f and 12 <= len(line) <= 200 and not line.endswith(".") and (line.isupper() or len(line.split()) >= 4):
+        # (only a line in capitals: "Stage effectué à … du 04" is a mention, not a title; no title beats a wrong one)
+        if "title" not in f and 12 <= len(line) <= 200 and not line.endswith(".") and line.isupper() and not re.search(r"\d{4}", line):
             f["title"] = line.strip(" «»\"")
 
+    blob = " ".join(ln for _, ln in lines)
+    if "period" not in f and (m := PERIOD.search(blob)):
+        f["period"] = m.group(2)
+    if "structure" not in f and (m := re.search(r"(?:stage|effectu[ée]e?)\s+(?:effectu[ée]e?\s+)?(?:[àa]|au sein d[eu]s?|chez)\s+(.{3,80}?)\s+(?:du|de|p[ée]riode)\s+\d", blob, re.I)):
+        f["structure"] = m.group(1).strip(" ,.")
+    if "degree" not in f and (m := re.search(r"(?:en vue de|pour) l['’]obtention d[ue]s?\s+(?:la |le |l['’]|du |diplôme d[ue] )?(.{5,120}?)(?=\s+(?:option|fili[èe]re|sp[ée]cialit[ée]|r[ée]dig|pr[ée]sent|par|sous|ann[ée]e)\b|$)", blob, re.I)):
+        f["degree"] = m.group(1).strip(" ,.")
     for r in raws[:end]:
         if r.style == "doctitle":
             f["title"] = r.text.strip()
@@ -166,8 +193,17 @@ def extract(raws) -> tuple[dict, set[int]]:
 
     if signals < 2.5 or not (f["header_fr"] or f.get("doc_label")) or not (f["authors"] or f["supervisors"] or f.get("year")):
         return {}, set()
-    f["authors"] = f["authors"][:8]
-    f["supervisors"] = f["supervisors"][:4]
+    def unique(people: list[dict]) -> list[dict]:
+        seen, out = set(), []
+        for x in people:
+            key = re.sub(r"\W+", "", x["name"].lower())
+            if key not in seen:
+                seen.add(key)
+                out.append(x)
+        return out
+
+    f["authors"] = unique(f["authors"])[:8]
+    f["supervisors"] = unique(f["supervisors"])[:4]
     # The old cover's lines are hidden; a long paragraph before the body is real text and stays.
     hide = {i for i in range(end) if raws[i].rows or raws[i].image or len((raws[i].text or "").strip()) < 220}
     return {k: v for k, v in f.items() if v}, hide

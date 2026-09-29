@@ -265,6 +265,86 @@ def fix_shifted_fonts(text: str) -> tuple[str, int]:
     return "\n".join(lines), fixed
 
 
+_LEADERS = re.compile(r"(\.\s?){6,}\s*([0-9ivxlc]+)?\s*$|…{3,}\s*\d*\s*$", re.I)
+_LABEL = re.compile(r"^(\d+(\.\d+)*|[a-zA-Z]|[ivxlcIVXLC]{1,6})\s*[.)\-–]$")
+_PAGE_NO = re.compile(r"^(page\s*)?[-–]?\s*([0-9]{1,3}|[ivxlc]{1,6})\s*[-–]?$", re.I)
+
+
+def pdf_cleanup(text: str) -> str:
+    """What a PDF adds around the text: running headers/footers, page numbers, the old typed table of
+    contents (dot leaders), numbering labels put on their own line. Pages are separated by form feeds."""
+    pages = [p.split("\n") for p in text.split("\f")]
+    norm = lambda s: re.sub(r"\d+", "#", s.strip().lower())  # noqa: E731
+    # 1. running headers / footers: the same line at the top or bottom of many pages
+    edges = Counter()
+    for lines in pages:
+        body = [ln for ln in lines if ln.strip()]
+        for ln in {norm(x) for x in body[:3] + body[-3:]}:
+            edges[ln] += 1
+    repeated = {ln for ln, n in edges.items() if n >= max(3, len(pages) * 0.3) and len(ln) < 160}
+    out: list[str] = []
+    for lines in pages:
+        body_idx = [i for i, ln in enumerate(lines) if ln.strip()]
+        edge = set(body_idx[:3] + body_idx[-3:])
+        for i, ln in enumerate(lines):
+            if i in edge and (norm(ln) in repeated or _PAGE_NO.match(ln.strip())):
+                continue
+            out.append(ln)
+        out.append("")
+    # 2. the old table of contents: runs of dot-leader lines, with the pieces between them
+    leader = [i for i, ln in enumerate(out) if _LEADERS.search(ln)]
+    drop: set[int] = set()
+    for a, b in zip(leader, leader[1:]):
+        if b - a <= 6:
+            drop.update(range(a, b + 1))
+    for i in leader:
+        drop.add(i)
+        j = i - 1  # an entry wrapped on two lines: its first half sits just above the leader line
+        while j >= 0 and not out[j].strip():
+            j -= 1
+        if j >= 0 and j not in drop and len(out[j]) < 120 and not _LEADERS.search(out[j]) and (j - 1 in drop or _LABEL.match(out[j].strip()) or re.search(r"\b(sommaire|table des mati)", out[j], re.I)):
+            drop.add(j)
+    lines = [ln for i, ln in enumerate(out) if i not in drop]
+    # 3. "2." alone on its line, the title on the next one
+    merged: list[str] = []
+    i = 0
+    while i < len(lines):
+        ln = lines[i]
+        if _LABEL.match(ln.strip()):
+            j = i + 1
+            while j < len(lines) and not lines[j].strip():
+                j += 1
+            if j < len(lines) and not _LABEL.match(lines[j].strip()) and len(lines[j].strip()) > 1:
+                merged.append(f"{ln.strip()} {lines[j].strip()}")
+                i = j + 1
+                continue
+        merged.append(ln)
+        i += 1
+    # 4. the words of a diagram (organigram boxes) come out as a burst of tiny lines: keep them, on one line,
+    #    rather than letting each become a fake heading
+    frag = lambda s: 0 < len(s.strip()) <= 22 and len(s.split()) <= 3 and not s.strip().endswith((":", ".", ";")) and not _LABEL.match(s.strip())  # noqa: E731
+    final: list[str] = []
+    run: list[str] = []
+
+    def flush() -> None:
+        if len(run) >= 6:
+            final.append(" · ".join(x.strip() for x in run))
+        else:
+            final.extend(run)
+        run.clear()
+
+    for ln in merged:
+        if frag(ln):
+            run.append(ln)
+        elif not ln.strip() and run:
+            continue
+        else:
+            flush()
+            final.append(ln)
+    flush()
+    return "\n".join(final)
+
+
 def _pdftotext(path: Path) -> str:
     out = subprocess.run(["pdftotext", "-enc", "UTF-8", str(path), "-"], capture_output=True, timeout=60, check=True)
     return out.stdout.decode("utf-8", "replace")
@@ -282,7 +362,7 @@ def from_pdf(path: Path) -> list[Raw]:
         except (subprocess.SubprocessError, FileNotFoundError):
             raise ExtractError("Impossible de lire ce PDF : il est peut-être abîmé. Réessaie avec le fichier Word.") from exc
     text, _ = fix_shifted_fonts(raw)
-    text = text.replace("\f", "\n\n")
+    text = pdf_cleanup(text)
     if len(text.strip()) < 20:
         raise ExtractError("Ce PDF ne contient pas de texte (c'est peut-être un scan). Les photos et scans arrivent bientôt.")
     return from_text(text, source="pdf")
