@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState } from "react";
-import { scans, type ScanResult } from "@/lib/documents";
+import { useEffect, useRef, useState } from "react";
+import { KIND_LABEL, scans, type ScanResult } from "@/lib/documents";
+import { forget, recents, type Recent } from "@/lib/recents";
 import { Icon, type IconName } from "../Icon";
 import { PinLabel } from "../ui";
 
@@ -10,11 +11,13 @@ type Props = {
   error: string;
   onText: (text: string) => void;
   onFile: (file: File) => void;
+  /** Reopen a document from this phone's recent list. */
+  onOpen: (id: string) => void;
 };
 
 type Photo = { file: File; url: string; result?: ScanResult; status: "todo" | "reading" | "done" | "error"; error?: string };
 
-export function ImportScreen({ error, onText, onFile }: Props) {
+export function ImportScreen({ error, onText, onFile, onOpen }: Props) {
   const [mode, setMode] = useState<"file" | "photos" | "text">("file");
   const [text, setText] = useState("");
   const [drag, setDrag] = useState(false);
@@ -231,6 +234,8 @@ export function ImportScreen({ error, onText, onFile }: Props) {
           {error && <p className="mt-4 flex gap-2 rounded-md bg-pin/10 px-4 py-3 text-[15px] text-pin"><Icon name="triangle-alert" size={18} className="mt-0.5" />{error}</p>}
         </div>
 
+        <RecentList onOpen={onOpen} />
+
         <ul className="mt-7 grid gap-3 text-[15px] text-ink/75 sm:grid-cols-3">
           {([["lock", "Tes mots ne sont jamais modifiés"], ["eye", "Aperçu gratuit de toutes les pages"], ["trash-2", "Supprimé après 7 jours"]] as const).map(([icon, label]) => (
             <li key={label} className="flex items-center gap-2.5">
@@ -245,5 +250,41 @@ export function ImportScreen({ error, onText, onFile }: Props) {
         </p>
       </div>
     </div>
+  );
+}
+
+const ago = (at: number) => {
+  const d = Math.round((Date.now() - at) / 86400000);
+  return d <= 0 ? "aujourd'hui" : d === 1 ? "hier" : `il y a ${d} jours`;
+};
+
+/** "Reprendre un document": the ones opened on this phone, never reopened on their own. */
+function RecentList({ onOpen }: { onOpen: (id: string) => void }) {
+  const [list, setList] = useState<Recent[]>([]);
+  useEffect(() => {
+    const t = setTimeout(() => setList(recents())); // after hydration: the list only exists on this phone
+    return () => clearTimeout(t);
+  }, []);
+  if (!list.length) return null;
+  return (
+    <section className="rise mt-8">
+      <h2 className="font-display text-[22px] leading-none font-black text-white uppercase">Reprendre un document</h2>
+      <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+        {list.map((r) => (
+          <li key={r.id} className="paper flex items-center gap-3 rounded-[2px] py-2.5 pr-2 pl-4">
+            <button type="button" onClick={() => onOpen(r.id)} className="press flex min-w-0 flex-1 items-center gap-3 text-left">
+              <Icon name="file-text" size={22} className="shrink-0 text-board" />
+              <span className="min-w-0">
+                <span className="block truncate text-[15px] font-bold">{r.title || KIND_LABEL[r.kind] || "Document"}</span>
+                <span className="block text-[13px] text-ink/60">{KIND_LABEL[r.kind] ?? "Document"}{r.pages ? ` · ${r.pages} pages` : ""} · {ago(r.at)}</span>
+              </span>
+            </button>
+            <button type="button" onClick={() => { forget(r.id); setList(recents()); }} className="press grid h-9 w-9 shrink-0 place-items-center rounded-md text-ink/45 hover:text-ink" aria-label="Retirer de la liste">
+              <Icon name="x" size={16} />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

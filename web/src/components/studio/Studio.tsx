@@ -33,19 +33,16 @@ export function Studio() {
   const [zoom, setZoom] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [draft, setDraft] = useState<StudioState | null>(null); // last cover of this phone: offered, never forced
 
   // Fonts first (text measurement depends on them), then restore the draft or the ?commande=<id> link.
   useEffect(() => {
     const fromLink = params.get("commande");
     loadCoverFonts().then(() => {
-      let orderId = fromLink;
+      const orderId = fromLink;
       try {
         const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          setState({ ...initialState(), ...JSON.parse(saved) });
-          setStep(1);
-        }
-        orderId ??= localStorage.getItem(ORDER_KEY);
+        if (saved) setDraft({ ...initialState(), ...JSON.parse(saved) });
       } catch { /* private mode */ }
       setFontsReady(true);
       if (orderId) {
@@ -108,7 +105,27 @@ export function Studio() {
   if (step === 0) {
     return (
       <Frame>
-        <KindPicker onPick={(k) => { setState((s) => ({ ...switchKind(s, k), style: KINDS[k].defaultStyle })); setStep(1); }} />
+        {draft && (
+          <div className="mx-auto w-full max-w-3xl px-5 pt-6">
+            <button
+              type="button"
+              onClick={() => {
+                setState(draft);
+                setStep(1);
+                // its order comes back too: a cover already paid is downloaded again for free
+                const saved = (() => { try { return localStorage.getItem(ORDER_KEY); } catch { return null; } })();
+                if (saved) api.getOrder(saved).then((o) => { if (!o.is_document) setOrder(o); }).catch(() => {});
+              }} className="paper press flex w-full items-center gap-3 rounded-[2px] px-4 py-3 text-left">
+              <Icon name="rotate-ccw" size={20} className="text-board" />
+              <span className="min-w-0 flex-1">
+                <span className="block font-bold">Reprendre ma dernière page de garde</span>
+                <span className="block truncate text-[13px] text-ink/60">{draft.form.title || KINDS[draft.form.kind].label}</span>
+              </span>
+              <Icon name="chevron-right" size={18} className="text-ink/40" />
+            </button>
+          </div>
+        )}
+        <KindPicker onPick={(k) => { setState((s) => ({ ...switchKind(draft ? { ...s, form: { ...s.form, title: "" } } : s, k), style: KINDS[k].defaultStyle })); setStep(1); }} />
       </Frame>
     );
   }

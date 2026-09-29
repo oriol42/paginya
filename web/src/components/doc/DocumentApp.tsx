@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { OrderStatus } from "@/lib/api";
+import { forget, remember } from "@/lib/recents";
 import { KIND_LABEL, docs, type Block, type DocOptions, type DocStyle, type DocView, type Letterhead } from "@/lib/documents";
 import { Icon, type IconName } from "../Icon";
 import { Logo } from "../Logo";
@@ -17,7 +18,6 @@ import { ImportScreen } from "./ImportScreen";
 import { PlanPanel } from "./PlanPanel";
 import { Working } from "./Working";
 
-const LAST_DOC = "propre:doc:last";
 type Panel = "style" | "cover" | "plan";
 type View = "after" | "before" | "side";
 type Patch = Partial<{ blocks: Block[]; style: DocStyle; options: DocOptions; kind: string; letterhead: Letterhead; cover_svg: string; remove_cover: boolean }>;
@@ -49,7 +49,6 @@ export function DocumentApp() {
 
   const openDoc = useCallback(async (view: DocView, fromStudio = false) => {
     setDoc(view);
-    try { localStorage.setItem(LAST_DOC, view.id); } catch { /* ignore */ }
     router.replace(`/document?doc=${view.id}`, { scroll: false });
     let current = view;
     const needsCover = view.options.cover && (!view.has_cover || fromStudio);
@@ -65,19 +64,21 @@ export function DocumentApp() {
       setRendering(false);
     }
     setCover(await prepareCover(view.id, view.meta));
+    remember({ id: current.id, title: current.meta.cover?.title || current.meta.title || "", kind: current.meta.kind, pages: current.render?.pages ?? 0 });
     setDoc(current);
     setPhase("editor");
   }, [router]);
 
   useEffect(() => {
-    const id = params.get("doc") ?? (() => { try { return localStorage.getItem(LAST_DOC); } catch { return null; } })();
+    // Only a link opens a document: coming back to /document starts a new one (older ones are in "Reprendre").
+    const id = params.get("doc");
     const fromStudio = params.get("cover") === "1";
     if (!id) return;
     let cancelled = false;
     docs.get(id)
       .then((v) => { if (!cancelled) { setPhase("working"); return openDoc(v, fromStudio); } })
       .catch(() => {
-        try { localStorage.removeItem(LAST_DOC); } catch { /* ignore */ }
+        forget(id);
         if (!cancelled) setPhase("import");
       });
     return () => { cancelled = true; };
@@ -143,7 +144,6 @@ export function DocumentApp() {
   }, [doc]);
 
   function reset() {
-    try { localStorage.removeItem(LAST_DOC); } catch { /* ignore */ }
     router.replace("/document");
     setDoc(null);
     setBeforePages(null);
@@ -154,6 +154,7 @@ export function DocumentApp() {
   async function remove() {
     if (!doc) return;
     await docs.remove(doc.id).catch(() => null);
+    forget(doc.id);
     reset();
   }
 
@@ -161,7 +162,7 @@ export function DocumentApp() {
     return (
       <Shell>
         {phase === "working" ? <Working meta={null} rendering={false} /> : (
-          <ImportScreen error={error} onText={(t) => start(() => docs.fromText(t))} onFile={(f) => start(() => docs.fromFile(f))} />
+          <ImportScreen error={error} onText={(t) => start(() => docs.fromText(t))} onFile={(f) => start(() => docs.fromFile(f))} onOpen={(id) => start(() => docs.get(id))} />
         )}
       </Shell>
     );
