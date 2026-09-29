@@ -231,3 +231,7 @@ cd ~/Documents/serveur
 ./publier.sh paginya "ce que j'ai changé"     # ou affichya, ou tout
 ```
 Le script lance les tests du serveur (s'ils échouent, rien n'est publié), enregistre les modifications (commit), les pousse sur GitHub (Render reconstruit le serveur tout seul en 5-10 min) puis construit et publie le site sur Cloudflare Pages. Les clés restent dans `serveur/.env`. Si la connexion coupe, relancer simplement la commande.
+
+## Récents + nouveaux logos (29/09/2026) ✅ en ligne
+- /document ne rouvre plus le dernier document : écran d'import neuf + liste « Reprendre un document » (`lib/recents.ts`, 8 derniers, sur ce téléphone). /garde : bouton « Reprendre ma dernière page de garde » (la commande payée revient avec).
+- Logos ajoutés (sites officiels) : Ngaoundéré (+ ENSAI), Ebolowa, SUP'PTIC, ESSEC Douala (2e logo avec l'Université de Douala), IUC, Siantou, UPAC, IUT Douala. Sources dans `docs/LOGOS.md`.
