@@ -235,3 +235,16 @@ Le script lance les tests du serveur (s'ils échouent, rien n'est publié), enre
 ## Récents + nouveaux logos (29/09/2026) ✅ en ligne
 - /document ne rouvre plus le dernier document : écran d'import neuf + liste « Reprendre un document » (`lib/recents.ts`, 8 derniers, sur ce téléphone). /garde : bouton « Reprendre ma dernière page de garde » (la commande payée revient avec).
 - Logos ajoutés (sites officiels) : Ngaoundéré (+ ENSAI), Ebolowa, SUP'PTIC, ESSEC Douala (2e logo avec l'Université de Douala), IUC, Siantou, UPAC, IUT Douala. Sources dans `docs/LOGOS.md`.
+
+## Déploiement automatique + sécurité (29/09/2026) ✅
+- **Un simple `git push` publie tout** : Render reconstruit le serveur, GitHub Actions (`.github/workflows/site.yml`) construit le site et le publie sur Cloudflare Pages (secrets `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` enregistrés sur le dépôt GitHub). `serveur/publier.sh` fait tests + commit + push (option `--local` pour publier le site depuis l'ordinateur).
+- Sécurité vérifiée : requêtes SQL paramétrées partout, textes échappés (vitrine), liens filtrés (pas de `javascript:`), photos ré-encodées, identifiants de documents aléatoires (128 bits), CORS limité aux sites, montants calculés par le serveur, webhook Fapshi signé, aucun secret dans le code.
+- Ajouté : limites par adresse IP sur les actions coûteuses (`app/guard.py` : création de documents, OCR, rendu, paiements, boutiques) → erreur 429 ; en-têtes de sécurité sur l'API et sur les sites (`web/public/_headers` : CSP, anti-clickjacking, nosniff, HSTS).
+
+## Vraies pages de garde (rapport PFE de l'utilisateur, 29/09/2026) ✅
+- Lecture de garde : en-tête dans un tableau aplati par Word (« ******* »), tableaux lus colonne par colonne (encadreur principal / co-encadreur), titre « THÈME : » sur plusieurs lignes, adresses (B.P., TÉL.) ignorées, « THE UNIVERSITÉ … » rangé en anglais, faculté et département gardés dans l'en-tête même si l'école est reconnue.
+- Modèle « Officiel Cameroun » par défaut quand la garde d'origine a un en-tête officiel ; deux logos empilés au centre (université en haut, faculté en dessous).
+- Sans page de garde : en-tête + titre sur leur propre page, sommaire à la page suivante ; texte d'introduction sans titre placé au début du corps (plus sous le sommaire).
+- Liste des figures : une liste tapée à la main (« Liste des figures & tableaux », sans numéros de page) est reconnue et remplacée, plus de doublons. La liste générée n'apparaît que si le document a des légendes « Figure 1 : … ».
+- Dédicace : les lignes courtes du poème ne deviennent plus des titres. « Liste des abréviations, sigles et acronymes » reconnue dans n'importe quel ordre.
+- Logos fournis par l'utilisateur : Yaoundé I, Yaoundé II, Dschang (blason), FSEG Yaoundé II, ISSEA.
