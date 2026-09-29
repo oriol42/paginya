@@ -248,3 +248,8 @@ Le script lance les tests du serveur (s'ils échouent, rien n'est publié), enre
 - Liste des figures : une liste tapée à la main (« Liste des figures & tableaux », sans numéros de page) est reconnue et remplacée, plus de doublons. La liste générée n'apparaît que si le document a des légendes « Figure 1 : … ».
 - Dédicace : les lignes courtes du poème ne deviennent plus des titres. « Liste des abréviations, sigles et acronymes » reconnue dans n'importe quel ordre.
 - Logos fournis par l'utilisateur : Yaoundé I, Yaoundé II, Dschang (blason), FSEG Yaoundé II, ISSEA.
+
+## Vidéo de lancement (skill /brag-slim, 29/09/2026)
+- `brag-output/brag.mp4` (vertical 1080×1920, 20 s, 5,5 Mo, pour statut WhatsApp / TikTok), `brag.jpg` (miniature), `share-copy.txt` (texte à publier), `brag-plan.md` (storyboard). Dossier exclu de Git (trop lourd).
+- Fabriquée avec les vrais rendus de Paginya (page de garde du studio, sommaire et liste des figures du moteur, page « après » du site) ; composition HTML (`work/video.html`, une image = fonction du temps), 600 images capturées dans Chrome, musique et effets synthétisés (afro-pop 100 BPM en la mineur), encodage ffmpeg.
+- Skill installée : `~/.claude/skills/brag-slim` (MIT). Pour une autre vidéo : « /brag-slim » dans Claude Code.
