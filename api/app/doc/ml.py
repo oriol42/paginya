@@ -147,6 +147,8 @@ def refine(raws: list[Raw], trace: dict[int, dict], base: float, threshold: floa
     for i, it in trace.items():
         if raws[i].explicit or it.get("type") in ("toc", "table", "figure", "code", "title") or it.get("kind") in ("special", "partie", "chapitre", "section"):
             continue  # certain by construction
+        if it.get("role") in ("dedicace", "sigle", "biblio", "keywords") or it.get("hidden"):
+            continue  # its section already says what it is (a poem's short lines are not titles)
         if it.get("_nomark") or it.get("type") == "list" and (raws[i].list_kind or _R["bullet"].search(raws[i].text) or _BULLET.match(raws[i].text)):
             continue  # a bullet is a bullet: never promoted to a heading
         k = int(pr[i].argmax())

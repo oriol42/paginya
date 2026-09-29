@@ -147,7 +147,7 @@ export function Studio() {
       </button>
     )
   ) : (
-    <button type="button" onClick={() => setStep(step + 1)} className="flex-1 rounded-md bg-brand-500 px-5 py-4 font-display text-lg font-bold text-white transition hover:bg-brand-600 active:scale-[.98]">
+    <button type="button" onClick={() => setStep(step + 1)} className="flex flex-1 items-center justify-center gap-2 rounded-md bg-brand-500 px-5 py-4 font-display text-lg font-bold text-white transition hover:bg-brand-600 active:scale-[.98]">
       {step === 2 ? "Voir les styles" : "Continuer"} <Icon name="arrow-right" size={18} />
     </button>
   );

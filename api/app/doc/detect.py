@@ -89,6 +89,11 @@ def _special_of(text: str) -> str | None:
     if len(text) > 70:
         return None
     t = re.sub(r"^([ivx]+|\d+)\s*[.\-–)]\s*", "", plain(text).rstrip(" :"))
+    t = re.sub(r"\s+", " ", t)
+    if re.match(r"^(liste|table|index)s? des (figures|tableaux|illustrations|graphiques|images|schemas)\b", t):
+        return "toc"  # "Liste des figures & tableaux", "Liste des tableaux et figures"…: rebuilt automatically
+    if re.match(r"^(liste des |table des )?(sigles|abreviations|acronymes)\b[\w ,/&-]*$", t) and len(t) < 70:
+        return "sigles"  # "Liste des abréviations, sigles et acronymes" in any order
     return SPECIAL_LOOKUP.get(t)
 
 
@@ -169,7 +174,8 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
             dropped.append(idx)
             continue
         if skip_toc:
-            if TOC_ENTRY.match(text) or (len(text) < 120 and re.search(r"\s\d{1,3}$", text)):
+            # a typed list of figures often has no page numbers: "Figure 1 : Architecture générale"
+            if TOC_ENTRY.match(text) or (len(text) < 120 and re.search(r"\s\d{1,3}$", text)) or (len(text) < 200 and CAPTION.match(text)):
                 stats["toc_lines"] += 1
                 dropped.append(idx)
                 continue
@@ -452,6 +458,11 @@ def _roles_in_sections(items: list[dict]) -> None:
     section = None
     for it in items:
         if it.get("type") == "heading":
+            if section in ("dedicace", "epigraphe") and it.get("kind") not in ("special", "partie", "chapitre"):
+                # a poem's short lines ("Je", "Ont") are not titles
+                it.update({"type": "paragraph", "role": "dedicace"})
+                it.pop("level", None)
+                continue
             section = it.get("special") if it["level"] == 1 else section
             continue
         if it.get("type") not in ("paragraph", "list"):

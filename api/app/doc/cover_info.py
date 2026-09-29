@@ -27,7 +27,7 @@ DOC_LABEL = re.compile(
 THEME = re.compile(r"^(th[èe]me|sujet|intitul[ée]|titre)\s*[:\-–]\s*(.*)$", re.I)
 AUTHORS = re.compile(r"^(pr[ée]sent[ée]e?s?|r[ée]dig[ée]e?s?|r[ée]alis[ée]e?s?|[ée]labor[ée]e?s?|soutenue?s?|fait)(\s+et\s+\w+)?\s+(par)\b\s*[:\-–]?\s*(.*)$|^(par|auteurs?|[ée]tudiants?|membres du groupe|groupe)\s*[:\-–]\s*(.*)$", re.I)
 SUPERVISORS = re.compile(
-    r"^(sous l['’]encadrement( \w+)?( de)?|sous la (direction|supervision|co-?direction)( \w+)?( de)?|encadr(eur|ant|ement|[ée]e? par)[^:]*|superviseur|"
+    r"^(co-?encadr\w*|sous l['’]encadrement( \w+)?( de)?|sous la (direction|supervision|co-?direction)( \w+)?( de)?|encadr(eur|ant|ement|[ée]e? par)[^:]*|superviseur|"
     r"directeur de (m[ée]moire|th[èe]se)|ma[îi]tre de stage|tuteur[^:]*|rapporteur|co-?directeur)\s*[:\-–]?\s*(?P<rest>.*)$",
     re.I,
 )
@@ -47,15 +47,29 @@ def _plain(s: str) -> str:
 START = re.compile(r"^(introduction|chapitre|partie|avant[- ]propos|sommaire|table des mati|r[ée]sum[ée]|abstract|d[ée]dicace|remerciements|[ée]pigraphe|liste des)\b|^(I|1)\s*[.\-–)]\s+\S", re.I)
 
 
+_ADDRESS = re.compile(r"^(b\.?\s?p\.?|p\.?\s?o\.?\s?box|t[ée]l|fax|e-?mail|site|www\.)\b", re.I)
+
+
+def _cell_lines(cell: str) -> list[str]:
+    """A header cell flattened by Word: "RÉPUBLIQUE DU CAMEROUN PAIX - TRAVAIL - PATRIE ******* MINISTÈRE …"."""
+    parts = []
+    for chunk in re.split(r"\s*\*{3,}\s*|\n", cell):
+        parts.extend(re.split(r"\s+(?=(?:PAIX|PEACE)\b)", chunk.strip()))
+    return [p.strip() for p in parts if p.strip() and not _ADDRESS.match(p.strip())]
+
+
 def _lines(raws) -> tuple[list[tuple[int, str]], int]:
     """(raw index, line) for the lines before the body starts (first special page or chapter), table cells included."""
     out, end = [], 0
     for i, r in enumerate(raws[:60]):
         text = (r.text or "").strip()
         if r.rows:
-            for row in r.rows:
-                for cell in row:
-                    out.extend((i, ln.strip()) for ln in str(cell).split("\n") if ln.strip())
+            # column by column: "ENCADREUR PRINCIPAL" then its name, then the next column
+            width = max(len(row) for row in r.rows)
+            for c in range(width):
+                for row in r.rows:
+                    if c < len(row):
+                        out.extend((i * 1000 + c, ln) for ln in _cell_lines(str(row[c])))
             end = i + 1
             continue
         if r.image:
@@ -109,15 +123,21 @@ def extract(raws) -> tuple[dict, set[int]]:
         if HEADER.match(line) and len(line) < 120:
             if re.match(r"^(\*|-){3,}$", line):
                 continue
-            (f["header_en"] if ENGLISH.search(line) and not re.search(r"\b(de|du|des|la|le|et)\b", p) else f["header_fr"]).append(line)
+            english = (ENGLISH.search(line) and not re.search(r"\b(de|du|des|la|le|et)\b", p)) or p.startswith("the ")
+            (f["header_en"] if english else f["header_fr"]).append(line)
             signals += 0.5
             mode = None
             continue
         if m := THEME.match(line):
             f["title"] = m.group(2).strip(" «»\"") or f.get("title", "")
-            mode = "title" if not m.group(2).strip() else None
+            mode = "title" if not m.group(2).strip() else "title_more"
             signals += 1
             continue
+        if mode == "title_more":
+            if line.isupper() and not AUTHORS.match(line) and not SUPERVISORS.match(line) and not HEADER.match(line) and len(line) < 120:
+                f["title"] = f"{f['title']} {line.strip(' «»\"')}"
+                continue
+            mode = None
         if DOC_LABEL.match(line) and len(line) < 90 and "doc_label" not in f:
             f["doc_label"] = line.rstrip(" :")
             signals += 1

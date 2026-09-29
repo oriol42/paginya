@@ -57,7 +57,14 @@ function fromDocument(meta: DocMeta, info: DocCoverInfo): StudioState {
   const instId = matchInstitution(info.header_fr ?? []);
   if (instId) {
     const inst = institution(instId);
-    Object.assign(form, { institutionId: inst.id, headerFr: inst.fr.join("\n"), headerEn: inst.en.join("\n") });
+    // the faculty / department read on the old cover stays in the header (our list may stop at the university)
+    const known = new Set(inst.fr.map((l) => plain(l)));
+    const extra = (lines?: string[]) => (lines ?? []).filter((l) => /^(facult|[ée]cole|school|institut|d[ée]partement|department|fili[èe]re|option)/i.test(l) && !known.has(plain(l)));
+    Object.assign(form, {
+      institutionId: inst.id,
+      headerFr: [...inst.fr, ...extra(info.header_fr)].join("\n"),
+      headerEn: [...inst.en, ...extra(info.header_en)].join("\n"),
+    });
   } else if (info.header_fr?.length) {
     const own = (lines?: string[]) => (lines ?? []).filter((l) => !OFFICIAL.test(plain(l))).join("\n");
     Object.assign(form, { institutionId: "autre", headerFr: own(info.header_fr), headerEn: own(info.header_en) });
@@ -72,7 +79,8 @@ function fromDocument(meta: DocMeta, info: DocCoverInfo): StudioState {
     }));
   }
   for (const k of ["year", "degree", "specialty", "structure", "period"] as const) if (info[k]) form[k] = info[k]!;
-  return { ...base, style: def.defaultStyle, form };
+  // an official bilingual header on the old cover: keep that look (header, logos in the middle)
+  return { ...base, style: info.header_fr?.length && def.academic ? "officiel" : def.defaultStyle, form };
 }
 
 /** Cover state for a document: its own saved state, else what its old cover says, else the studio draft. */

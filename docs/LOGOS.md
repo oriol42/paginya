@@ -40,7 +40,10 @@ les retire sur simple demande (contact dans les mentions légales). L'utilisateu
 | iuc.png | IUC Douala | site officiel myiuc.com (rogné : sans les mentions d'accréditation) |
 | siantou.png | Institut Universitaire Siantou | site officiel siantou-univ.com |
 | upac.png | UPAC | site officiel upac.cm |
+| fseg-uy2.png | FSEG, Université de Yaoundé II | fourni par l'utilisateur |
+| issea.png | ISSEA | fourni par l'utilisateur |
+| uy1.png, uy2.png, uds.png | Yaoundé I, Yaoundé II, Dschang | remplacés par les versions fournies par l'utilisateur (plus nettes ; Dschang : le blason au lieu de la bannière) |
 
-Sans logo propre pour l'instant (l'utilisateur importe le sien) : ISSEA (site hors ligne), facultés de UY1/UY2/Dschang (leurs sites n'affichent que le logo de l'université).
+Sans logo propre pour l'instant (l'utilisateur importe le sien) : facultés de UY1/UY2/Dschang (leurs sites n'affichent que le logo de l'université).
 Méthode : trouver le site officiel, prendre l'image « logo » de sa page d'accueil (script dans l'historique : find.py).
 Traitement : fond blanc rogné, 400 px max, PNG 256 couleurs (≈ 390 Ko pour tout le dossier).

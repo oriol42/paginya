@@ -797,7 +797,8 @@ def build_docx(document: dict, images_dir: Path) -> bytes:
     elif titles:
         for t in titles:
             b.title(t)
-        b.first_in_section = True  # the sommaire or the text follows on the same page
+        # a short document goes on under its title; with a sommaire, header + title make a page of their own
+        b.first_in_section = not opts["toc"]
 
     # Split: preliminary blocks (before the first non-preliminary heading) / body.
     split = next(
@@ -806,6 +807,9 @@ def build_docx(document: dict, images_dir: Path) -> bytes:
         len(blocks),
     )
     prelim, body = blocks[:split], blocks[split:]
+    # Text above the first special page (an introduction with no heading) starts the body, never sits under the sommaire.
+    lead = next((i for i, x in enumerate(prelim) if x.get("type") == "heading"), len(prelim))
+    prelim, body = prelim[lead:], prelim[:lead] + body
     has_tables = any(x.get("type") == "caption" and x.get("of") == "table" for x in blocks)
     has_figures = any(x.get("type") == "caption" and x.get("of") == "figure" for x in blocks)
     # Front matter (roman page numbers) only when there is some: dedication, thanks, abstract... or a sommaire.
