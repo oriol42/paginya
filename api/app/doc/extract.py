@@ -221,12 +221,68 @@ def _indent(line: str) -> int:
     return (len(expanded) - len(expanded.lstrip(" "))) // 3
 
 
+# Word PDFs whose embedded fonts lack a character map come out shifted: "6WDJH HIIHFWXp" for "Stage effectué".
+# ASCII glyphs sit 29 below their letter; accented ones follow the Mac glyph order, one place off.
+_MAC_ACCENTS = "ÄÅÇÉÑÖÜáàâäãåçéèêëíìîïñóòôöõúùûü"  # Mac standard glyph order, from index 97
+_SPECIAL = {"¶": "’", "³": "«", "´": "»", "\x10": "-", "\x03": " "}
+_FUNC = set("le la les de des du et en un une pour par dans au aux sur est que qui à ou ce cette son sa ses avec".split())
+_WORD = re.compile(r"^[A-ZÀ-Ý]?[a-zà-ÿ'’\-]+[.,;:]?$")
+
+
+def _unshift(line: str) -> str:
+    out = []
+    for ch in line:
+        o = ord(ch)
+        if ch in _SPECIAL:
+            out.append(_SPECIAL[ch])
+        elif ch == " ":
+            out.append(ch)  # real spaces come from the text positions, not from the font
+        elif 3 <= o <= 93:
+            out.append(chr(o + 29))
+        elif 98 <= o < 98 + len(_MAC_ACCENTS):
+            out.append(_MAC_ACCENTS[o - 98])
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _readability(line: str) -> int:
+    words = line.split()
+    return sum(1 for w in words if _WORD.match(w) and re.search(r"[aeiouyéèêàâîôû]", w.lower())) + 3 * sum(1 for w in words if w.lower().strip(".,;:") in _FUNC)
+
+
+def fix_shifted_fonts(text: str) -> tuple[str, int]:
+    """Decodes the lines that read far better shifted back (line by line: other fonts of the page are fine)."""
+    fixed, lines = 0, []
+    for line in text.split("\n"):
+        if line.strip() and not line.isascii() or re.search(r"[A-Z]{2,}[a-z]?[A-Z]|[0-9][A-Z]{2}", line):
+            dec = _unshift(line)
+            if _readability(dec) > _readability(line) + 1:
+                lines.append(dec)
+                fixed += 1
+                continue
+        lines.append(line)
+    return "\n".join(lines), fixed
+
+
+def _pdftotext(path: Path) -> str:
+    out = subprocess.run(["pdftotext", "-enc", "UTF-8", str(path), "-"], capture_output=True, timeout=60, check=True)
+    return out.stdout.decode("utf-8", "replace")
+
+
 def from_pdf(path: Path) -> list[Raw]:
     try:
-        out = subprocess.run(["pdftotext", "-enc", "UTF-8", str(path), "-"], capture_output=True, timeout=60, check=True)
+        raw = _pdftotext(path)
     except (subprocess.SubprocessError, FileNotFoundError) as exc:
-        raise ExtractError("Impossible de lire ce PDF") from exc
-    text = out.stdout.decode("utf-8", "replace").replace("\f", "\n\n")
+        # Damaged or cut-off PDF (WhatsApp transfers...): Ghostscript rebuilds what it can read.
+        repaired = path.with_name(path.stem + ".repaired.pdf")
+        try:
+            subprocess.run(["gs", "-q", "-o", str(repaired), "-sDEVICE=pdfwrite", str(path)], capture_output=True, timeout=120)
+            raw = _pdftotext(repaired)
+        except (subprocess.SubprocessError, FileNotFoundError):
+            raise ExtractError("Impossible de lire ce PDF : il est peut-être abîmé. Réessaie avec le fichier Word.") from exc
+    text, _ = fix_shifted_fonts(raw)
+    text = text.replace("\f", "\n\n")
     if len(text.strip()) < 20:
         raise ExtractError("Ce PDF ne contient pas de texte (c'est peut-être un scan). Les photos et scans arrivent bientôt.")
     return from_text(text, source="pdf")
