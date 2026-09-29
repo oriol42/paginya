@@ -79,7 +79,10 @@ def _join_wrapped(lines: list[tuple[int, str]]) -> list[tuple[int, str]]:
             pi, prev = out[-1]
             upper = prev.isupper() and ln.isupper()
             cont = _CONNECTOR.search(prev) or (len(ln.split()) <= 2 and not HEADER.match(ln) and not ln.startswith(("(", "*")))
-            if upper and cont and not re.match(r"^(\*|-){3,}$", ln) and len(prev) + len(ln) < 110:
+            # mixed case: "École Supérieure des Sciences" / "et Techniques de" / "l'Information et de la"
+            lower_cont = HEADER.match(prev) and not HEADER.match(ln) and not ln.startswith(("(", "*")) and (
+                _CONNECTOR.search(prev) or ln[:1].islower() or (len(ln.split()) <= 2 and ln[:1].isalpha() and not re.search(r"[.:;]$", prev)))
+            if ((upper and cont) or lower_cont) and not re.match(r"^(\*|-){3,}$", ln) and len(prev) + len(ln) < 110:
                 out[-1] = (pi, f"{prev} {ln}")
                 continue
         out.append((idx, ln))
@@ -151,8 +154,18 @@ def extract(raws) -> tuple[dict, set[int]]:
             f["degree"] = m.group(2).strip(" .")
             mode = None
             continue
+        if re.match(r"^(fili[èe]re|option|sp[ée]cialit[ée]|parcours|mention)\s*[:\-–]?\s*$", line, re.I):
+            mode = "specialty"  # "Filière :" alone, the value on the next line
+            continue
         if m := SPECIALTY.match(line):
-            f.setdefault("specialty", m.group(2).strip(" ."))
+            if m.group(1).lower() in ("niveau", "cycle"):
+                f["level"] = m.group(2).strip(" .")
+            else:
+                f.setdefault("specialty", m.group(2).strip(" ."))
+            continue
+        if mode == "specialty":
+            f["specialty"] = line.strip(" .")
+            mode = None
             continue
         if (m := PERIOD.search(line)) and len(line) < 90:
             f["period"] = m.group(2)
@@ -176,7 +189,7 @@ def extract(raws) -> tuple[dict, set[int]]:
         mode = None
         # Title: a longish line in capitals or the region's explicit title, never a sentence.
         # (only a line in capitals: "Stage effectué à … du 04" is a mention, not a title; no title beats a wrong one)
-        if "title" not in f and 12 <= len(line) <= 200 and not line.endswith(".") and line.isupper() and not re.search(r"\d{4}", line):
+        if "title" not in f and 12 <= len(line) <= 200 and not line.endswith(".") and line.isupper() and not re.search(r"\d{4}", line) and not DOC_LABEL.match(line):
             f["title"] = line.strip(" «»\"")
 
     blob = " ".join(ln for _, ln in lines)
@@ -193,6 +206,13 @@ def extract(raws) -> tuple[dict, set[int]]:
 
     if signals < 2.5 or not (f["header_fr"] or f.get("doc_label")) or not (f["authors"] or f["supervisors"] or f.get("year")):
         return {}, set()
+    if level := f.pop("level", None):
+        f["specialty"] = f"{f['specialty']} · Niveau {level}" if f.get("specialty") else f"Niveau {level}"
+    for k in ("header_fr", "header_en"):
+        f[k] = list(dict.fromkeys(f[k]))  # a cover printed twice (cover + inner title page)
+    if f.get("title") and f.get("doc_label") and f["title"].strip().lower() == f["doc_label"].strip().lower():
+        del f["title"]
+
     def unique(people: list[dict]) -> list[dict]:
         seen, out = set(), []
         for x in people:

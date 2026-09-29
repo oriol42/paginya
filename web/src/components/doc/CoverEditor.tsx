@@ -39,7 +39,8 @@ function matchInstitution(header: string[]): string | null {
   let best: { id: string; lines: number } | null = null;
   for (const inst of INSTITUTIONS) {
     if (inst.id === "autre" || inst.id === "lycee") continue;
-    const all = inst.fr.every((l) => text.includes(plain(l).replace(/ soa$/, "")));
+    // "(ESSTIC)", "– SOA": optional on real covers
+    const all = inst.fr.every((l) => text.includes(plain(l.replace(/\([^)]*\)/g, "")).replace(/ soa$/, "")));
     if (all && (!best || inst.fr.length > best.lines)) best = { id: inst.id, lines: inst.fr.length };
   }
   return best?.id ?? null;

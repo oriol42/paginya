@@ -43,6 +43,22 @@ class ExtractError(ValueError):
 _END = re.compile(r"[.:;!?»\"')\]]$")
 
 
+_CONNECT = re.compile(r"(?:^|\s)(de|du|des|la|le|les|l['’]|d['’]|et|à|en|pour|par|au|aux|sur|dans|un|une|avec|qui|que|ou|son|sa|ses|leur|leurs|ce|cette|notre|nos|of|the|and)$", re.I)
+_STARTS_BLOCK = re.compile(r"^([-–—•*➢►▪❖◆■●○➤]|\d+(\.\d+)*[.)\-–]\s|[IVX]+[.)\-–]\s|[a-z][.)]\s|chapitre|partie|section)", re.I)
+
+
+def _cut(prev: str, nxt: str, strict: bool = False) -> bool:
+    """PDF hard wrap: the sentence of `prev` goes on in `nxt`.
+    strict (across an empty line): only when `prev` visibly stops mid-sentence."""
+    if not prev or not nxt or _END.search(prev) or _STARTS_BLOCK.match(nxt) or (nxt.isupper() and len(nxt) > 3):
+        return False
+    if _CONNECT.search(prev):
+        return True  # "… des Sciences et" / "Techniques …"
+    if strict:
+        return nxt[:1].islower() and len(prev) > 20
+    return (len(prev) > 45 and (nxt[:1].islower() or nxt[:1].isdigit())) or len(prev) >= 78  # full justified line
+
+
 def from_text(text: str, source: str = "text") -> list[Raw]:
     text = text.replace("\r\n", "\n").replace("\r", "\n").replace(" ", " ")
     lines = [ln.rstrip() for ln in text.split("\n")]
@@ -55,8 +71,17 @@ def from_text(text: str, source: str = "text") -> list[Raw]:
             paras.append(Raw(text=re.sub(r"[ \t]+", " ", joined).strip(), indent=_indent(buf[0]), source=source))
             buf.clear()
 
+    def next_text(i: int) -> str:
+        for ln in lines[i + 1:i + 4]:
+            if ln.strip():
+                return ln.strip()
+        return ""
+
     for i, line in enumerate(lines):
         if not line.strip():
+            # PDF: a sentence cut around a picture continues after an empty line ("… l'effervescence du" / "mouvement")
+            if source == "pdf" and buf and _cut(buf[-1].strip(), next_text(i), strict=True):
+                continue
             flush()
             continue
         if "\t" in line.strip() or " | " in line:
@@ -66,10 +91,7 @@ def from_text(text: str, source: str = "text") -> list[Raw]:
         if buf:
             prev = buf[-1].strip()
             # PDF-style hard wraps: previous line long, unfinished, next starts lowercase.
-            wrapped = (
-                source == "pdf" and len(prev) > 45 and not _END.search(prev)
-                and (line.strip()[:1].islower() or line.strip()[:1].isdigit())
-            )
+            wrapped = source == "pdf" and _cut(prev, line.strip())
             if wrapped:
                 buf.append(line)
                 continue
@@ -322,7 +344,7 @@ def pdf_cleanup(text: str) -> str:
         i += 1
     # 4. the words of a diagram (organigram boxes) come out as a burst of tiny lines: keep them, on one line,
     #    rather than letting each become a fake heading
-    frag = lambda s: 0 < len(s.strip()) <= 22 and len(s.split()) <= 3 and not s.strip().endswith((":", ".", ";")) and not _LABEL.match(s.strip())  # noqa: E731
+    frag = lambda s: 0 < len(s.strip()) <= 22 and len(s.split()) <= 3 and not s.strip().endswith((":", ".", ";")) and not _LABEL.match(s.strip()) and not _STARTS_BLOCK.match(s.strip())  # noqa: E731
     final: list[str] = []
     run: list[str] = []
 
