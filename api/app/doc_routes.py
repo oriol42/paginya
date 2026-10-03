@@ -20,7 +20,7 @@ from .doc import office
 from .doc.detect import detect
 from .doc.extract import ExtractError, from_docx, from_markdown, from_pdf, from_text, looks_like_markdown
 from .doc.render import DEFAULT_OPTIONS, KINDS, THEMES, build_docx, options_for
-from .doc.scan import ScanError, ocr_local, read_text, straighten
+from .doc.scan import ScanError, ocr_local, read_text, read_text_with_engine, straighten
 from .svg_safe import UnsafeSvg, sanitize_svg
 
 router = APIRouter(prefix="/documents")
@@ -462,7 +462,8 @@ def scan_page(body: ScanIn) -> dict:
     try:
         jpeg, found = straighten(raw)
         if body.handwriting:
-            text, engine, confidence = read_text(jpeg), "gemini", 90.0
+            text, engine = read_text_with_engine(jpeg)
+            confidence = 95.0 if engine == "mock" else 90.0
         elif os.getenv("OCR_PROVIDER") == "mock":
             text, engine, confidence = read_text(jpeg), "mock", 95.0
         else:

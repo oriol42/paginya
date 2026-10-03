@@ -94,15 +94,14 @@ def straighten(data: bytes) -> tuple[bytes, bool]:
     return jpeg.tobytes(), corners is not None
 
 
-def read_text(jpeg: bytes) -> str:
-    provider = os.getenv("OCR_PROVIDER", "gemini")
-    if provider == "mock":
-        return "TEXTE LU (simulation)\nCeci est le texte transcrit de la page."
-    key = os.getenv("GEMINI_API_KEY", "")
-    if not key:
-        raise OcrUnavailable(
-            "La lecture des photos n'est pas encore activée (clé Gemini manquante dans api/.env)."
-        )
+def _check_response(resp: httpx.Response) -> None:
+    if resp.status_code == 429:
+        raise ScanError("Trop de pages lues aujourd'hui, réessaie dans un moment")
+    if resp.status_code != 200:
+        raise ScanError(f"Lecture impossible ({resp.status_code})")
+
+
+def _read_gemini(jpeg: bytes, key: str) -> str:
     model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     try:
         resp = httpx.post(
@@ -119,16 +118,92 @@ def read_text(jpeg: bytes) -> str:
         )
     except httpx.HTTPError as exc:
         raise ScanError("Le service de lecture ne répond pas, réessaie") from exc
-    if resp.status_code == 429:
-        raise ScanError("Trop de pages lues aujourd'hui, réessaie dans un moment")
-    if resp.status_code != 200:
-        raise ScanError(f"Lecture impossible ({resp.status_code})")
+    _check_response(resp)
     try:
         parts = resp.json()["candidates"][0]["content"]["parts"]
     except (KeyError, IndexError, ValueError) as exc:
         raise ScanError("La page n'a pas pu être lue (photo trop floue ?)") from exc
     return "\n".join(p.get("text", "") for p in parts).strip()
 
+
+def _read_openai_compatible(jpeg: bytes, key: str, base_url: str, model: str) -> str:
+    """Groq and OpenRouter both speak the OpenAI chat-completions format."""
+    data_url = "data:image/jpeg;base64," + base64.b64encode(jpeg).decode()
+    try:
+        resp = httpx.post(
+            f"{base_url}/chat/completions",
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json={
+                "model": model,
+                "temperature": 0,
+                "messages": [{"role": "user", "content": [
+                    {"type": "text", "text": PROMPT},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ]}],
+            },
+            timeout=90,
+        )
+    except httpx.HTTPError as exc:
+        raise ScanError("Le service de lecture ne répond pas, réessaie") from exc
+    _check_response(resp)
+    try:
+        return (resp.json()["choices"][0]["message"]["content"] or "").strip()
+    except (KeyError, IndexError, ValueError) as exc:
+        raise ScanError("La page n'a pas pu être lue (photo trop floue ?)") from exc
+
+
+def _read_groq(jpeg: bytes, key: str) -> str:
+    model = os.getenv("GROQ_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+    return _read_openai_compatible(jpeg, key, "https://api.groq.com/openai/v1", model)
+
+
+def _read_openrouter(jpeg: bytes, key: str) -> str:
+    model = os.getenv("OPENROUTER_MODEL", "google/gemma-3-27b-it:free")
+    return _read_openai_compatible(jpeg, key, "https://openrouter.ai/api/v1", model)
+
+
+# name -> (environment variable holding the key, reader)
+PROVIDERS = {
+    "gemini": ("GEMINI_API_KEY", _read_gemini),
+    "groq": ("GROQ_API_KEY", _read_groq),
+    "openrouter": ("OPENROUTER_API_KEY", _read_openrouter),
+}
+
+
+def read_text_with_engine(jpeg: bytes) -> tuple[str, str]:
+    """Reads a page with the first provider that works. Returns (text, provider name).
+
+    Order comes from OCR_PROVIDERS (default "gemini,groq,openrouter"). A provider
+    without a key is skipped; a provider that fails (quota, outage) hands over
+    to the next one. Only if all of them fail does the last error reach the user.
+    """
+    if os.getenv("OCR_PROVIDER") == "mock":
+        return "TEXTE LU (simulation)\nCeci est le texte transcrit de la page.", "mock"
+    order = [n.strip() for n in os.getenv("OCR_PROVIDERS", "gemini,groq,openrouter").split(",") if n.strip()]
+    last_error: ScanError | None = None
+    tried = False
+    for name in order:
+        if name not in PROVIDERS:
+            continue
+        env_var, reader = PROVIDERS[name]
+        key = os.getenv(env_var, "")
+        if not key:
+            continue
+        tried = True
+        try:
+            return reader(jpeg, key), name
+        except ScanError as exc:
+            last_error = exc
+    if not tried:
+        raise OcrUnavailable(
+            "La lecture des photos n'est pas encore activée (ajoute une clé dans api/.env : "
+            "GEMINI_API_KEY, GROQ_API_KEY ou OPENROUTER_API_KEY)."
+        )
+    raise last_error or ScanError("Lecture impossible")
+
+
+def read_text(jpeg: bytes) -> str:
+    return read_text_with_engine(jpeg)[0]
 
 def ocr_local(jpeg: bytes) -> tuple[str, float]:
     """Tesseract (fra+eng). Returns (text, mean word confidence 0-100)."""
