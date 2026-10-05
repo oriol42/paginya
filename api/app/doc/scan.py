@@ -13,6 +13,7 @@ import base64
 import csv
 import io
 import os
+import time
 import re
 import subprocess
 import tempfile
@@ -98,9 +99,38 @@ class ModelNotFound(ScanError):
     """The provider answered 404: the model name is wrong or retired."""
 
 
+class ServiceBusy(ScanError):
+    """The provider answered 500/503: overloaded for a moment (common on free plans)."""
+
+
+def _try_models(models: list[str], call, passes: int = 2) -> str:
+    """Runs `call(model)` on each model name until one answers.
+
+    A wrong name (404) or an overloaded model (5xx) moves on to the next name; when every name was
+    overloaded, waits a moment and goes round once more. Other errors (quota, bad key) stop at once.
+    """
+    models = [m for m in dict.fromkeys(m.strip() for m in models) if m]
+    last: ScanError = ScanError("Lecture impossible")
+    for turn in range(passes):
+        busy = False
+        for model in models:
+            try:
+                return call(model)
+            except ModelNotFound as exc:
+                last = exc
+            except ServiceBusy as exc:
+                last, busy = exc, True
+        if not busy or turn == passes - 1:
+            break
+        time.sleep(2)
+    raise last
+
+
 def _check_response(resp: httpx.Response, model: str = "") -> None:
     if resp.status_code == 429:
         raise ScanError("Trop de pages lues aujourd'hui, réessaie dans un moment")
+    if resp.status_code in (500, 502, 503, 504):
+        raise ServiceBusy(f"service surchargé ({resp.status_code}), réessaie dans un instant")
     if resp.status_code == 404:
         raise ModelNotFound(f"modèle introuvable ({model or '404'})")
     if resp.status_code in (400, 401, 403):
@@ -115,14 +145,8 @@ def _check_response(resp: httpx.Response, model: str = "") -> None:
 
 def _read_gemini(jpeg: bytes, key: str, prompt: str = PROMPT) -> str:
     """Tries the configured model, then the usual names if Google says the model does not exist."""
-    models = [m for m in dict.fromkeys([os.getenv("GEMINI_MODEL", "").strip(), "gemini-flash-latest", "gemini-2.5-flash"]) if m]
-    for i, model in enumerate(models):
-        try:
-            return _gemini_call(jpeg, key, prompt, model)
-        except ModelNotFound:
-            if i == len(models) - 1:
-                raise
-    raise ScanError("Lecture impossible")
+    models = [os.getenv("GEMINI_MODEL", ""), "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
+    return _try_models(models, lambda model: _gemini_call(jpeg, key, prompt, model))
 
 
 def _gemini_call(jpeg: bytes, key: str, prompt: str, model: str) -> str:
@@ -176,8 +200,9 @@ def _read_openai_compatible(jpeg: bytes, key: str, base_url: str, model: str, pr
 
 
 def _read_groq(jpeg: bytes, key: str, prompt: str = PROMPT) -> str:
-    model = os.getenv("GROQ_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
-    return _read_openai_compatible(jpeg, key, "https://api.groq.com/openai/v1", model, prompt)
+    # Groq retires its vision models regularly (Llama 4 Scout stopped on 17 July 2026): try the current ones.
+    models = [os.getenv("GROQ_MODEL", ""), "qwen/qwen3.8-27b", "qwen/qwen3.6-27b"]
+    return _try_models(models, lambda model: _read_openai_compatible(jpeg, key, "https://api.groq.com/openai/v1", model, prompt))
 
 
 def _read_openrouter(jpeg: bytes, key: str, prompt: str = PROMPT) -> str:
