@@ -9,9 +9,13 @@ import { Icon } from "@/components/Icon";
 
 export type Exam = {
   country: boolean;
+  bilingual: boolean;
   ministry: string;
+  ministry_en: string;
   delegation: string;
+  delegation_en: string;
   school: string;
+  school_en: string;
   department: string;
   year: string;
   exam: string;
@@ -19,6 +23,7 @@ export type Exam = {
   class: string;
   duration: string;
   coef: string;
+  total: string;
   teacher: string;
   instructions: string;
   content: string;
@@ -43,9 +48,13 @@ b) Tracer sa courbe représentative.`;
 export function initialExam(): Exam {
   return {
     country: true,
+    bilingual: true,
     ministry: "MINISTÈRE DES ENSEIGNEMENTS SECONDAIRES",
+    ministry_en: "",
     delegation: "",
+    delegation_en: "",
     school: "",
+    school_en: "",
     department: "",
     year: "2025-2026",
     exam: "Évaluation de la 1ère séquence",
@@ -53,6 +62,7 @@ export function initialExam(): Exam {
     class: "",
     duration: "2 heures",
     coef: "",
+    total: "",
     teacher: "",
     instructions: "",
     content: EXAMPLE,
@@ -112,9 +122,10 @@ function ExamSteps({ e, set, view }: { e: Exam; set: (patch: Partial<Exam>) => v
             <Field label="Classe"><Input value={e.class} placeholder="Terminale C" onChange={(x) => set({ class: x.target.value })} /></Field>
           </div>
           <Field label="Évaluation"><Input value={e.exam} placeholder="Évaluation de la 1ère séquence" onChange={(x) => set({ exam: x.target.value })} /></Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <Field label="Durée"><Input value={e.duration} onChange={(x) => set({ duration: x.target.value })} /></Field>
             <Field label="Coef."><Input value={e.coef} placeholder="4" onChange={(x) => set({ coef: x.target.value })} /></Field>
+            <Field label="Total (pts)"><Input value={e.total} placeholder="20" inputMode="decimal" onChange={(x) => set({ total: x.target.value })} /></Field>
           </div>
           {next}
         </section>
@@ -148,6 +159,16 @@ function ExamSteps({ e, set, view }: { e: Exam; set: (patch: Partial<Exam>) => v
             <Field label="Délégation"><Input value={e.delegation} placeholder="Délégation régionale du Centre" onChange={(x) => set({ delegation: x.target.value })} /></Field>
           </div>
           <Field label="Année scolaire"><Input value={e.year} onChange={(x) => set({ year: x.target.value })} /></Field>
+          <Toggle label="En-tête bilingue : français | anglais" checked={e.bilingual} onChange={(bilingual) => set({ bilingual })} />
+          {e.bilingual && (
+            <div className="space-y-3">
+              <Field label="Établissement en anglais"><Input value={e.school_en} placeholder="Saint Rosa Venerini Technical Institute" onChange={(x) => set({ school_en: x.target.value })} /></Field>
+              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
+                <Field label="Ministère en anglais"><Input value={e.ministry_en} placeholder="MINISTRY OF SECONDARY EDUCATION" onChange={(x) => set({ ministry_en: x.target.value })} /></Field>
+                <Field label="Délégation en anglais"><Input value={e.delegation_en} placeholder="Regional Delegation of Centre" onChange={(x) => set({ delegation_en: x.target.value })} /></Field>
+              </div>
+            </div>
+          )}
           <Toggle label="République du Cameroun · Paix-Travail-Patrie" checked={e.country} onChange={(country) => set({ country })} />
           <div>
             <span className="mb-1.5 block text-[13px] font-semibold text-ink/80">Couleur</span>

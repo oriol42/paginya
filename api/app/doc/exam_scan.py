@@ -15,8 +15,11 @@ from ..forms.exam import SECTION
 # key written by the AI -> field of the exam form (web/src/components/forms/ExamForm.tsx)
 KEYS = {
     "ministere": "ministry",
+    "ministere_en": "ministry_en",
     "delegation": "delegation",
+    "delegation_en": "delegation_en",
     "ecole": "school",
+    "ecole_en": "school_en",
     "departement": "department",
     "annee": "year",
     "evaluation": "exam",
@@ -24,6 +27,7 @@ KEYS = {
     "classe": "class",
     "duree": "duration",
     "coefficient": "coef",
+    "total": "total",
     "examinateur": "teacher",
     "consignes": "instructions",
 }
@@ -34,13 +38,17 @@ EXAM_PROMPT = (
     "Recopie-la EXACTEMENT, sans corriger les fautes, sans résoudre les exercices, sans commentaire, "
     "dans ce format précis :\n\n"
     "ENTETE\n"
-    "ecole: nom de l'établissement\n"
+    "ecole: nom de l'établissement (en français)\n"
+    "ecole_en: nom de l'établissement en anglais, si l'en-tête est bilingue (colonne de droite)\n"
     "ministere: ministère, s'il est écrit\n"
+    "ministere_en: ministère en anglais, s'il est écrit\n"
     "delegation: délégation régionale ou départementale, si elle est écrite\n"
+    "delegation_en: délégation en anglais, si elle est écrite\n"
     "departement: département ou cellule, s'il est écrit\n"
     "annee: année scolaire (ex. 2025-2026)\n"
     "evaluation: nom de l'évaluation (ex. Évaluation de la 2e séquence, Probatoire blanc, BEPC)\n"
-    "matiere: matière (ex. Mathématiques)\n"
+    "matiere: matière, sans le mot « épreuve » (« ÉPREUVE DE COUPE, 20 pts » -> Coupe)\n"
+    "total: total des points écrit à côté du titre (« 20 pts » -> 20)\n"
     "classe: classe (ex. Terminale C)\n"
     "duree: durée (ex. 2 heures)\n"
     "coefficient: coefficient\n"
@@ -49,6 +57,9 @@ EXAM_PROMPT = (
     "CONTENU\n"
     "(les exercices)\n\n"
     "Règles :\n"
+    "- L'en-tête peut avoir deux colonnes (français à gauche, anglais à droite) : sépare-les avec les clés « _en ». "
+    "« Classe », « Durée », « Coefficient » et « Année scolaire » vont dans ENTETE, pas dans CONTENU. "
+    "L'énoncé ou le texte d'introduction (ex. « Vous êtes conviés à… ») est recopié tel quel au début de CONTENU.\n"
     "- Dans ENTETE, n'écris que les lignes réellement présentes sur la page. N'invente rien. "
     "Si la page n'a pas d'en-tête (page 2, 3…), écris ENTETE puis directement CONTENU.\n"
     "- Chaque exercice sur sa propre ligne : « Exercice 1 (5 pts) ». Transforme « /5 », « 5 points », « 5 pts » "
@@ -116,8 +127,12 @@ _LETTERHEAD = re.compile(
     r"^(republique du cameroun|republic of cameroon|paix\W+travail\W+patrie|peace\W+work\W+fatherland"
     r"|(des )?enseignements? secondaires?|secondary education|secondaires?)$"
 )
-_MINISTRY = re.compile(r"^(ministere|ministry)\b")
-_DELEGATION = re.compile(r"^(delegation|regional delegation)\b")
+_MINISTRY = re.compile(r"^ministere\b")
+_MINISTRY_EN = re.compile(r"^ministry\b")
+_SCHOOL_EN = re.compile(r"\b(institute|school|technical|high|lyceum|academy)\b")
+_FRENCH_START = re.compile(r"^(lycee|college|cetic|ces|ceg|institut|complexe|ecole)\b")
+_DELEGATION = re.compile(r"^delegation\b")
+_DELEGATION_EN = re.compile(r"^(regional |divisional )?delegation of\b")
 _SCHOOL = re.compile(
     r"^(lycee|college|cetic|ces|ceg|gbhs|ghs|gtc|gts|institut|complexe scolaire|ecole|government)\b"
 )
@@ -133,14 +148,35 @@ def _field_for(label: str) -> str:
     return ""
 
 
+_WRAP_START = re.compile(r"(enseignements|secondary|technical|high|ministry of)$")
+_WRAP_END = re.compile(r"^(secondaires?|education|institute|school)$")
+
+
+def _join_wrapped(lines: list[str]) -> list[str]:
+    """Letterheads wrap ("MINISTÈRE DES ENSEIGNEMENTS" / "SECONDAIRES"): glue the two halves back."""
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        nxt = lines[i + 1].strip() if i + 1 < len(lines) else ""
+        if i < 25 and nxt and len(nxt) <= 25 and _WRAP_START.search(_norm(line)) and _WRAP_END.match(_norm(nxt)):
+            out.append(f"{line.strip()} {nxt}")
+            i += 2
+            continue
+        out.append(line)
+        i += 1
+    return out
+
+
 def tidy_top(content: str, fields: dict[str, str]) -> tuple[str, dict[str, str]]:
     """Moves letterhead and "Classe : … Durée : …" lines out of the exercises into form fields.
 
     Only the part before the first "Exercice / Partie / Problème" is looked at, and a line is only
     removed when it is fully understood: anything else stays in the text.
     """
-    lines = content.split("\n")
-    end = next((i for i, ln in enumerate(lines[:30]) if SECTION.match(ln.strip())), min(len(lines), 12))
+    lines = _join_wrapped(content.split("\n"))
+    # the header ends at the first exercise, or at the first long sentence (the statement)
+    end = next((i for i, ln in enumerate(lines[:30]) if SECTION.match(ln.strip()) or len(ln.strip()) > 90), min(len(lines), 25))
     kept: list[str] = []
     for i, raw in enumerate(lines):
         line = raw.strip()
@@ -153,12 +189,23 @@ def tidy_top(content: str, fields: dict[str, str]) -> tuple[str, dict[str, str]]
         if _MINISTRY.match(norm):
             fields.setdefault("ministry", line)
             continue
+        if _MINISTRY_EN.match(norm):
+            fields.setdefault("ministry_en", line)
+            continue
+        if _DELEGATION_EN.match(norm):
+            fields.setdefault("delegation_en", line)
+            continue
         if _DELEGATION.match(norm):
             fields.setdefault("delegation", line)
             continue
         subject = _SUBJECT_LINE.match(norm)
         if subject:
-            fields.setdefault("subject", line[len(line) - len(subject.group(1)):].strip(" :.-–"))
+            title = line[len(line) - len(subject.group(1)):]
+            stated = re.search(r"[,;:\-–]?\s*\(?\s*(\d+(?:[.,]\d+)?)\s*(?:pts?|points?)\s*\)?\s*\.?$", title, re.I)
+            if stated:
+                fields.setdefault("total", stated.group(1).replace(",", "."))
+                title = title[: stated.start()]
+            fields.setdefault("subject", title.strip(" :.-–,"))
             continue
         year = _YEAR_LINE.match(norm)
         if year:
@@ -168,6 +215,9 @@ def tidy_top(content: str, fields: dict[str, str]) -> tuple[str, dict[str, str]]
         if pairs and not re.search(r"[^\W\d_]", _PAIR.sub("", line)):
             for pair in pairs:
                 fields.setdefault(_field_for(pair.group(1)), pair.group(2).strip())
+            continue
+        if _SCHOOL_EN.search(norm) and not _FRENCH_START.match(norm) and len(line) < 80:
+            fields.setdefault("school_en", line)
             continue
         if _SCHOOL.match(norm) and "school" not in fields:
             fields["school"] = line

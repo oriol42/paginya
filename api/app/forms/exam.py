@@ -1,4 +1,4 @@
-"""Teacher's exam paper (épreuve), MINESEC-style header.
+"""Teacher's exam paper (épreuve), bilingual MINESEC-style letterhead (French | English).
 
 The teacher types (or pastes) the exercises as plain text; we recognise:
 - "Exercice 1 (5 pts)", "Partie A : …", "Problème (8 points)" -> section titles, points right-aligned
@@ -10,7 +10,6 @@ from __future__ import annotations
 import io
 import re
 
-from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -77,15 +76,6 @@ def total_points(items: list[dict]) -> float:
     return total
 
 
-def _shade(cell, hex6: str) -> None:
-    tcpr = cell._tc.get_or_add_tcPr()
-    shd = OxmlElement("w:shd")
-    shd.set(qn("w:val"), "clear")
-    shd.set(qn("w:color"), "auto")
-    shd.set(qn("w:fill"), hex6)
-    tcpr.append(shd)
-
-
 def _with_points(p, text: str, points: str, bold=False) -> None:
     p.paragraph_format.tab_stops.add_tab_stop(TEXT_W, WD_TAB_ALIGNMENT.RIGHT)
     run = p.add_run(text)
@@ -100,72 +90,85 @@ def build_exam(data: dict) -> bytes:
     doc = new_document("Times New Roman", 12, margins=(1.6, 1.6, 2, 2))
     color = _s(data, "color", "0E9F6E").lstrip("#").upper()
 
-    # Header: school (left) | exam facts (right)
-    head = doc.add_table(rows=1, cols=2)
+    items = parse(str(data.get("content") or "")[:60000])
+
+    # Letterhead, as on the papers handed out in Cameroonian schools:
+    # French (left) | English (right), then the year on the right, then the exam facts on the left.
+    bilingual = data.get("bilingual", True) is not False
+    ministry = _s(data, "ministry", "MINISTÈRE DES ENSEIGNEMENTS SECONDAIRES")
+    ministry_en = _s(data, "ministry_en") or ("MINISTRY OF SECONDARY EDUCATION" if "SECONDAIRE" in ministry.upper() else "")
+    school = _s(data, "school")
+    fr = []
+    if data.get("country", True):
+        fr += [("RÉPUBLIQUE DU CAMEROUN", True, False), ("Paix – Travail – Patrie", False, True)]
+    fr += [(ministry, True, False)]
+    for key in ("delegation", "department"):
+        if _s(data, key):
+            fr.append((_s(data, key), False, False))
+    if school:
+        fr.append((school, True, False))
+    en = []
+    if data.get("country", True):
+        en += [("REPUBLIC OF CAMEROON", True, False), ("Peace – Work – Fatherland", False, True)]
+    if ministry_en:
+        en.append((ministry_en, True, False))
+    if _s(data, "delegation_en"):
+        en.append((_s(data, "delegation_en"), False, False))
+    if school:
+        en.append((_s(data, "school_en") or school, True, False))
+
+    head = doc.add_table(rows=1, cols=2 if bilingual else 1)
     no_borders(head)
     head.autofit = False
-    left, right = head.rows[0].cells
-    left.width, right.width = Cm(9.5), Cm(7.5)
-    lines = []
-    if data.get("country", True):
-        lines += [("RÉPUBLIQUE DU CAMEROUN", True, False), ("Paix – Travail – Patrie", False, True)]
-    lines += [(_s(data, "ministry", "MINISTÈRE DES ENSEIGNEMENTS SECONDAIRES"), True, False)]
-    for key in ("delegation", "school", "department"):
-        if _s(data, key):
-            lines.append((_s(data, key).upper() if key == "school" else _s(data, key), key == "school", False))
-    first = True
-    for text, bold, italic in lines:
-        p = left.paragraphs[0] if first else left.add_paragraph()
-        first = False
-        run = p.add_run(text)
-        run.bold, run.italic = bold, italic
-        run.font.size = Pt(9.5)
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    facts = [
-        ("Année scolaire", _s(data, "year")),
-        ("Classe", _s(data, "class")),
-        ("Durée", _s(data, "duration")),
-        ("Coefficient", _s(data, "coef")),
-        ("Examinateur", _s(data, "teacher")),
-    ]
+    cells = head.rows[0].cells
+    for cell, lines in zip(cells, (fr, en)):
+        cell.width = Cm(8.5 if bilingual else 17)
+        first = True
+        for text, bold, italic in lines:
+            p = cell.paragraphs[0] if first else cell.add_paragraph()
+            first = False
+            run = p.add_run(text)
+            run.bold, run.italic = bold, italic
+            run.font.size = Pt(9.5)
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    if _s(data, "year"):
+        p = para(doc, "", space_before=10, align="right")
+        p.add_run("Année scolaire : ").font.size = Pt(11)
+        p.add_run(_s(data, "year")).font.size = Pt(11)
+
+    facts = [("Classe", _s(data, "class")), ("Durée", _s(data, "duration")),
+             ("Coefficient", _s(data, "coef")), ("Examinateur", _s(data, "teacher"))]
     first = True
     for label, value in facts:
-        if not value:
-            continue
-        p = right.paragraphs[0] if first else right.add_paragraph()
-        first = False
-        p.add_run(f"{label} : ").font.size = Pt(10)
-        v = p.add_run(value)
-        v.bold = True
-        v.font.size = Pt(10)
-        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        if value:
+            p = para(doc, "", space_before=10 if first else 0)
+            first = False
+            r = p.add_run(f"{label} : {value}")
+            r.bold = True
+            r.font.size = Pt(11)
 
-    # Title band
-    para(doc, "", space_after=6)
-    band = doc.add_table(rows=1, cols=1)
-    band.alignment = WD_TABLE_ALIGNMENT.CENTER
-    cell = band.rows[0].cells[0]
-    _shade(cell, color)
-    p = cell.paragraphs[0]
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p.paragraph_format.space_before = p.paragraph_format.space_after = Pt(4)
+    # Title: "ÉPREUVE DE COUPE, 20 pts" (the total is the one written on the paper, else the sum of the exercises)
     if _s(data, "exam"):
-        r = p.add_run(_s(data, "exam").upper())
-        r.font.size = Pt(10)
-        r.font.color.rgb = RGBColor.from_string("FFFFFF")
-        p = cell.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p.paragraph_format.space_after = Pt(4)
-    r = p.add_run(f"ÉPREUVE DE {_s(data, 'subject', 'MATIÈRE').upper()}")
-    r.bold = True
+        para(doc, _s(data, "exam"), size=10.5, align="center", space_before=10)
+    total = _s(data, "total").replace(",", ".")
+    try:
+        points = float(total) if total else total_points(items)
+    except ValueError:
+        points = total_points(items)
+    title = f"ÉPREUVE DE {_s(data, 'subject', 'MATIÈRE').upper()}"
+    if points:
+        shown = f"{points:g}"
+        title += f", {shown} pt{'s' if points > 1 else ''}"
+    p = para(doc, "", align="center", space_before=10, space_after=6)
+    r = p.add_run(title)
+    r.bold = r.underline = True
     r.font.size = Pt(14)
-    r.font.color.rgb = RGBColor.from_string("FFFFFF")
 
     if _s(data, "instructions"):
         para(doc, _s(data, "instructions"), italic=True, size=10.5, align="center", space_before=8)
 
     # Body
-    items = parse(str(data.get("content") or "")[:60000])
     for it in items:
         k = it["kind"]
         if k == "section":
@@ -196,6 +199,8 @@ def build_exam(data: dict) -> bytes:
             p = doc.add_paragraph()
             p.paragraph_format.space_after = Pt(6)
             p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            if len(it["text"]) > 60:  # a paragraph of text (the statement), not a short line
+                p.paragraph_format.first_line_indent = Cm(1)
             _with_points(p, it["text"], it["points"])
 
     # Footer: page x / y
