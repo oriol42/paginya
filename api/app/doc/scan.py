@@ -94,15 +94,38 @@ def straighten(data: bytes) -> tuple[bytes, bool]:
     return jpeg.tobytes(), corners is not None
 
 
-def _check_response(resp: httpx.Response) -> None:
+class ModelNotFound(ScanError):
+    """The provider answered 404: the model name is wrong or retired."""
+
+
+def _check_response(resp: httpx.Response, model: str = "") -> None:
     if resp.status_code == 429:
         raise ScanError("Trop de pages lues aujourd'hui, réessaie dans un moment")
+    if resp.status_code == 404:
+        raise ModelNotFound(f"modèle introuvable ({model or '404'})")
+    if resp.status_code in (400, 401, 403):
+        try:
+            detail = str(resp.json()["error"]["message"])[:120]
+        except (KeyError, ValueError, TypeError):
+            detail = ""
+        raise ScanError(f"clé refusée ou requête invalide ({resp.status_code}) {detail}".strip())
     if resp.status_code != 200:
         raise ScanError(f"Lecture impossible ({resp.status_code})")
 
 
 def _read_gemini(jpeg: bytes, key: str, prompt: str = PROMPT) -> str:
-    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    """Tries the configured model, then the usual names if Google says the model does not exist."""
+    models = [m for m in dict.fromkeys([os.getenv("GEMINI_MODEL", "").strip(), "gemini-flash-latest", "gemini-2.5-flash"]) if m]
+    for i, model in enumerate(models):
+        try:
+            return _gemini_call(jpeg, key, prompt, model)
+        except ModelNotFound:
+            if i == len(models) - 1:
+                raise
+    raise ScanError("Lecture impossible")
+
+
+def _gemini_call(jpeg: bytes, key: str, prompt: str, model: str) -> str:
     try:
         resp = httpx.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
@@ -118,7 +141,7 @@ def _read_gemini(jpeg: bytes, key: str, prompt: str = PROMPT) -> str:
         )
     except httpx.HTTPError as exc:
         raise ScanError("Le service de lecture ne répond pas, réessaie") from exc
-    _check_response(resp)
+    _check_response(resp, model)
     try:
         parts = resp.json()["candidates"][0]["content"]["parts"]
     except (KeyError, IndexError, ValueError) as exc:
@@ -145,7 +168,7 @@ def _read_openai_compatible(jpeg: bytes, key: str, base_url: str, model: str, pr
         )
     except httpx.HTTPError as exc:
         raise ScanError("Le service de lecture ne répond pas, réessaie") from exc
-    _check_response(resp)
+    _check_response(resp, model)
     try:
         return (resp.json()["choices"][0]["message"]["content"] or "").strip()
     except (KeyError, IndexError, ValueError) as exc:
@@ -182,7 +205,7 @@ def read_text_with_engine(jpeg: bytes, prompt: str | None = None) -> tuple[str, 
     if os.getenv("OCR_PROVIDER") == "mock":
         return "TEXTE LU (simulation)\nCeci est le texte transcrit de la page.", "mock"
     order = [n.strip() for n in os.getenv("OCR_PROVIDERS", "gemini,groq,openrouter").split(",") if n.strip()]
-    last_error: ScanError | None = None
+    errors: list[str] = []
     tried = False
     for name in order:
         if name not in PROVIDERS:
@@ -195,13 +218,13 @@ def read_text_with_engine(jpeg: bytes, prompt: str | None = None) -> tuple[str, 
         try:
             return reader(jpeg, key, prompt or PROMPT), name
         except ScanError as exc:
-            last_error = exc
+            errors.append(f"{name} : {exc}")
     if not tried:
         raise OcrUnavailable(
             "La lecture des photos n'est pas encore activée (ajoute une clé dans api/.env : "
             "GEMINI_API_KEY, GROQ_API_KEY ou OPENROUTER_API_KEY)."
         )
-    raise last_error or ScanError("Lecture impossible")
+    raise ScanError(" | ".join(errors) or "Lecture impossible")
 
 
 def read_text(jpeg: bytes) -> str:
