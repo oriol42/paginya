@@ -10,12 +10,13 @@ from __future__ import annotations
 import io
 import re
 
+from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
 
-from .common import field, new_document, no_borders, para
+from .common import boxed, field, new_document, no_borders, para
 
 SECTION = re.compile(
     r"^(exercice|exercise|partie|part|probl[èe]me|problem|section|situation\s+probl[èe]me)\b\s*([ivx\d]+|[a-e])?\s*[:.\-–]?\s*(.*)$",
@@ -41,11 +42,34 @@ def split_points(text: str) -> tuple[str, str]:
     return text[: m.start()].rstrip(" -–:,"), f"{pts.rstrip('0').rstrip('.') if '.' in pts else pts} pt{'s' if float(pts) > 1 else ''}"
 
 
+PIPE_SEPARATOR = re.compile(r"^[\s|:+-]+$")
+
+
+def _cells(raw: str) -> list[str] | None:
+    """Cells of a table row: split by tabs (Word, Excel, scans) or by | (markdown). None if it is not a row."""
+    if "\t" in raw:
+        cells = [c.strip() for c in raw.strip().split("\t")]
+    elif raw.count("|") >= 2:
+        cells = [c.strip() for c in raw.strip().strip("|").split("|")]
+    else:
+        return None
+    return cells if len(cells) >= 2 else None
+
+
 def parse(content: str) -> list[dict]:
     items = []
     for raw in content.replace("\r\n", "\n").split("\n"):
         line = raw.strip()
         if not line:
+            continue
+        cells = _cells(raw)
+        if cells is not None:
+            if PIPE_SEPARATOR.match(line):  # markdown "|---|---|" line
+                continue
+            if items and items[-1]["kind"] == "table":
+                items[-1]["rows"].append(cells)
+            else:
+                items.append({"kind": "table", "rows": [cells], "text": "", "points": ""})
             continue
         m = SECTION.match(line)
         if m and len(line) < 140:
@@ -185,6 +209,18 @@ def build_exam(data: dict) -> bytes:
                 bottom.set(qn(key), val)
             bdr.append(bottom)
             p._p.get_or_add_pPr().append(bdr)
+        elif k == "table":
+            width = max(len(r) for r in it["rows"])
+            table = doc.add_table(rows=len(it["rows"]), cols=width)
+            table.alignment = WD_TABLE_ALIGNMENT.CENTER
+            for row, cells in zip(table.rows, it["rows"]):
+                for j, cell in enumerate(row.cells):
+                    boxed(cell)
+                    p = cell.paragraphs[0]
+                    p.paragraph_format.space_before = p.paragraph_format.space_after = Pt(2)
+                    run = p.add_run(cells[j] if j < len(cells) else "")
+                    run.font.size = Pt(10.5)
+            para(doc, "", space_after=6)
         elif k in ("question", "sub", "option"):
             p = doc.add_paragraph()
             indent = {"question": 0.8, "sub": 1.6, "option": 1.6}[k]
