@@ -24,7 +24,7 @@ Sources : [texte officiel (Présidence)](https://prc.cm/fr/multimedia/documents/
 | Traitement | Où | Risque | Mesure |
 |---|---|---|---|
 | Hébergement des documents | Serveur Oracle (Europe) | Transfert hors du Cameroun | Demander l'autorisation à l'Autorité dès qu'elle est opérationnelle, **ou** héberger au Cameroun (Camtel, hébergeurs locaux) si le coût le permet. Suppression automatique après 7 jours dans tous les cas |
-| Lecture des photos (IA) | Google Gemini (hors Cameroun) | Transfert + réutilisation des données par l'offre gratuite | Seulement **si l'utilisateur envoie des photos**, avec un consentement spécifique affiché à ce moment-là. Passer à l'offre payante (pas d'entraînement sur les données) dès les premiers revenus |
+| Lecture des photos (IA) | Google Gemini (hors Cameroun) ; secours : Groq, OpenRouter (modèles gratuits : conservation possible, à vérifier) | Transfert + réutilisation des données par l'offre gratuite | Seulement **si l'utilisateur envoie des photos**, avec un consentement spécifique affiché à ce moment-là. Passer à l'offre payante (pas d'entraînement sur les données) dès les premiers revenus |
 | Numéro de téléphone (paiement) | Fapshi (Cameroun) + notre base | Donnée personnelle | Utilisé uniquement pour le paiement, conservé avec la commande pendant 12 mois (preuve comptable) |
 | Mise en forme de texte / Word | Notre serveur, **sans IA externe** | Faible | Traitement par règles, rien n'est envoyé à un tiers |
 

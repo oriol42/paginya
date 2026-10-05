@@ -101,7 +101,7 @@ def _check_response(resp: httpx.Response) -> None:
         raise ScanError(f"Lecture impossible ({resp.status_code})")
 
 
-def _read_gemini(jpeg: bytes, key: str) -> str:
+def _read_gemini(jpeg: bytes, key: str, prompt: str = PROMPT) -> str:
     model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     try:
         resp = httpx.post(
@@ -109,7 +109,7 @@ def _read_gemini(jpeg: bytes, key: str) -> str:
             headers={"x-goog-api-key": key, "Content-Type": "application/json"},
             json={
                 "contents": [{"parts": [
-                    {"text": PROMPT},
+                    {"text": prompt},
                     {"inline_data": {"mime_type": "image/jpeg", "data": base64.b64encode(jpeg).decode()}},
                 ]}],
                 "generationConfig": {"temperature": 0},
@@ -126,7 +126,7 @@ def _read_gemini(jpeg: bytes, key: str) -> str:
     return "\n".join(p.get("text", "") for p in parts).strip()
 
 
-def _read_openai_compatible(jpeg: bytes, key: str, base_url: str, model: str) -> str:
+def _read_openai_compatible(jpeg: bytes, key: str, base_url: str, model: str, prompt: str = PROMPT) -> str:
     """Groq and OpenRouter both speak the OpenAI chat-completions format."""
     data_url = "data:image/jpeg;base64," + base64.b64encode(jpeg).decode()
     try:
@@ -137,7 +137,7 @@ def _read_openai_compatible(jpeg: bytes, key: str, base_url: str, model: str) ->
                 "model": model,
                 "temperature": 0,
                 "messages": [{"role": "user", "content": [
-                    {"type": "text", "text": PROMPT},
+                    {"type": "text", "text": prompt},
                     {"type": "image_url", "image_url": {"url": data_url}},
                 ]}],
             },
@@ -152,14 +152,14 @@ def _read_openai_compatible(jpeg: bytes, key: str, base_url: str, model: str) ->
         raise ScanError("La page n'a pas pu être lue (photo trop floue ?)") from exc
 
 
-def _read_groq(jpeg: bytes, key: str) -> str:
+def _read_groq(jpeg: bytes, key: str, prompt: str = PROMPT) -> str:
     model = os.getenv("GROQ_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
-    return _read_openai_compatible(jpeg, key, "https://api.groq.com/openai/v1", model)
+    return _read_openai_compatible(jpeg, key, "https://api.groq.com/openai/v1", model, prompt)
 
 
-def _read_openrouter(jpeg: bytes, key: str) -> str:
+def _read_openrouter(jpeg: bytes, key: str, prompt: str = PROMPT) -> str:
     model = os.getenv("OPENROUTER_MODEL", "google/gemma-3-27b-it:free")
-    return _read_openai_compatible(jpeg, key, "https://openrouter.ai/api/v1", model)
+    return _read_openai_compatible(jpeg, key, "https://openrouter.ai/api/v1", model, prompt)
 
 
 # name -> (environment variable holding the key, reader)
@@ -170,8 +170,10 @@ PROVIDERS = {
 }
 
 
-def read_text_with_engine(jpeg: bytes) -> tuple[str, str]:
+def read_text_with_engine(jpeg: bytes, prompt: str | None = None) -> tuple[str, str]:
     """Reads a page with the first provider that works. Returns (text, provider name).
+
+    `prompt` replaces the default transcription instructions (used for exam papers).
 
     Order comes from OCR_PROVIDERS (default "gemini,groq,openrouter"). A provider
     without a key is skipped; a provider that fails (quota, outage) hands over
@@ -191,7 +193,7 @@ def read_text_with_engine(jpeg: bytes) -> tuple[str, str]:
             continue
         tried = True
         try:
-            return reader(jpeg, key), name
+            return reader(jpeg, key, prompt or PROMPT), name
         except ScanError as exc:
             last_error = exc
     if not tried:

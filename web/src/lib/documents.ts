@@ -112,9 +112,22 @@ export const docs = {
   before: (id: string) => call<{ pages: number }>(`/documents/${id}/before`, { method: "POST" }),
   beforeUrl: (id: string, n: number) => `${API_URL}/documents/${id}/before/${n}.webp`,
   remove: (id: string) => call<{ deleted: boolean }>(`/documents/${id}`, { method: "DELETE" }),
+  /** The document as an exam paper: header fields + exercises, for the exam form (/epreuve). */
+  toExam: (id: string) => call<{ fields: Record<string, string>; content: string }>(`/documents/${id}/exam`, { method: "POST" }),
 };
 
-export type ScanResult = { id: string; text: string; straightened: boolean; engine: string; confidence: number };
+export type ScanResult = {
+  id: string;
+  text: string;
+  straightened: boolean;
+  engine: string;
+  confidence: number;
+  /** Exam papers only: header read from the page (school, class, duration…), keyed like the exam form. */
+  exam?: Record<string, string>;
+};
+
+/** What the pages are: a document to format, or an exam paper (épreuve). */
+export type ScanKind = "document" | "epreuve";
 
 /** Resize/compress on the phone before upload (saves mobile data). */
 export async function compressPhoto(file: File, maxSide = 2000): Promise<string> {
@@ -135,8 +148,8 @@ export async function compressPhoto(file: File, maxSide = 2000): Promise<string>
 }
 
 export const scans = {
-  read: async (file: File, handwriting: boolean, consent: boolean) =>
-    call<ScanResult>("/scans", { method: "POST", body: JSON.stringify({ data: await compressPhoto(file), handwriting, consent }) }),
+  read: async (file: File, handwriting: boolean, consent: boolean, kind: ScanKind = "document") =>
+    call<ScanResult>("/scans", { method: "POST", body: JSON.stringify({ data: await compressPhoto(file), handwriting, consent, kind }) }),
   imageUrl: (id: string) => `${API_URL}/scans/${id}.jpg`,
 };
 
@@ -168,4 +181,6 @@ export const KINDS: { id: string; label: string; hint: string }[] = [
   { id: "rapport", label: "Rapport", hint: "Page de garde + sommaire" },
   { id: "rapport_stage", label: "Rapport de stage", hint: "Normes complètes (sommaire, table…)" },
   { id: "memoire", label: "Mémoire", hint: "Normes complètes (sommaire, table…)" },
+  // Not a layout of this editor: picking it opens the exam form, filled with this text.
+  { id: "epreuve", label: "Épreuve", hint: "Format camerounais : en-tête, barème" },
 ];

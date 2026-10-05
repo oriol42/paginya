@@ -37,7 +37,7 @@ export default function Confidentialite() {
       <ul>
         <li><b>Fapshi</b> (Cameroun) : traitement du paiement Mobile Money.</li>
         <li><b>Nos hébergeurs</b> Vercel, Render et Supabase : serveurs aux États-Unis (voir les mentions légales).</li>
-        <li><b>Google (Gemini)</b> : <u>seulement pour des pages écrites à la main</u>, si tu le choisis et après ton accord explicite. Le traitement a lieu hors du Cameroun. Les pages imprimées sont lues sur nos propres serveurs, sans les envoyer à personne.</li>
+        <li><b>Google (Gemini)</b>, ou <b>Groq</b> / <b>OpenRouter</b> quand Gemini est indisponible : <u>seulement pour des pages écrites à la main</u>, si tu le choisis et après ton accord explicite. Le traitement a lieu hors du Cameroun. Les pages imprimées sont lues sur nos propres serveurs, sans les envoyer à personne.</li>
       </ul>
       <p>
         Les transferts de données hors du Cameroun sont encadrés par la loi n° 2024/017. Nous limitons ces transferts au strict nécessaire,

@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { KIND_LABEL, scans, type ScanResult } from "@/lib/documents";
+import { KIND_LABEL, scans, type ScanKind, type ScanResult } from "@/lib/documents";
+import { mergeExamFields, saveExamDraft } from "@/lib/examDraft";
 import { forget, recents, type Recent } from "@/lib/recents";
 import { Icon, type IconName } from "../Icon";
 import { PinLabel } from "../ui";
@@ -26,6 +28,9 @@ export function ImportScreen({ error, onText, onFile, onOpen }: Props) {
   const [consent, setConsent] = useState(false);
   const [reading, setReading] = useState(false);
   const [review, setReview] = useState(false);
+  const [docKind, setDocKind] = useState<ScanKind>("document");
+  const [notice, setNotice] = useState("");
+  const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
 
@@ -33,6 +38,12 @@ export function ImportScreen({ error, onText, onFile, onOpen }: Props) {
     if (!files) return;
     const next = [...files].filter((f) => f.type.startsWith("image/")).map((file) => ({ file, url: URL.createObjectURL(file), status: "todo" as const }));
     setPhotos((p) => [...p, ...next].slice(0, 30));
+  }
+
+  /** An exam paper does not go through the report formatter: it opens /epreuve, already filled. */
+  function openExamForm(fields: Record<string, string>, content: string) {
+    if (saveExamDraft(fields, content)) router.push("/epreuve");
+    else setNotice("Impossible d'ouvrir l'épreuve : ton navigateur bloque le stockage local (navigation privée ?).");
   }
 
   async function readAll() {
@@ -43,7 +54,7 @@ export function ImportScreen({ error, onText, onFile, onOpen }: Props) {
       copy[i] = { ...copy[i], status: "reading" };
       setPhotos([...copy]);
       try {
-        copy[i] = { ...copy[i], status: "done", result: await scans.read(copy[i].file, handwriting, consent) };
+        copy[i] = { ...copy[i], status: "done", result: await scans.read(copy[i].file, handwriting, consent, docKind) };
       } catch (e) {
         copy[i] = { ...copy[i], status: "error", error: (e as Error).message };
       }
@@ -59,7 +70,12 @@ export function ImportScreen({ error, onText, onFile, onOpen }: Props) {
     return (
       <div className="mx-auto w-full max-w-5xl px-5 pt-6 pb-32">
         <h1 className="font-display text-[2.4rem] leading-[0.95] font-black uppercase">Vérifie le texte lu</h1>
-        <p className="mt-2 max-w-prose text-[16px] text-ink/70">Compare avec ta photo et corrige les mots mal lus. Paginya ne touchera plus à ton texte ensuite.</p>
+        <p className="mt-2 max-w-prose text-[16px] text-ink/70">
+          {docKind === "epreuve"
+            ? "Compare avec ta photo et corrige les mots mal lus. Paginya a repéré l'en-tête (établissement, classe, durée…) : tu pourras le corriger à l'étape suivante."
+            : "Compare avec ta photo et corrige les mots mal lus. Paginya ne touchera plus à ton texte ensuite."}
+        </p>
+        {notice && <p className="mt-3 flex gap-2 rounded-md bg-pin/10 px-4 py-3 text-[15px] text-pin"><Icon name="triangle-alert" size={18} className="mt-0.5" />{notice}</p>}
         <div className="mt-6 space-y-6">
           {done.map((p, i) => (
             <div key={p.url} className="paper grid gap-3 rounded-[2px] p-3 md:grid-cols-2">
@@ -90,8 +106,15 @@ export function ImportScreen({ error, onText, onFile, onOpen }: Props) {
             <button type="button" onClick={() => setReview(false)} className="press grid w-14 place-items-center rounded-md ring-1 ring-black/15" aria-label="Retour">
               <Icon name="arrow-left" />
             </button>
-            <PinLabel className="flex-1" onClick={() => onText(done.map((p) => p.result!.text).join("\n\n"))}>
-              C&apos;est bon, mettre en forme
+            <PinLabel
+              className="flex-1"
+              onClick={() => {
+                const texts = done.map((p) => p.result!.text);
+                if (docKind === "epreuve") openExamForm(mergeExamFields(done.map((p) => p.result?.exam)), texts.join("\n"));
+                else onText(texts.join("\n\n"));
+              }}
+            >
+              {docKind === "epreuve" ? "C'est bon, créer l'épreuve" : "C'est bon, mettre en forme"}
             </PinLabel>
           </div>
         </div>
@@ -135,6 +158,8 @@ export function ImportScreen({ error, onText, onFile, onOpen }: Props) {
               </button>
             ))}
           </div>
+
+          {mode !== "file" && <KindPicker value={docKind} onChange={setDocKind} />}
 
           {mode === "file" && (
             <button
@@ -200,7 +225,7 @@ export function ImportScreen({ error, onText, onFile, onOpen }: Props) {
                     <label className="flex items-start gap-3 rounded-md bg-hi/35 p-3.5 text-[14px]">
                       <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-5 w-5 accent-[#1c3a2a]" />
                       <span>
-                        Pour l&apos;écriture à la main, j&apos;accepte que mes photos soient lues par une intelligence artificielle (Google Gemini, hors du Cameroun).{" "}
+                        Pour l&apos;écriture à la main, j&apos;accepte que mes photos soient lues par une intelligence artificielle (Google Gemini, ou Groq / OpenRouter si Gemini est indisponible ; hors du Cameroun).{" "}
                         <Link href="/confidentialite" className="font-bold underline">En savoir plus</Link>
                       </span>
                     </label>
@@ -221,18 +246,23 @@ export function ImportScreen({ error, onText, onFile, onOpen }: Props) {
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 rows={12}
-                placeholder={"Colle ici tout ton texte…\n\nINTRODUCTION\nComme le disait…\n\nCHAPITRE I : PRÉSENTATION\n- premier point\n- deuxième point"}
+                placeholder={docKind === "epreuve"
+                  ? "Colle ici ton épreuve…\n\nExercice 1 (5 pts)\n1) Première question (2 pts)\n2) Deuxième question (3 pts)\n\nExercice 2 (5 pts)\na) …"
+                  : "Colle ici tout ton texte…\n\nINTRODUCTION\nComme le disait…\n\nCHAPITRE I : PRÉSENTATION\n- premier point\n- deuxième point"}
                 className="w-full resize-y rounded-md border-0 bg-wall/50 p-4 text-[16px] leading-relaxed ring-1 ring-black/10 placeholder:text-ink/35 focus:bg-paper focus:ring-2 focus:ring-hi-deep focus:outline-none"
               />
               <div className="mt-3 flex items-center justify-between gap-3">
                 <span className="text-[14px] text-ink/55 tabular">{words ? `${words.toLocaleString("fr-FR")} mots` : ""}</span>
-                <PinLabel disabled={words < 5} onClick={() => onText(text)}>Mettre en forme</PinLabel>
+                <PinLabel disabled={words < 5} onClick={() => (docKind === "epreuve" ? openExamForm({}, text) : onText(text))}>
+                  {docKind === "epreuve" ? "Créer l'épreuve" : "Mettre en forme"}
+                </PinLabel>
               </div>
             </div>
           )}
 
-          {error && <p className="mt-4 flex gap-2 rounded-md bg-pin/10 px-4 py-3 text-[15px] text-pin"><Icon name="triangle-alert" size={18} className="mt-0.5" />{error}</p>}
+          {(error || notice) && <p className="mt-4 flex gap-2 rounded-md bg-pin/10 px-4 py-3 text-[15px] text-pin"><Icon name="triangle-alert" size={18} className="mt-0.5" />{error || notice}</p>}
         </div>
+
 
         <RecentList onOpen={onOpen} />
 
@@ -249,6 +279,35 @@ export function ImportScreen({ error, onText, onFile, onOpen }: Props) {
           <Link href="/confidentialite" className="underline">politique de confidentialité</Link>.
         </p>
       </div>
+    </div>
+  );
+}
+
+const DOC_KINDS: { id: ScanKind; label: string; hint: string; icon: IconName }[] = [
+  { id: "document", label: "Document, rapport…", hint: "Mémoire, rapport, exposé, cours", icon: "file-text" },
+  { id: "epreuve", label: "Épreuve d'examen", hint: "En-tête MINESEC, exercices, barème", icon: "pen-line" },
+];
+
+/** "What are these pages?": a report goes through the formatter, an exam paper gets the exam layout. */
+function KindPicker({ value, onChange }: { value: ScanKind; onChange: (kind: ScanKind) => void }) {
+  return (
+    <div role="radiogroup" aria-label="Type de document" className="mt-4 grid grid-cols-2 gap-2">
+      {DOC_KINDS.map((k) => {
+        const on = value === k.id;
+        return (
+          <button
+            key={k.id}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            onClick={() => onChange(k.id)}
+            className={`press rounded-md p-3 text-left ring-1 transition-colors ${on ? "bg-board text-white ring-board" : "bg-paper ring-black/15 hover:bg-ink/5"}`}
+          >
+            <span className="flex items-center gap-2 text-[15px] font-bold"><Icon name={k.icon} size={18} />{k.label}</span>
+            <span className={`mt-1 block text-[13px] ${on ? "text-white/75" : "text-ink/60"}`}>{k.hint}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

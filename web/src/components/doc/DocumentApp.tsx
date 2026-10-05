@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { OrderStatus } from "@/lib/api";
 import { forget, remember } from "@/lib/recents";
 import { KIND_LABEL, docs, type Block, type DocOptions, type DocStyle, type DocView, type Letterhead } from "@/lib/documents";
+import { saveExamDraft } from "@/lib/examDraft";
 import { Icon, type IconName } from "../Icon";
 import { Logo } from "../Logo";
 import { PaySheet } from "../PaySheet";
@@ -130,6 +131,19 @@ export function DocumentApp() {
     });
   }
 
+  /** "Épreuve" in the type list: the text goes to the exam form, which lays it out the Cameroonian way. */
+  async function openAsExam() {
+    if (!doc) return;
+    setError("");
+    try {
+      const exam = await docs.toExam(doc.id);
+      if (saveExamDraft(exam.fields, exam.content)) router.push("/epreuve");
+      else setError("Impossible d'ouvrir l'épreuve : ton navigateur bloque le stockage local (navigation privée ?).");
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   async function showView(v: View) {
     setView(v);
     if (v !== "after" && beforePages === null && doc) {
@@ -175,7 +189,7 @@ export function DocumentApp() {
 
   const panelBody = (
     <>
-      {panel === "style" && <DocStylePanel style={doc.style} options={doc.options} kind={doc.meta.kind} onStyle={(style) => change({ style })} onOptions={(options) => change({ options })} onKind={(kind) => { setDoc((d) => (d ? { ...d, meta: { ...d.meta, kind } } : d)); change({ kind }); }} letterhead={doc.letterhead ?? null} hasCover={doc.has_cover} onLetterhead={(letterhead, options) => change({ letterhead, options })} />}
+      {panel === "style" && <DocStylePanel style={doc.style} options={doc.options} kind={doc.meta.kind} onStyle={(style) => change({ style })} onOptions={(options) => change({ options })} onKind={(kind) => { if (kind === "epreuve") { openAsExam(); return; } setDoc((d) => (d ? { ...d, meta: { ...d.meta, kind } } : d)); change({ kind }); }} letterhead={doc.letterhead ?? null} hasCover={doc.has_cover} onLetterhead={(letterhead, options) => change({ letterhead, options })} />}
       {panel === "cover" && (
         <CoverEditor
           docId={doc.id}

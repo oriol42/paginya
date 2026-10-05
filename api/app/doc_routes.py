@@ -20,6 +20,8 @@ from .doc import office
 from .doc.detect import detect
 from .doc.extract import ExtractError, from_docx, from_markdown, from_pdf, from_text, looks_like_markdown
 from .doc.render import DEFAULT_OPTIONS, KINDS, THEMES, build_docx, options_for
+from .doc.exam_scan import EXAM_PROMPT, blocks_to_text, raws_to_text
+from .doc.exam_scan import finalize as finalize_exam
 from .doc.scan import ScanError, ocr_local, read_text, read_text_with_engine, straighten
 from .svg_safe import UnsafeSvg, sanitize_svg
 
@@ -268,6 +270,33 @@ def update(order_id: str, body: DocPatch) -> dict:
     return view(db.get_order(order_id))
 
 
+@router.post("/{order_id}/exam")
+def to_exam(order_id: str) -> dict:
+    """The document as an exam paper (the user picked "Épreuve"): header fields + exercises for /epreuve.
+
+    Built from the original text or file when we still have it, so "1)", "a)", "Exercice 1 (5 pts)"
+    stay exactly as written; otherwise from the editor's blocks.
+    """
+    order = _load(order_id)
+    _ensure_inputs(order_id)
+    folder = doc_dir(order_id)
+    source = next((p for p in folder.glob("source.*")), None)
+    text = None
+    try:
+        if source is not None and source.suffix in (".txt", ".md", ".markdown"):
+            text = source.read_text(encoding="utf-8", errors="replace")
+        elif source is not None and source.suffix == ".docx":
+            text = raws_to_text(from_docx(source, folder / "images"))
+        elif source is not None and source.suffix == ".pdf":
+            text = raws_to_text(from_pdf(source))
+    except ExtractError:
+        text = None
+    if not text or not text.strip():
+        text = blocks_to_text(order["payload"]["doc"]["blocks"])
+    exam = finalize_exam(text[:MAX_TEXT])
+    return {"fields": exam["fields"], "content": exam["content"]}
+
+
 @router.post("/{order_id}/render")
 def render(order_id: str) -> dict:
     order = _load(order_id)
@@ -442,6 +471,7 @@ class ScanIn(BaseModel):
     data: str  # base64 image
     handwriting: bool = False  # handwritten pages need the external AI (Gemini)
     consent: bool = False  # required only for handwriting: the page leaves our server
+    kind: str = "document"  # "epreuve": also return the exam header (school, class…) and the exercises
 
 
 def scans_dir() -> Path:
@@ -459,10 +489,11 @@ def scan_page(body: ScanIn) -> dict:
         raise HTTPException(400, "Image illisible") from exc
     if len(raw) > SCAN_MAX:
         raise HTTPException(413, "Photo trop lourde (12 Mo maximum)")
+    exam_mode = body.kind == "epreuve"
     try:
         jpeg, found = straighten(raw)
         if body.handwriting:
-            text, engine = read_text_with_engine(jpeg)
+            text, engine = read_text_with_engine(jpeg, EXAM_PROMPT if exam_mode else None)
             confidence = 95.0 if engine == "mock" else 90.0
         elif os.getenv("OCR_PROVIDER") == "mock":
             text, engine, confidence = read_text(jpeg), "mock", 95.0
@@ -474,7 +505,11 @@ def scan_page(body: ScanIn) -> dict:
     scan_id = uuid.uuid4().hex
     scans_dir().mkdir(parents=True, exist_ok=True)
     (scans_dir() / f"{scan_id}.jpg").write_bytes(jpeg)
-    return {"id": scan_id, "text": text, "straightened": found, "engine": engine, "confidence": round(confidence)}
+    result = {"id": scan_id, "text": text, "straightened": found, "engine": engine, "confidence": round(confidence)}
+    if exam_mode:
+        exam = finalize_exam(text)
+        result["text"], result["exam"] = exam["content"], exam["fields"]
+    return result
 
 
 @scan_router.get("/{scan_id}.jpg")
