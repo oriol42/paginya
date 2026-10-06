@@ -46,7 +46,14 @@ export type DocMeta = {
   changes?: string[];
   /** Read from the student's own cover page (hidden from the text, used to fill Paginya's cover). */
   cover?: DocCoverInfo;
+  /** What an imported Word file already has (cover page, sommaire, page numbers). */
+  existing?: DocExisting;
 };
+
+export type DocExisting = { cover: boolean; toc: boolean; page_numbers: boolean; sections: number; headings: number };
+/** "keep": the user's own Word file with only what is missing added. "rebuild": Paginya's own layout. */
+export type DocMode = "keep" | "rebuild";
+export type KeepOptions = { page_numbers: boolean; toc: boolean };
 
 export type DocCoverInfo = {
   header_fr?: string[];
@@ -77,6 +84,8 @@ export type DocView = {
   has_cover: boolean;
   letterhead?: Letterhead | null;
   render: { pages: number; version: number; stale?: boolean } | null;
+  mode?: DocMode;
+  keep?: KeepOptions | null;
 };
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
@@ -105,7 +114,7 @@ export const docs = {
   fromFile: async (file: File) =>
     call<DocView>("/documents", { method: "POST", body: JSON.stringify({ filename: file.name, data: await toBase64(file) }) }),
   get: (id: string) => call<DocView>(`/documents/${id}`),
-  update: (id: string, patch: Partial<{ blocks: Block[]; style: DocStyle; options: DocOptions; kind: string; letterhead: Letterhead; cover_svg: string; remove_cover: boolean }>) =>
+  update: (id: string, patch: Partial<{ blocks: Block[]; style: DocStyle; options: DocOptions; kind: string; letterhead: Letterhead; cover_svg: string; remove_cover: boolean; mode: DocMode; keep: KeepOptions }>) =>
     call<DocView>(`/documents/${id}`, { method: "PUT", body: JSON.stringify(patch) }),
   render: (id: string) => call<DocView>(`/documents/${id}/render`, { method: "POST" }),
   pageUrl: (id: string, n: number, version: number) => `${API_URL}/documents/${id}/pages/${n}.webp?v=${version}`,

@@ -20,6 +20,7 @@ from .doc import office
 from .doc.detect import detect
 from .doc.extract import ExtractError, from_docx, from_markdown, from_pdf, from_text, looks_like_markdown
 from .doc.render import DEFAULT_OPTIONS, KINDS, THEMES, build_docx, options_for
+from .doc import keep
 from .doc.exam_scan import EXAM_PROMPT, blocks_to_text, raws_to_text
 from .doc.exam_scan import finalize as finalize_exam
 from .doc.scan import ScanError, ocr_local, read_text, read_text_with_engine, straighten
@@ -97,6 +98,8 @@ class DocPatch(BaseModel):
     kind: str | None = None  # user's choice of document type: resets the automatic pages to that type's
     cover_svg: str | None = None
     remove_cover: bool = False
+    mode: str | None = None  # "keep": the user's own Word file with only what is missing added; "rebuild": Paginya's layout
+    keep: dict | None = None  # {"page_numbers": bool, "toc": bool}
 
 
 def _load(order_id: str) -> dict:
@@ -123,6 +126,8 @@ def view(order: dict) -> dict:
         "has_cover": bool(doc.get("cover_svg")),
         "letterhead": doc.get("letterhead"),
         "render": doc.get("render"),
+        "mode": doc.get("mode", "rebuild"),
+        "keep": doc.get("keep"),
     }
 
 
@@ -182,6 +187,17 @@ def create(body: DocIn) -> dict:
         "cover_svg": None,
         "render": None,
     }
+    if body.data and body.filename and Path(body.filename).suffix.lower() == ".docx":
+        # A Word file that already has its cover page, sommaire or numbering is kept as it is by default.
+        try:
+            existing = keep.inspect(src)
+        except Exception:  # an odd file python-docx cannot read: the normal flow still works
+            existing = None
+        if existing:
+            doc["meta"]["existing"] = existing
+            if existing["cover"] or existing["toc"] or existing["page_numbers"]:
+                doc["mode"] = "keep"
+                doc["keep"] = {"page_numbers": not existing["page_numbers"], "toc": False}
     if tmp_id is None:
         order_id = db.create_order("document_court", pricing.price_for("document_court"), {"doc": doc})
     else:
@@ -255,6 +271,13 @@ def update(order_id: str, body: DocPatch) -> dict:
         doc["options"] = {k: bool(body.options.get(k, v)) for k, v in DEFAULT_OPTIONS.items()}
     if body.letterhead is not None:
         doc["letterhead"] = _clean_letterhead(body.letterhead)
+    if body.mode in ("keep", "rebuild"):
+        _ensure_inputs(order_id)
+        if body.mode == "keep" and not next(doc_dir(order_id).glob("source.docx"), None):
+            raise HTTPException(400, "Le fichier Word d'origine n'est plus disponible")
+        doc["mode"] = body.mode
+    if body.keep is not None:
+        doc["keep"] = {"page_numbers": bool(body.keep.get("page_numbers")), "toc": bool(body.keep.get("toc"))}
     if body.remove_cover:
         doc["cover_svg"] = None
     elif body.cover_svg:
@@ -305,7 +328,12 @@ def render(order_id: str) -> dict:
     folder = doc_dir(order_id)
     build = folder / "build"
     build.mkdir(parents=True, exist_ok=True)
-    (build / "raw.docx").write_bytes(build_docx(doc, folder / "images"))
+    source_docx = folder / "source.docx"
+    if doc.get("mode") == "keep" and source_docx.is_file():
+        options = doc.get("keep") or {}
+        keep.touch(source_docx, build / "raw.docx", page_numbers=bool(options.get("page_numbers")), toc=bool(options.get("toc")))
+    else:
+        (build / "raw.docx").write_bytes(build_docx(doc, folder / "images"))
     (build / "final.docx").unlink(missing_ok=True)  # made again from raw.docx when downloaded
     try:
         office.finalize(build / "raw.docx", None, build / "final.pdf")
@@ -358,6 +386,8 @@ def final_file(order_id: str, fmt: str) -> Path:
     doc = _load(order_id)["payload"]["doc"]
     if fmt in ("pdf", "docx") and doc.get("render") and (not (build / "final.pdf").is_file() or doc["render"].get("stale")):
         render(order_id)  # rebuilt after a restart, or after edits that skipped the full render (cover)
+    if fmt == "docx" and not path.is_file() and (build / "raw.docx").is_file() and doc.get("mode") == "keep" and not (doc.get("keep") or {}).get("toc"):
+        shutil.copy(build / "raw.docx", path)  # the user's own file, untouched by LibreOffice, with the numbers added
     if fmt == "docx" and not path.is_file() and (build / "raw.docx").is_file():
         try:
             office.finalize(build / "raw.docx", path, None)

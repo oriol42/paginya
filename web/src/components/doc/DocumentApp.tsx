@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { OrderStatus } from "@/lib/api";
 import { forget, remember } from "@/lib/recents";
-import { KIND_LABEL, docs, type Block, type DocOptions, type DocStyle, type DocView, type Letterhead } from "@/lib/documents";
+import { KIND_LABEL, docs, type Block, type DocMode, type DocOptions, type DocStyle, type DocView, type KeepOptions, type Letterhead } from "@/lib/documents";
 import { saveExamDraft } from "@/lib/examDraft";
 import { Icon, type IconName } from "../Icon";
 import { Logo } from "../Logo";
@@ -21,7 +21,7 @@ import { Working } from "./Working";
 
 type Panel = "style" | "cover" | "plan";
 type View = "after" | "before" | "side";
-type Patch = Partial<{ blocks: Block[]; style: DocStyle; options: DocOptions; kind: string; letterhead: Letterhead; cover_svg: string; remove_cover: boolean }>;
+type Patch = Partial<{ blocks: Block[]; style: DocStyle; options: DocOptions; kind: string; letterhead: Letterhead; cover_svg: string; remove_cover: boolean; mode: DocMode; keep: KeepOptions }>;
 
 const PANELS: { id: Panel; icon: IconName; label: string; title: string }[] = [
   { id: "style", icon: "palette", label: "Style", title: "Style et type" },
@@ -52,7 +52,7 @@ export function DocumentApp() {
     setDoc(view);
     router.replace(`/document?doc=${view.id}`, { scroll: false });
     let current = view;
-    const needsCover = view.options.cover && (!view.has_cover || fromStudio);
+    const needsCover = view.mode !== "keep" && view.options.cover && (!view.has_cover || fromStudio);
     if (needsCover) {
       if (fromStudio) {
         try { localStorage.removeItem(`propre:doc:cover:${view.id}`); } catch { /* ignore */ }
@@ -131,6 +131,15 @@ export function DocumentApp() {
     });
   }
 
+  /** Keep the user's own file, or let Paginya rebuild it (then its cover page is drawn like for any new document). */
+  function switchMode(mode: DocMode) {
+    change({ mode });
+    if (mode === "rebuild" && doc && doc.options.cover && !doc.has_cover && cover) {
+      coverSvgPreview(cover).then((svg) => change({ cover_svg: svg }));
+      setDoc((d) => (d ? { ...d, has_cover: true } : d));
+    }
+  }
+
   /** "Épreuve" in the type list: the text goes to the exam form, which lays it out the Cameroonian way. */
   async function openAsExam() {
     if (!doc) return;
@@ -187,7 +196,12 @@ export function DocumentApp() {
   const paid = doc.status === "PAID" && doc.editable;
   const missing = doc.has_cover && cover ? coverIncomplete(cover) : [];
 
-  const panelBody = (
+  const keeping = doc.mode === "keep";
+  const panelBody = keeping ? (
+    <p className="text-[15px] leading-relaxed text-ink/70">
+      Tu gardes ton document tel quel : le style, la page de garde et le plan ne sont pas modifiés. Pour les changer, choisis « Tout remettre en forme » dans l&apos;encadré au-dessus des pages.
+    </p>
+  ) : (
     <>
       {panel === "style" && <DocStylePanel style={doc.style} options={doc.options} kind={doc.meta.kind} onStyle={(style) => change({ style })} onOptions={(options) => change({ options })} onKind={(kind) => { if (kind === "epreuve") { openAsExam(); return; } setDoc((d) => (d ? { ...d, meta: { ...d.meta, kind } } : d)); change({ kind }); }} letterhead={doc.letterhead ?? null} hasCover={doc.has_cover} onLetterhead={(letterhead, options) => change({ letterhead, options })} />}
       {panel === "cover" && (
@@ -282,6 +296,7 @@ export function DocumentApp() {
           </div>
           {error && <p className="mx-auto mt-3 flex max-w-[720px] gap-2 rounded-md bg-paper px-4 py-3 text-[15px] text-pin"><Icon name="triangle-alert" size={18} className="mt-0.5" />{error}</p>}
           <div className="px-4 pt-3 sm:px-8 lg:pt-10">
+            <KeepCard doc={doc} onMode={switchMode} onKeep={(keep) => change({ keep })} />
             <Pages doc={doc} view={view} beforePages={beforePages} dim={rendering} cover={doc.has_cover && doc.options.cover ? liveCover : ""} zoom={zoom} />
           </div>
         </main>
@@ -325,7 +340,9 @@ export function DocumentApp() {
           heading="Ton document est prêt"
           bullets={[
             `${pages} pages mises en forme`,
-            [doc.has_cover && "page de garde", doc.options.toc && "sommaire", doc.options.toc_end && "table des matières", doc.options.page_numbers && "pagination"].filter(Boolean).join(" · ") || "mise en page complète",
+            keeping
+              ? ["ton document gardé tel quel", doc.keep?.page_numbers && "numéros de page ajoutés", doc.keep?.toc && "sommaire ajouté"].filter(Boolean).join(" · ")
+              : [doc.has_cover && "page de garde", doc.options.toc && "sommaire", doc.options.toc_end && "table des matières", doc.options.page_numbers && "pagination"].filter(Boolean).join(" · ") || "mise en page complète",
             "Word modifiable + PDF prêt à imprimer",
             "Modifications gratuites pendant 7 jours",
           ]}
@@ -422,6 +439,55 @@ function Pages({ doc, view, beforePages, dim, cover, zoom }: { doc: DocView; vie
         </figure>
       ))}
     </div>
+  );
+}
+
+/** An imported Word file that already has a cover page, sommaire or numbers: keep it, add only what is missing. */
+function KeepCard({ doc, onMode, onKeep }: { doc: DocView; onMode: (mode: DocMode) => void; onKeep: (keep: KeepOptions) => void }) {
+  const found = doc.meta.existing;
+  if (!found || !(found.cover || found.toc || found.page_numbers)) return null;
+  const keeping = doc.mode === "keep";
+  const keep = doc.keep ?? { page_numbers: false, toc: false };
+  const items = [
+    { label: "Page de garde", has: found.cover },
+    { label: "Sommaire", has: found.toc },
+    { label: "Numéros de page", has: found.page_numbers },
+  ];
+  return (
+    <section className="paper mx-auto mb-4 max-w-[720px] rounded-[2px] p-4 text-ink" aria-label="Ce que ton document a déjà">
+      <p className="font-display text-[22px] leading-none font-black uppercase">{keeping ? "Ton document est gardé tel quel" : "Paginya a tout remis en forme"}</p>
+      <ul className="mt-3 flex flex-wrap gap-2">
+        {items.map((i) => (
+          <li key={i.label} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-bold ${i.has ? "bg-board/10 text-board" : "bg-ink/5 text-ink/55"}`}>
+            <Icon name={i.has ? "check" : "x"} size={14} stroke={2.6} />
+            {i.label}{i.has ? " : déjà là" : " : absent"}
+          </li>
+        ))}
+      </ul>
+      {keeping ? (
+        <div className="mt-3 space-y-2 text-[15px]">
+          <label className="flex items-start gap-2.5">
+            <input type="checkbox" checked={keep.page_numbers} disabled={found.page_numbers} onChange={(e) => onKeep({ ...keep, page_numbers: e.target.checked })} className="mt-0.5 h-5 w-5 accent-[#1c3a2a]" />
+            <span>{found.page_numbers ? "Numéros de page : ton document en a déjà, je n'y touche pas" : "Ajouter les numéros de page (pas sur la page de garde)"}</span>
+          </label>
+          <label className="flex items-start gap-2.5">
+            <input type="checkbox" checked={keep.toc} disabled={found.toc || found.headings === 0} onChange={(e) => onKeep({ ...keep, toc: e.target.checked })} className="mt-0.5 h-5 w-5 accent-[#1c3a2a]" />
+            <span>
+              {found.toc ? "Sommaire : ton document en a déjà un, je n'y touche pas" : found.headings === 0 ? "Sommaire : impossible, ton texte n'a pas de titres Word (Titre 1, Titre 2…)" : "Ajouter un sommaire après la page de garde"}
+            </span>
+          </label>
+        </div>
+      ) : (
+        <p className="mt-3 text-[14px] text-ink/65">Ton fichier avait déjà sa mise en page ; elle a été remplacée par celle de Paginya.</p>
+      )}
+      <button
+        type="button"
+        onClick={() => onMode(keeping ? "rebuild" : "keep")}
+        className="press mt-3 rounded-md px-3 py-2 text-[14px] font-bold ring-1 ring-black/15 hover:bg-ink/5"
+      >
+        {keeping ? "Tout remettre en forme avec Paginya" : "Revenir à mon document"}
+      </button>
+    </section>
   );
 }
 
