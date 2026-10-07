@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { KIND_LABEL, scans, type ScanKind, type ScanResult } from "@/lib/documents";
+import { KIND_LABEL, scans, type ScanResult } from "@/lib/documents";
 import { mergeExamFields, saveExamDraft } from "@/lib/examDraft";
 import { forget, recents, type Recent } from "@/lib/recents";
 import { Icon, type IconName } from "../Icon";
@@ -28,7 +28,7 @@ export function ImportScreen({ error, onText, onFile, onOpen }: Props) {
   const [consent, setConsent] = useState(false);
   const [reading, setReading] = useState(false);
   const [review, setReview] = useState(false);
-  const [docKind, setDocKind] = useState<ScanKind>("document");
+  const [examChoice, setExamChoice] = useState<boolean | null>(null); // the user's answer to "j'ai reconnu une épreuve"
   const [notice, setNotice] = useState("");
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
@@ -54,7 +54,7 @@ export function ImportScreen({ error, onText, onFile, onOpen }: Props) {
       copy[i] = { ...copy[i], status: "reading" };
       setPhotos([...copy]);
       try {
-        copy[i] = { ...copy[i], status: "done", result: await scans.read(copy[i].file, handwriting, consent, docKind) };
+        copy[i] = { ...copy[i], status: "done", result: await scans.read(copy[i].file, handwriting, consent) };
       } catch (e) {
         copy[i] = { ...copy[i], status: "error", error: (e as Error).message };
       }
@@ -67,14 +67,39 @@ export function ImportScreen({ error, onText, onFile, onOpen }: Props) {
 
   if (review) {
     const done = photos.filter((p) => p.result);
+    const looksExam = done.some((p) => p.result?.is_exam);
+    const asExam = examChoice ?? looksExam;
     return (
       <div className="mx-auto w-full max-w-5xl px-5 pt-6 pb-32">
         <h1 className="font-display text-[2.4rem] leading-[0.95] font-black uppercase">Vérifie le texte lu</h1>
         <p className="mt-2 max-w-prose text-[16px] text-ink/70">
-          {docKind === "epreuve"
+          {asExam
             ? "Compare avec ta photo et corrige les mots mal lus. Paginya a repéré l'en-tête (établissement, classe, durée…) : tu pourras le corriger à l'étape suivante."
             : "Compare avec ta photo et corrige les mots mal lus. Paginya ne touchera plus à ton texte ensuite."}
         </p>
+        {looksExam ? (
+          <div className="paper mt-4 rounded-[2px] p-4">
+            <p className="font-display text-[22px] leading-none font-black uppercase">J&apos;ai reconnu une épreuve d&apos;examen</p>
+            <p className="mt-2 text-[14px] text-ink/65">Exercices, points, classe… Je la mets au format camerounais (en-tête bilingue, barème) si tu es d&apos;accord.</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {([[true, "Oui, une épreuve"], [false, "Non, un document"]] as const).map(([value, label]) => (
+                <button
+                  key={label}
+                  type="button"
+                  aria-pressed={asExam === value}
+                  onClick={() => setExamChoice(value)}
+                  className={`press rounded-md px-3 py-2.5 text-[15px] font-bold ring-1 ${asExam === value ? "bg-board text-white ring-board" : "ring-black/15 hover:bg-ink/5"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <button type="button" onClick={() => setExamChoice(!asExam)} className="mt-3 text-[14px] font-bold text-board underline">
+            {asExam ? "Ce n'est pas une épreuve ?" : "C'est une épreuve d'examen ?"}
+          </button>
+        )}
         {notice && <p className="mt-3 flex gap-2 rounded-md bg-pin/10 px-4 py-3 text-[15px] text-pin"><Icon name="triangle-alert" size={18} className="mt-0.5" />{notice}</p>}
         <div className="mt-6 space-y-6">
           {done.map((p, i) => (
@@ -109,12 +134,11 @@ export function ImportScreen({ error, onText, onFile, onOpen }: Props) {
             <PinLabel
               className="flex-1"
               onClick={() => {
-                const texts = done.map((p) => p.result!.text);
-                if (docKind === "epreuve") openExamForm(mergeExamFields(done.map((p) => p.result?.exam)), texts.join("\n"));
-                else onText(texts.join("\n\n"));
+                if (asExam) openExamForm(mergeExamFields(done.map((p) => p.result?.exam)), done.map((p) => p.result!.text).join("\n"));
+                else onText(done.map((p) => (p.result!.is_exam ? p.result!.raw ?? p.result!.text : p.result!.text)).join("\n\n"));
               }}
             >
-              {docKind === "epreuve" ? "C'est bon, créer l'épreuve" : "C'est bon, mettre en forme"}
+              {asExam ? "C'est bon, créer l'épreuve" : "C'est bon, mettre en forme"}
             </PinLabel>
           </div>
         </div>
@@ -158,8 +182,6 @@ export function ImportScreen({ error, onText, onFile, onOpen }: Props) {
               </button>
             ))}
           </div>
-
-          {mode !== "file" && <KindPicker value={docKind} onChange={setDocKind} />}
 
           {mode === "file" && (
             <button
@@ -246,16 +268,12 @@ export function ImportScreen({ error, onText, onFile, onOpen }: Props) {
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 rows={12}
-                placeholder={docKind === "epreuve"
-                  ? "Colle ici ton épreuve…\n\nExercice 1 (5 pts)\n1) Première question (2 pts)\n2) Deuxième question (3 pts)\n\nExercice 2 (5 pts)\na) …"
-                  : "Colle ici tout ton texte…\n\nINTRODUCTION\nComme le disait…\n\nCHAPITRE I : PRÉSENTATION\n- premier point\n- deuxième point"}
+                placeholder={"Colle ici tout ton texte (document, rapport, épreuve…)\n\nINTRODUCTION\nComme le disait…\n\nCHAPITRE I : PRÉSENTATION\n- premier point\n- deuxième point"}
                 className="w-full resize-y rounded-md border-0 bg-wall/50 p-4 text-[16px] leading-relaxed ring-1 ring-black/10 placeholder:text-ink/35 focus:bg-paper focus:ring-2 focus:ring-hi-deep focus:outline-none"
               />
               <div className="mt-3 flex items-center justify-between gap-3">
                 <span className="text-[14px] text-ink/55 tabular">{words ? `${words.toLocaleString("fr-FR")} mots` : ""}</span>
-                <PinLabel disabled={words < 5} onClick={() => (docKind === "epreuve" ? openExamForm({}, text) : onText(text))}>
-                  {docKind === "epreuve" ? "Créer l'épreuve" : "Mettre en forme"}
-                </PinLabel>
+                <PinLabel disabled={words < 5} onClick={() => onText(text)}>Continuer</PinLabel>
               </div>
             </div>
           )}
@@ -279,35 +297,6 @@ export function ImportScreen({ error, onText, onFile, onOpen }: Props) {
           <Link href="/confidentialite" className="underline">politique de confidentialité</Link>.
         </p>
       </div>
-    </div>
-  );
-}
-
-const DOC_KINDS: { id: ScanKind; label: string; hint: string; icon: IconName }[] = [
-  { id: "document", label: "Document, rapport…", hint: "Mémoire, rapport, exposé, cours", icon: "file-text" },
-  { id: "epreuve", label: "Épreuve d'examen", hint: "En-tête MINESEC, exercices, barème", icon: "pen-line" },
-];
-
-/** "What are these pages?": a report goes through the formatter, an exam paper gets the exam layout. */
-function KindPicker({ value, onChange }: { value: ScanKind; onChange: (kind: ScanKind) => void }) {
-  return (
-    <div role="radiogroup" aria-label="Type de document" className="mt-4 grid grid-cols-2 gap-2">
-      {DOC_KINDS.map((k) => {
-        const on = value === k.id;
-        return (
-          <button
-            key={k.id}
-            type="button"
-            role="radio"
-            aria-checked={on}
-            onClick={() => onChange(k.id)}
-            className={`press rounded-md p-3 text-left ring-1 transition-colors ${on ? "bg-board text-white ring-board" : "bg-paper ring-black/15 hover:bg-ink/5"}`}
-          >
-            <span className="flex items-center gap-2 text-[15px] font-bold"><Icon name={k.icon} size={18} />{k.label}</span>
-            <span className={`mt-1 block text-[13px] ${on ? "text-white/75" : "text-ink/60"}`}>{k.hint}</span>
-          </button>
-        );
-      })}
     </div>
   );
 }

@@ -160,3 +160,11 @@ Directeur, l'expression de ma haute considération.
 ## 10. Paramètres à exposer dans chaque modèle
 
 `institution_lignes[] (FR/EN)`, `separateur`, `logo`, `afficher_republique`, `afficher_ministere`, `type_document`, `titre`, `mention_diplome`, `option/parcours/niveau`, `auteur`, `matricule`, `encadreurs[] (rôle, nom, grade, fonction)`, `jury[]`, `annee_academique`, `date_soutenance`, `police`, `taille`, `interligne`, `marges (h, b, g, d)`, `position_numero_page`, `entete_courant`, `pied_courant`, `style_numerotation_titres`, `position_sommaire`, `table_des_matieres_en_fin`, `pages_prelim[] ordonnées`, `style_bibliographie`.
+
+## 7. Comment l'application applique la pagination (mode « garder mon document »)
+
+- Page de garde : comptée comme « i » mais sans numéro affiché (section Word à part).
+- Pages préliminaires (sommaire, dédicace, remerciements, sigles, listes…) : chiffres romains minuscules, la numérotation continue après la page de garde (ii, iii, iv…).
+- Corps : chiffres arabes, la numérotation repart à 1 à l'Introduction.
+- Sans page préliminaire, le corps commence à 1 juste après la page de garde.
+- Un document déjà numéroté (même en chiffres arabes partout, page de garde comprise) est gardé tel quel par défaut ; l'écran d'analyse propose « Refaire aux normes » quand sa numérotation s'écarte de cette convention.

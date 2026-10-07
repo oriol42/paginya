@@ -247,3 +247,19 @@ def extract(raws) -> tuple[dict, set[int]]:
     # The old cover's lines are hidden; a long paragraph before the body is real text and stays.
     hide = {i for i in range(end) if raws[i].rows or raws[i].image or len((raws[i].text or "").strip()) < 220}
     return {k: v for k, v in f.items() if v}, hide
+
+
+def split_header_lines(lines: list[str]) -> tuple[list[str], list[str]]:
+    """Lines of a printed letterhead (Word header) -> (French lines, English lines), like the cover's own header."""
+    flat: list[tuple[int, str]] = []
+    for i, line in enumerate(lines):
+        flat.extend((i, part) for part in _cell_lines(line))
+    fr: list[str] = []
+    en: list[str] = []
+    for _, line in _join_wrapped(flat):
+        if re.match(r"^(\*|-){3,}$", line) or not HEADER.match(line) or len(line) >= 120:
+            continue
+        p = _plain(line)
+        english = (ENGLISH.search(line) and not re.search(r"\b(de|du|des|la|le|et)\b", p)) or p.startswith("the ")
+        (en if english else fr).append(line)
+    return list(dict.fromkeys(fr)), list(dict.fromkeys(en))

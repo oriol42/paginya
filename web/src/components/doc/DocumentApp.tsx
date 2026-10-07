@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { OrderStatus } from "@/lib/api";
 import { forget, remember } from "@/lib/recents";
-import { KIND_LABEL, docs, type Block, type DocMode, type DocOptions, type DocStyle, type DocView, type KeepOptions, type Letterhead } from "@/lib/documents";
+import { KIND_LABEL, docs, type Block, type DocMode, type DocOptions, type DocPlan, type DocStyle, type DocView, type Letterhead } from "@/lib/documents";
 import { saveExamDraft } from "@/lib/examDraft";
 import { Icon, type IconName } from "../Icon";
 import { Logo } from "../Logo";
@@ -14,14 +14,16 @@ import type { StudioState } from "../studio/state";
 import { Segmented } from "../ui";
 import { CoverView } from "../CoverView";
 import { CoverEditor, coverIncomplete, coverSvgPreview, prepareCover } from "./CoverEditor";
+import { AnalysisScreen } from "./AnalysisScreen";
 import { DocStylePanel } from "./DocStylePanel";
 import { ImportScreen } from "./ImportScreen";
+import { PlanChoices } from "./PlanChoices";
 import { PlanPanel } from "./PlanPanel";
 import { Working } from "./Working";
 
 type Panel = "style" | "cover" | "plan";
 type View = "after" | "before" | "side";
-type Patch = Partial<{ blocks: Block[]; style: DocStyle; options: DocOptions; kind: string; letterhead: Letterhead; cover_svg: string; remove_cover: boolean; mode: DocMode; keep: KeepOptions }>;
+type Patch = Partial<{ blocks: Block[]; style: DocStyle; options: DocOptions; kind: string; letterhead: Letterhead; cover_svg: string; remove_cover: boolean; mode: DocMode; plan: Partial<DocPlan>; confirm: boolean }>;
 
 const PANELS: { id: Panel; icon: IconName; label: string; title: string }[] = [
   { id: "style", icon: "palette", label: "Style", title: "Style et type" },
@@ -33,8 +35,9 @@ export function DocumentApp() {
   const params = useSearchParams();
   const router = useRouter();
   const [doc, setDoc] = useState<DocView | null>(null);
-  const [phase, setPhase] = useState<"import" | "working" | "editor">("import");
+  const [phase, setPhase] = useState<"import" | "working" | "analysis" | "editor">("import");
   const [rendering, setRendering] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [panel, setPanel] = useState<Panel>("style");
   const [drawer, setDrawer] = useState(false); // mobile only
@@ -51,8 +54,14 @@ export function DocumentApp() {
   const openDoc = useCallback(async (view: DocView, fromStudio = false) => {
     setDoc(view);
     router.replace(`/document?doc=${view.id}`, { scroll: false });
+    if (!view.confirmed) {
+      // "J'ai analysé ton document": nothing is laid out until the user has seen it and chosen.
+      setPhase("analysis");
+      return;
+    }
     let current = view;
-    const needsCover = view.mode !== "keep" && view.options.cover && (!view.has_cover || fromStudio);
+    const ownCover = view.mode === "keep" ? view.plan.cover === "redo" || view.plan.cover === "add" : view.options.cover;
+    const needsCover = ownCover && (!view.has_cover || fromStudio);
     if (needsCover) {
       if (fromStudio) {
         try { localStorage.removeItem(`propre:doc:cover:${view.id}`); } catch { /* ignore */ }
@@ -140,6 +149,46 @@ export function DocumentApp() {
     }
   }
 
+  /** The element-by-element choices changed (after the analysis): the new cover is drawn here, from the user's own details. */
+  function changePlan(plan: DocPlan) {
+    const wantsCover = plan.cover === "redo" || plan.cover === "add";
+    change({ plan });
+    if (wantsCover && doc && !doc.has_cover && cover) {
+      coverSvgPreview(cover).then((svg) => change({ cover_svg: svg }));
+      setDoc((d) => (d ? { ...d, has_cover: true } : d));
+    }
+  }
+
+  /** "C'est bon": send the choices, then lay the document out for the first time. */
+  async function applyAnalysis(mode: DocMode, plan: DocPlan) {
+    if (!doc) return;
+    setError("");
+    setBusy(true);
+    try {
+      const saved = await docs.update(doc.id, { mode, plan, confirm: true });
+      setPhase("working");
+      await openDoc(saved);
+    } catch (e) {
+      setError((e as Error).message);
+      setPhase("analysis");
+    } finally {
+      setBusy(false);
+      setRendering(false);
+    }
+  }
+
+  async function changeKind(kind: string) {
+    if (!doc) return;
+    setBusy(true);
+    try {
+      setDoc(await docs.update(doc.id, { kind }));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   /** "Épreuve" in the type list: the text goes to the exam form, which lays it out the Cameroonian way. */
   async function openAsExam() {
     if (!doc) return;
@@ -191,6 +240,15 @@ export function DocumentApp() {
     );
   }
   if (phase === "working") return <Shell><Working meta={doc.meta} rendering={rendering} /></Shell>;
+  if (phase === "analysis") {
+    return (
+      <Shell>
+        <div className="board flex-1">
+          <AnalysisScreen key={`${doc.id}-${doc.meta.kind}`} doc={doc} busy={busy} error={error} onKind={changeKind} onExam={openAsExam} onApply={applyAnalysis} />
+        </div>
+      </Shell>
+    );
+  }
 
   const pages = doc.render?.pages ?? 0;
   const paid = doc.status === "PAID" && doc.editable;
@@ -198,9 +256,24 @@ export function DocumentApp() {
 
   const keeping = doc.mode === "keep";
   const panelBody = keeping ? (
-    <p className="text-[15px] leading-relaxed text-ink/70">
-      Tu gardes ton document tel quel : le style, la page de garde et le plan ne sont pas modifiés. Pour les changer, choisis « Tout remettre en forme » dans l&apos;encadré au-dessus des pages.
-    </p>
+    <div className="space-y-4">
+      <p className="text-[14px] leading-relaxed text-ink/65">Ton texte et tes styles ne sont pas touchés : tu choisis seulement ce qui change.</p>
+      <PlanChoices existing={doc.meta.existing ?? null} mode="keep" plan={doc.plan} onPlan={changePlan} hint={doc.analysis?.hint} />
+      {(doc.plan.cover === "redo" || doc.plan.cover === "add") && (
+        <CoverEditor
+          docId={doc.id}
+          meta={doc.meta}
+          enabled
+          onEnabled={() => undefined}
+          onSvg={(svg) => change({ cover_svg: svg })}
+          onPreview={setLiveCover}
+          onState={setCover}
+        />
+      )}
+      <button type="button" onClick={() => switchMode("rebuild")} className="press w-full rounded-md px-3 py-3 text-[14px] font-bold ring-1 ring-black/15 hover:bg-ink/5">
+        Tout refaire avec la mise en page Paginya
+      </button>
+    </div>
   ) : (
     <>
       {panel === "style" && <DocStylePanel style={doc.style} options={doc.options} kind={doc.meta.kind} onStyle={(style) => change({ style })} onOptions={(options) => change({ options })} onKind={(kind) => { if (kind === "epreuve") { openAsExam(); return; } setDoc((d) => (d ? { ...d, meta: { ...d.meta, kind } } : d)); change({ kind }); }} letterhead={doc.letterhead ?? null} hasCover={doc.has_cover} onLetterhead={(letterhead, options) => change({ letterhead, options })} />}
@@ -258,7 +331,7 @@ export function DocumentApp() {
           <span className="ml-1 min-w-0 truncate text-[15px] font-semibold text-white/80 sm:ml-4">{title}</span>
           <div className="ml-auto flex items-center gap-2">
             {rendering && <span className="stamp stamp-in hidden bg-paper/90 text-[15px] sm:inline-flex">En cours</span>}
-            <ChangesPill doc={doc} />
+            {!keeping && <ChangesPill doc={doc} />}
             <button type="button" onClick={() => setZoom(!zoom)} aria-pressed={zoom} className="press hidden h-10 items-center gap-1.5 rounded-md px-3 text-[14px] font-bold text-white/80 ring-1 ring-white/20 hover:bg-white/10 hover:text-white lg:inline-flex" title="Agrandir les pages pour mieux lire">
               <Icon name={zoom ? "zoom-out" : "zoom-in"} size={18} />{zoom ? "Réduire" : "Agrandir"}
             </button>
@@ -296,7 +369,12 @@ export function DocumentApp() {
           </div>
           {error && <p className="mx-auto mt-3 flex max-w-[720px] gap-2 rounded-md bg-paper px-4 py-3 text-[15px] text-pin"><Icon name="triangle-alert" size={18} className="mt-0.5" />{error}</p>}
           <div className="px-4 pt-3 sm:px-8 lg:pt-10">
-            <KeepCard doc={doc} onMode={switchMode} onKeep={(keep) => change({ keep })} />
+            {!keeping && doc.meta.existing && (doc.meta.existing.cover || doc.meta.existing.toc || doc.meta.existing.page_numbers) && (
+              <section className="paper mx-auto mb-4 flex max-w-[720px] items-center justify-between gap-3 rounded-[2px] p-4 text-ink">
+                <p className="text-[14px] text-ink/70">Ton fichier avait déjà sa mise en page ; elle a été remplacée par celle de Paginya.</p>
+                <button type="button" onClick={() => switchMode("keep")} className="press shrink-0 rounded-md px-3 py-2 text-[14px] font-bold ring-1 ring-black/15 hover:bg-ink/5">Revenir à mon document</button>
+              </section>
+            )}
             <Pages doc={doc} view={view} beforePages={beforePages} dim={rendering} cover={doc.has_cover && doc.options.cover ? liveCover : ""} zoom={zoom} />
           </div>
         </main>
@@ -341,7 +419,7 @@ export function DocumentApp() {
           bullets={[
             `${pages} pages mises en forme`,
             keeping
-              ? ["ton document gardé tel quel", doc.keep?.page_numbers && "numéros de page ajoutés", doc.keep?.toc && "sommaire ajouté"].filter(Boolean).join(" · ")
+              ? ["ton texte et tes styles gardés", doc.plan.cover === "redo" && "page de garde refaite", doc.plan.cover === "add" && "page de garde ajoutée", doc.plan.toc === "add" && "sommaire ajouté", doc.plan.toc === "redo" && "sommaire refait", doc.plan.numbers !== "keep" && doc.plan.numbers !== "none" && "numéros de page aux normes"].filter(Boolean).join(" · ")
               : [doc.has_cover && "page de garde", doc.options.toc && "sommaire", doc.options.toc_end && "table des matières", doc.options.page_numbers && "pagination"].filter(Boolean).join(" · ") || "mise en page complète",
             "Word modifiable + PDF prêt à imprimer",
             "Modifications gratuites pendant 7 jours",
@@ -439,55 +517,6 @@ function Pages({ doc, view, beforePages, dim, cover, zoom }: { doc: DocView; vie
         </figure>
       ))}
     </div>
-  );
-}
-
-/** An imported Word file that already has a cover page, sommaire or numbers: keep it, add only what is missing. */
-function KeepCard({ doc, onMode, onKeep }: { doc: DocView; onMode: (mode: DocMode) => void; onKeep: (keep: KeepOptions) => void }) {
-  const found = doc.meta.existing;
-  if (!found || !(found.cover || found.toc || found.page_numbers)) return null;
-  const keeping = doc.mode === "keep";
-  const keep = doc.keep ?? { page_numbers: false, toc: false };
-  const items = [
-    { label: "Page de garde", has: found.cover },
-    { label: "Sommaire", has: found.toc },
-    { label: "Numéros de page", has: found.page_numbers },
-  ];
-  return (
-    <section className="paper mx-auto mb-4 max-w-[720px] rounded-[2px] p-4 text-ink" aria-label="Ce que ton document a déjà">
-      <p className="font-display text-[22px] leading-none font-black uppercase">{keeping ? "Ton document est gardé tel quel" : "Paginya a tout remis en forme"}</p>
-      <ul className="mt-3 flex flex-wrap gap-2">
-        {items.map((i) => (
-          <li key={i.label} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-bold ${i.has ? "bg-board/10 text-board" : "bg-ink/5 text-ink/55"}`}>
-            <Icon name={i.has ? "check" : "x"} size={14} stroke={2.6} />
-            {i.label}{i.has ? " : déjà là" : " : absent"}
-          </li>
-        ))}
-      </ul>
-      {keeping ? (
-        <div className="mt-3 space-y-2 text-[15px]">
-          <label className="flex items-start gap-2.5">
-            <input type="checkbox" checked={keep.page_numbers} disabled={found.page_numbers} onChange={(e) => onKeep({ ...keep, page_numbers: e.target.checked })} className="mt-0.5 h-5 w-5 accent-[#1c3a2a]" />
-            <span>{found.page_numbers ? "Numéros de page : ton document en a déjà, je n'y touche pas" : "Ajouter les numéros de page (pas sur la page de garde)"}</span>
-          </label>
-          <label className="flex items-start gap-2.5">
-            <input type="checkbox" checked={keep.toc} disabled={found.toc || found.headings === 0} onChange={(e) => onKeep({ ...keep, toc: e.target.checked })} className="mt-0.5 h-5 w-5 accent-[#1c3a2a]" />
-            <span>
-              {found.toc ? "Sommaire : ton document en a déjà un, je n'y touche pas" : found.headings === 0 ? "Sommaire : impossible, ton texte n'a pas de titres Word (Titre 1, Titre 2…)" : "Ajouter un sommaire après la page de garde"}
-            </span>
-          </label>
-        </div>
-      ) : (
-        <p className="mt-3 text-[14px] text-ink/65">Ton fichier avait déjà sa mise en page ; elle a été remplacée par celle de Paginya.</p>
-      )}
-      <button
-        type="button"
-        onClick={() => onMode(keeping ? "rebuild" : "keep")}
-        className="press mt-3 rounded-md px-3 py-2 text-[14px] font-bold ring-1 ring-black/15 hover:bg-ink/5"
-      >
-        {keeping ? "Tout remettre en forme avec Paginya" : "Revenir à mon document"}
-      </button>
-    </section>
   );
 }
 

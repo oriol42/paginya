@@ -10,7 +10,9 @@ await p.eval("localStorage.clear()");
 await p.goto("http://localhost:3000/document", 3000);
 await click("Texte"); await p.sleep(300);
 await type("textarea", text);
-await click("Mettre en forme");
+await click("Continuer");
+await p.sleep(1500);
+await click("C'est bon");
 for (let i=0;i<60;i++){ if (await p.eval(`document.body.innerText.includes('Ce que Propre a fait')`)) break; await p.sleep(500); }
 await idle();
 await p.shot("e1-desktop.png");

@@ -12,7 +12,9 @@ await p.sleep(300);
 // set the textarea value the React way
 await p.eval(`(() => { const ta=document.querySelector('textarea'); const set=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set; set.call(ta, ${JSON.stringify(text)}); ta.dispatchEvent(new Event('input',{bubbles:true})); })()`);
 await p.sleep(300);
-await click("Mettre en forme");
+await click("Continuer");
+await p.sleep(1500);
+await click("C'est bon");
 await p.sleep(700);
 await p.shot("f2-working.png");
 for (let i=0;i<40;i++){ if (await p.eval(`document.body.innerText.includes('pages au propre')`)) break; await p.sleep(500); }

@@ -20,8 +20,10 @@ from .doc import office
 from .doc.detect import detect
 from .doc.extract import ExtractError, from_docx, from_markdown, from_pdf, from_text, looks_like_markdown
 from .doc.render import DEFAULT_OPTIONS, KINDS, THEMES, build_docx, options_for
-from .doc import keep
-from .doc.exam_scan import EXAM_PROMPT, blocks_to_text, raws_to_text
+from . import render as cover_render
+from .doc import analysis, keep
+from .doc.cover_info import split_header_lines
+from .doc.exam_scan import AUTO_PROMPT, EXAM_PROMPT, blocks_to_text, exam_signals, raws_to_text, split_type
 from .doc.exam_scan import finalize as finalize_exam
 from .doc.scan import ScanError, ocr_local, read_text, read_text_with_engine, straighten
 from .svg_safe import UnsafeSvg, sanitize_svg
@@ -98,8 +100,9 @@ class DocPatch(BaseModel):
     kind: str | None = None  # user's choice of document type: resets the automatic pages to that type's
     cover_svg: str | None = None
     remove_cover: bool = False
-    mode: str | None = None  # "keep": the user's own Word file with only what is missing added; "rebuild": Paginya's layout
-    keep: dict | None = None  # {"page_numbers": bool, "toc": bool}
+    mode: str | None = None  # "keep": the user's own Word file, element by element; "rebuild": Paginya's layout
+    plan: dict | None = None  # {"cover"|"toc"|"numbers": "keep"|"add"|"redo"|"none"}
+    confirm: bool = False  # the user has seen the analysis and chose: nothing is rendered before that
 
 
 def _load(order_id: str) -> dict:
@@ -127,8 +130,18 @@ def view(order: dict) -> dict:
         "letterhead": doc.get("letterhead"),
         "render": doc.get("render"),
         "mode": doc.get("mode", "rebuild"),
-        "keep": doc.get("keep"),
+        "plan": plan_of(doc),
+        "analysis": doc.get("analysis"),
+        "confirmed": doc.get("confirmed", True),  # documents made before the analysis screen existed
     }
+
+
+def plan_of(doc: dict) -> dict:
+    """The element-by-element plan; older documents only had {"page_numbers", "toc"} (add what was missing)."""
+    if doc.get("plan"):
+        return doc["plan"]
+    legacy = doc.get("keep") or {}
+    return {"cover": "keep", "toc": "add" if legacy.get("toc") else "keep", "numbers": "add" if legacy.get("page_numbers") else "keep"}
 
 
 @router.post("")
@@ -187,17 +200,32 @@ def create(body: DocIn) -> dict:
         "cover_svg": None,
         "render": None,
     }
-    if body.data and body.filename and Path(body.filename).suffix.lower() == ".docx":
-        # A Word file that already has its cover page, sommaire or numbering is kept as it is by default.
+    existing = None
+    is_docx = bool(body.data and body.filename and Path(body.filename).suffix.lower() == ".docx")
+    if is_docx:
+        # What the Word file already has (cover page, sommaire, page numbers): shown to the user, kept unless they say otherwise.
         try:
             existing = keep.inspect(src)
         except Exception:  # an odd file python-docx cannot read: the normal flow still works
             existing = None
         if existing:
             doc["meta"]["existing"] = existing
-            if existing["cover"] or existing["toc"] or existing["page_numbers"]:
-                doc["mode"] = "keep"
-                doc["keep"] = {"page_numbers": not existing["page_numbers"], "toc": False}
+            cover_info = doc["meta"].get("cover")
+            if cover_info is not None and not cover_info.get("header_fr"):
+                try:  # the printed letterhead of a cover sits in the Word header, not in the text
+                    fr, en = split_header_lines(keep.header_lines(src))
+                except Exception:
+                    fr, en = [], []
+                if fr:
+                    cover_info["header_fr"] = fr
+                if en and not cover_info.get("header_en"):
+                    cover_info["header_en"] = en
+    report = analysis.analyze(result["meta"]["kind"], doc["meta"], doc["blocks"], doc["options"], existing, is_docx)
+    doc["analysis"] = report
+    doc["plan"] = report["plan"]
+    doc["confirmed"] = False
+    if existing and (existing["cover"] or existing["toc"] or existing["page_numbers"]):
+        doc["mode"] = "keep"
     if tmp_id is None:
         order_id = db.create_order("document_court", pricing.price_for("document_court"), {"doc": doc})
     else:
@@ -267,6 +295,7 @@ def update(order_id: str, body: DocPatch) -> dict:
     if body.kind is not None and body.kind in KINDS:
         doc["meta"]["kind"] = body.kind
         doc["options"] = {**options_for(body.kind, doc["meta"].get("words", 0)), "letterhead": doc["options"].get("letterhead", False)}
+        doc["plan"] = analysis.default_plan(body.kind, doc["meta"].get("existing"), doc["options"])
     if body.options is not None:
         doc["options"] = {k: bool(body.options.get(k, v)) for k, v in DEFAULT_OPTIONS.items()}
     if body.letterhead is not None:
@@ -276,8 +305,13 @@ def update(order_id: str, body: DocPatch) -> dict:
         if body.mode == "keep" and not next(doc_dir(order_id).glob("source.docx"), None):
             raise HTTPException(400, "Le fichier Word d'origine n'est plus disponible")
         doc["mode"] = body.mode
-    if body.keep is not None:
-        doc["keep"] = {"page_numbers": bool(body.keep.get("page_numbers")), "toc": bool(body.keep.get("toc"))}
+    if body.plan is not None:
+        doc["plan"] = analysis.clean_plan(body.plan, plan_of(doc))
+        if doc.get("mode", "rebuild") == "rebuild":  # Paginya's own layout: the plan is "which pages to make"
+            doc["options"] = {**doc["options"], "cover": doc["plan"]["cover"] != "none", "toc": doc["plan"]["toc"] != "none",
+                              "page_numbers": doc["plan"]["numbers"] != "none"}
+    if body.confirm:
+        doc["confirmed"] = True
     if body.remove_cover:
         doc["cover_svg"] = None
     elif body.cover_svg:
@@ -330,8 +364,12 @@ def render(order_id: str) -> dict:
     build.mkdir(parents=True, exist_ok=True)
     source_docx = folder / "source.docx"
     if doc.get("mode") == "keep" and source_docx.is_file():
-        options = doc.get("keep") or {}
-        keep.touch(source_docx, build / "raw.docx", page_numbers=bool(options.get("page_numbers")), toc=bool(options.get("toc")))
+        plan = plan_of(doc)
+        cover_png = None
+        if plan["cover"] in ("redo", "add") and doc.get("cover_svg"):
+            cover_png = cover_render.svg_to_png(doc["cover_svg"], 200)
+        keep.touch(source_docx, build / "raw.docx", numbers=plan["numbers"], toc=plan["toc"],
+                   cover=plan["cover"] if cover_png else "keep", cover_png=cover_png)
     else:
         (build / "raw.docx").write_bytes(build_docx(doc, folder / "images"))
     (build / "final.docx").unlink(missing_ok=True)  # made again from raw.docx when downloaded
@@ -386,7 +424,7 @@ def final_file(order_id: str, fmt: str) -> Path:
     doc = _load(order_id)["payload"]["doc"]
     if fmt in ("pdf", "docx") and doc.get("render") and (not (build / "final.pdf").is_file() or doc["render"].get("stale")):
         render(order_id)  # rebuilt after a restart, or after edits that skipped the full render (cover)
-    if fmt == "docx" and not path.is_file() and (build / "raw.docx").is_file() and doc.get("mode") == "keep" and not (doc.get("keep") or {}).get("toc"):
+    if fmt == "docx" and not path.is_file() and (build / "raw.docx").is_file() and doc.get("mode") == "keep" and plan_of(doc)["toc"] not in ("add", "redo"):
         shutil.copy(build / "raw.docx", path)  # the user's own file, untouched by LibreOffice, with the numbers added
     if fmt == "docx" and not path.is_file() and (build / "raw.docx").is_file():
         try:
@@ -501,7 +539,7 @@ class ScanIn(BaseModel):
     data: str  # base64 image
     handwriting: bool = False  # handwritten pages need the external AI (Gemini)
     consent: bool = False  # required only for handwriting: the page leaves our server
-    kind: str = "document"  # "epreuve": also return the exam header (school, class…) and the exercises
+    kind: str = "auto"  # "auto": Paginya decides if the page is an exam paper; "epreuve" / "document" force it
 
 
 def scans_dir() -> Path:
@@ -519,12 +557,17 @@ def scan_page(body: ScanIn) -> dict:
         raise HTTPException(400, "Image illisible") from exc
     if len(raw) > SCAN_MAX:
         raise HTTPException(413, "Photo trop lourde (12 Mo maximum)")
+    auto = body.kind == "auto"
     exam_mode = body.kind == "epreuve"
+    kind_found = ""
     try:
         jpeg, found = straighten(raw)
         if body.handwriting:
-            text, engine = read_text_with_engine(jpeg, EXAM_PROMPT if exam_mode else None)
+            prompt = AUTO_PROMPT if auto else EXAM_PROMPT if exam_mode else None
+            text, engine = read_text_with_engine(jpeg, prompt)
             confidence = 95.0 if engine == "mock" else 90.0
+            if auto:
+                kind_found, text = split_type(text)
         elif os.getenv("OCR_PROVIDER") == "mock":
             text, engine, confidence = read_text(jpeg), "mock", 95.0
         else:
@@ -535,9 +578,11 @@ def scan_page(body: ScanIn) -> dict:
     scan_id = uuid.uuid4().hex
     scans_dir().mkdir(parents=True, exist_ok=True)
     (scans_dir() / f"{scan_id}.jpg").write_bytes(jpeg)
-    result = {"id": scan_id, "text": text, "straightened": found, "engine": engine, "confidence": round(confidence)}
-    if exam_mode:
+    is_exam = exam_mode or (auto and (kind_found == "epreuve" or (not kind_found and exam_signals(text)["likely"])))
+    result = {"id": scan_id, "text": text, "straightened": found, "engine": engine, "confidence": round(confidence), "is_exam": is_exam}
+    if is_exam:
         exam = finalize_exam(text)
+        result["raw"] = "\n".join(ln for ln in text.splitlines() if ln.strip().lower().strip("*# ") not in ("entete", "contenu"))
         result["text"], result["exam"] = exam["content"], exam["fields"]
     return result
 

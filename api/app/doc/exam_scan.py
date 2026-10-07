@@ -74,6 +74,57 @@ EXAM_PROMPT = (
     "Réponds uniquement avec ce format, sans bloc de code."
 )
 
+
+# --- Is this page an exam paper? (decided by the reader, then confirmed by the user) -------------------
+
+_SIGNALS = [
+    (r"\b[ée]preuve\b", 2, "le mot « épreuve »"),
+    (r"\bexercice\s*(n°\s*)?\d+", 2, "des exercices numérotés"),
+    (r"\bbar[èe]me\b", 2, "un barème"),
+    (r"\(\s*\d+([.,]\d+)?\s*(pts?|points?)\s*\)|/\s*\d+\s*(pts?|points?)?\s*$|\b\d+([.,]\d+)?\s*(pts|points)\b", 2, "des points par question"),
+    (r"\b(dur[ée]e|duration)\s*:", 1, "une durée"),
+    (r"\bcoef(?:ficient)?\b", 1, "un coefficient"),
+    (r"\b(probatoire|baccalaur[ée]at|bepc|brevet|cap\b|s[ée]quence|[ée]valuation|composition|devoir surveill)", 1, "un nom d'examen ou d'évaluation"),
+    (r"\b(classe|class)\s*:", 1, "une classe"),
+    (r"\b(calculatrice|t[ée]l[ée]phone)s?\b.{0,30}\b(autoris|interdit|permis)", 1, "des consignes d'examen"),
+]
+
+
+def exam_signals(text: str) -> dict:
+    """{"likely": bool, "score": int, "reasons": [str]}: how much the text looks like an exam paper."""
+    sample = "\n".join(text.split("\n")[:150]).lower()
+    score, reasons = 0, []
+    for rx, weight, label in _SIGNALS:
+        if re.search(rx, sample, re.M):
+            score += weight
+            reasons.append(label)
+    strong = any(r in reasons for r in ("des exercices numérotés", "des points par question", "un barème", "le mot « épreuve »"))
+    return {"likely": score >= 4 and strong, "score": score, "reasons": reasons}
+
+
+AUTO_PROMPT = (
+    "Tu es un outil de transcription. La page est imprimée ou écrite à la main, en français ou en anglais.\n"
+    "D'abord, décide si c'est une ÉPREUVE D'EXAMEN ou un devoir noté (exercices, questions, barème en points, classe, durée) "
+    "ou un autre document (cours, rapport, lettre, exposé…).\n"
+    "- Si c'est une épreuve : écris la première ligne « TYPE: epreuve », puis réponds EXACTEMENT dans ce format :\n\n"
+    + EXAM_PROMPT.split("dans ce format précis :\n\n", 1)[1]
+    + "\n\n- Sinon : écris la première ligne « TYPE: document », puis recopie le texte EXACTEMENT, sans corriger, sans "
+    "reformuler. Un paragraphe par bloc séparés par une ligne vide ; garde les titres sur leur ligne avec leur "
+    "numérotation ; garde les tirets et numéros des listes ; tableau : une ligne par rangée, cellules séparées par une "
+    "tabulation ; mot illisible : [illisible]. Aucun commentaire."
+)
+
+def split_type(reply: str) -> tuple[str, str]:
+    """AI reply to AUTO_PROMPT -> ("epreuve" | "document" | "", the rest). "" when the AI gave no TYPE line."""
+    stripped = reply.lstrip()
+    first = stripped.split("\n", 1)
+    if first and (m := re.match(r"^\W*type\s*:\s*(\S+)", _norm(first[0]))):
+        kind = "epreuve" if m.group(1).startswith("epreuve") else "document" if m.group(1).startswith("document") else ""
+        if kind:
+            return kind, first[1].strip() if len(first) > 1 else ""
+    return "", reply
+
+
 _MARK = re.compile(r"^[\s*#`>_-]*(entete|contenu)\b[\s*:`_-]*$")
 _EMPTY = {"", "-", "?", "inconnu", "n/a", "aucun", "aucune", "non precise", "non precisee", "neant"}
 

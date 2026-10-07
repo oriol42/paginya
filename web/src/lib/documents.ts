@@ -50,10 +50,36 @@ export type DocMeta = {
   existing?: DocExisting;
 };
 
-export type DocExisting = { cover: boolean; toc: boolean; page_numbers: boolean; sections: number; headings: number };
-/** "keep": the user's own Word file with only what is missing added. "rebuild": Paginya's own layout. */
+export type DocExisting = {
+  cover: boolean;
+  toc: boolean;
+  page_numbers: boolean;
+  sections: number;
+  headings: number;
+  /** Titles found even without Word's heading styles (bold, capitals, "CHAPITRE I", "1.1"…). */
+  titles?: number;
+  /** How the pages are numbered now. */
+  numbering?: "none" | "arabic" | "roman" | "roman_arabic";
+  numbers_on_cover?: boolean;
+  intro?: boolean;
+};
+/** "keep": the user's own Word file, element by element. "rebuild": Paginya's own layout. */
 export type DocMode = "keep" | "rebuild";
-export type KeepOptions = { page_numbers: boolean; toc: boolean };
+/** What to do with each element: keep what is there, add what is missing, redo it, or leave it out. */
+export type PlanChoice = "keep" | "add" | "redo" | "none";
+export type DocPlan = { cover: PlanChoice; toc: PlanChoice; numbers: PlanChoice };
+/** What Paginya understood about the imported document, shown before anything is changed. */
+export type DocAnalysis = {
+  kind: string;
+  kind_label: string;
+  detected_kind: string;
+  why: string[];
+  exam: boolean;
+  docx: boolean;
+  existing: DocExisting | null;
+  plan: DocPlan;
+  hint: string;
+};
 
 export type DocCoverInfo = {
   header_fr?: string[];
@@ -85,7 +111,10 @@ export type DocView = {
   letterhead?: Letterhead | null;
   render: { pages: number; version: number; stale?: boolean } | null;
   mode?: DocMode;
-  keep?: KeepOptions | null;
+  plan: DocPlan;
+  analysis?: DocAnalysis | null;
+  /** False until the user has seen the analysis and chosen: nothing is laid out before that. */
+  confirmed: boolean;
 };
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
@@ -114,7 +143,7 @@ export const docs = {
   fromFile: async (file: File) =>
     call<DocView>("/documents", { method: "POST", body: JSON.stringify({ filename: file.name, data: await toBase64(file) }) }),
   get: (id: string) => call<DocView>(`/documents/${id}`),
-  update: (id: string, patch: Partial<{ blocks: Block[]; style: DocStyle; options: DocOptions; kind: string; letterhead: Letterhead; cover_svg: string; remove_cover: boolean; mode: DocMode; keep: KeepOptions }>) =>
+  update: (id: string, patch: Partial<{ blocks: Block[]; style: DocStyle; options: DocOptions; kind: string; letterhead: Letterhead; cover_svg: string; remove_cover: boolean; mode: DocMode; plan: Partial<DocPlan>; confirm: boolean }>) =>
     call<DocView>(`/documents/${id}`, { method: "PUT", body: JSON.stringify(patch) }),
   render: (id: string) => call<DocView>(`/documents/${id}/render`, { method: "POST" }),
   pageUrl: (id: string, n: number, version: number) => `${API_URL}/documents/${id}/pages/${n}.webp?v=${version}`,
@@ -131,12 +160,16 @@ export type ScanResult = {
   straightened: boolean;
   engine: string;
   confidence: number;
+  /** Paginya thinks the page belongs to an exam paper (the user confirms). */
+  is_exam?: boolean;
   /** Exam papers only: header read from the page (school, class, duration…), keyed like the exam form. */
   exam?: Record<string, string>;
+  /** Exam papers only: the whole text as read, for when the user says "no, it is a plain document". */
+  raw?: string;
 };
 
-/** What the pages are: a document to format, or an exam paper (épreuve). */
-export type ScanKind = "document" | "epreuve";
+/** "auto": Paginya decides whether the pages are an exam paper; the user confirms. */
+export type ScanKind = "auto" | "document" | "epreuve";
 
 /** Resize/compress on the phone before upload (saves mobile data). */
 export async function compressPhoto(file: File, maxSide = 2000): Promise<string> {
@@ -157,7 +190,7 @@ export async function compressPhoto(file: File, maxSide = 2000): Promise<string>
 }
 
 export const scans = {
-  read: async (file: File, handwriting: boolean, consent: boolean, kind: ScanKind = "document") =>
+  read: async (file: File, handwriting: boolean, consent: boolean, kind: ScanKind = "auto") =>
     call<ScanResult>("/scans", { method: "POST", body: JSON.stringify({ data: await compressPhoto(file), handwriting, consent, kind }) }),
   imageUrl: (id: string) => `${API_URL}/scans/${id}.jpg`,
 };
