@@ -28,5 +28,8 @@ FAPSHI_FORWARD = dict(x.split("=", 1) for x in os.getenv("FAPSHI_FORWARD", "").s
 
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
 
+# The team's own documents are free: this code (typed once on /admin) unlocks an order without paying. Empty = off.
+ADMIN_CODE = os.getenv("ADMIN_CODE", "")
+
 # Paid orders stay downloadable/editable this long (decision: 7 days).
 ORDER_VALIDITY_DAYS = 7

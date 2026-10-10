@@ -105,3 +105,13 @@ def test_edit_after_payment_within_7_days(client, monkeypatch):
     real_time = time.time
     monkeypatch.setattr(time, "time", lambda: real_time() + 8 * 86400)
     assert client.put(f"/orders/{order['id']}", json={"svg": SVG}).status_code == 403
+
+
+def test_the_team_unlocks_an_order_with_its_code_and_nobody_else_does(client, monkeypatch):
+    order = client.post("/orders", json={"svg": SVG, "form": {}}).json()
+    assert client.post(f"/orders/{order['id']}/admin", json={"code": "x"}).status_code == 403  # no code set: off
+    monkeypatch.setattr(config, "ADMIN_CODE", "equipe-secret")
+    assert client.post("/admin/check", json={"code": "faux"}).status_code == 403
+    assert client.post(f"/orders/{order['id']}/admin", json={"code": ""}).status_code == 403
+    assert client.post(f"/orders/{order['id']}/admin", json={"code": "equipe-secret"}).json()["status"] == "PAID"
+    assert client.get(f"/orders/{order['id']}/file.pdf").status_code == 200

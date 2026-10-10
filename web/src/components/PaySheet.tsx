@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { api, formatXaf, operatorOf, type OrderStatus } from "@/lib/api";
+import { ADMIN_KEY, api, formatXaf, operatorOf, type OrderStatus } from "@/lib/api";
 import { Icon } from "./Icon";
 import { PinLabel } from "./ui";
 
@@ -29,6 +29,9 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
   const [phase, setPhase] = useState<Phase>(status === "PAID" ? "paid" : status === "PENDING" ? "pending" : "summary");
   const [phone, setPhone] = useState(() => {
     try { return localStorage.getItem(PHONE_KEY) ?? ""; } catch { return ""; }
+  });
+  const [adminCode] = useState(() => {
+    try { return localStorage.getItem(ADMIN_KEY) ?? ""; } catch { return ""; }
   });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -62,6 +65,20 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
       if (o.pay_link) setLink(o.pay_link);
       onStatus(o.status);
       setPhase(o.status === "PAID" ? "paid" : "pending");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unlock() {
+    setError("");
+    setBusy(true);
+    try {
+      const o = await api.adminUnlock(orderId, adminCode);
+      onStatus(o.status);
+      setPhase("paid");
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -140,6 +157,11 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
             <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[13px] text-ink/55">
               <Icon name="shield-check" size={15} /> MTN MoMo ou Orange Money · paiement sécurisé Fapshi
             </p>
+            {adminCode && (
+              <button type="button" disabled={busy} onClick={unlock} className="mt-3 w-full text-[15px] font-bold text-board underline">
+                Équipe Paginya : débloquer sans payer
+              </button>
+            )}
           </>
         )}
 

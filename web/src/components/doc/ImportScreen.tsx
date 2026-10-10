@@ -40,6 +40,16 @@ export function ImportScreen({ error, onText, onFile, onOpen }: Props) {
     setPhotos((p) => [...p, ...next].slice(0, 30));
   }
 
+  /** A picture given as a file (PNG, JPG…) is a photo to read: it goes to the photo tab. */
+  function pickFiles(files: FileList | null) {
+    const first = files?.[0];
+    if (!first) return;
+    if (first.type.startsWith("image/")) {
+      addPhotos(files);
+      setMode("photos");
+    } else onFile(first);
+  }
+
   /** An exam paper does not go through the report formatter: it opens /epreuve, already filled. */
   function openExamForm(fields: Record<string, string>, content: string) {
     if (saveExamDraft(fields, content)) router.push("/epreuve");
@@ -189,21 +199,21 @@ export function ImportScreen({ error, onText, onFile, onOpen }: Props) {
               onClick={() => input.current?.click()}
               onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
               onDragLeave={() => setDrag(false)}
-              onDrop={(e) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files?.[0]; if (f) onFile(f); }}
+              onDrop={(e) => { e.preventDefault(); setDrag(false); pickFiles(e.dataTransfer.files); }}
               className={`press mt-4 flex w-full flex-col items-center justify-center rounded-md border-2 border-dashed px-6 py-12 text-center transition-colors ${drag ? "border-board bg-brand-50" : "border-ink/20 hover:border-board/60 hover:bg-brand-50/50"}`}
             >
               <Icon name="file-text" size={44} stroke={1.5} className="text-board" />
               <span className="mt-4 font-display text-[26px] leading-none font-black uppercase">Choisis ton fichier</span>
-              <span className="mt-2 text-[14px] text-ink/60">Word (.docx), PDF, texte ou Markdown · 15 Mo max</span>
+              <span className="mt-2 text-[14px] text-ink/60">Word (.docx), PDF, image, texte ou Markdown · 15 Mo max</span>
               <span className="mt-5 inline-flex items-center gap-2 rounded-md bg-hi px-5 py-3 text-[16px] font-bold text-ink shadow-[0_2px_0_0_var(--color-hi-deep)]">
                 <Icon name="folder-open" size={18} /> Parcourir
               </span>
               <input
                 ref={input}
                 type="file"
-                accept=".docx,.pdf,.txt,.md,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,text/plain"
+                accept=".docx,.pdf,.txt,.md,image/*,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,text/plain"
                 className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }}
+                onChange={(e) => { pickFiles(e.target.files); e.target.value = ""; }}
               />
             </button>
           )}

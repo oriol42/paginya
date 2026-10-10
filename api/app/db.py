@@ -78,6 +78,12 @@ def settle(order_id: str, status: str) -> bool:
         return cur.rowcount == 1
 
 
+def grant(order_id: str) -> None:
+    """Unlocks an order without a payment (the team's own documents)."""
+    with connect() as c:
+        c.execute("UPDATE orders SET status = 'PAID', paid_at = ? WHERE id = ? AND status != 'PAID'", (time.time(), order_id))
+
+
 def set_product(order_id: str, product: str, amount: int) -> None:
     """Price follows the document size, but never changes once paid or pending."""
     with connect() as c:

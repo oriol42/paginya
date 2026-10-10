@@ -30,6 +30,8 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
+export const ADMIN_KEY = "propre:admin";
+
 export const api = {
   createOrder: (svg: string, form: unknown, product = "page_de_garde") =>
     call<Order>("/orders", { method: "POST", body: JSON.stringify({ svg, form, product }) }),
@@ -38,6 +40,9 @@ export const api = {
   getOrder: (id: string) => call<Order>(`/orders/${id}`),
   pay: (id: string, phone: string) =>
     call<Order>(`/orders/${id}/pay`, { method: "POST", body: JSON.stringify({ phone, return_url: `${window.location.origin}/paiement/` }) }),
+  /** The team's own documents: the admin code (saved on /admin) unlocks the order without a payment. */
+  adminCheck: (code: string) => call<{ ok: boolean }>("/admin/check", { method: "POST", body: JSON.stringify({ code }) }),
+  adminUnlock: (id: string, code: string) => call<Order>(`/orders/${id}/admin`, { method: "POST", body: JSON.stringify({ code }) }),
   retry: (id: string) => call<Order>(`/orders/${id}/retry`, { method: "POST" }),
   fileUrl: (id: string, fmt: "pdf" | "docx" | "png") => `${API_URL}/orders/${id}/file.${fmt}`,
 };

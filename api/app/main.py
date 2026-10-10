@@ -48,6 +48,7 @@ guard.LIMITS[:] = [
     ("POST", r"/orders", 30, 3600),
     ("POST", r"/(orders|documents|forms)/[^/]+/pay", 20, 3600),
     ("POST", r"/forms", 40, 3600),
+    ("POST", r"/admin/check|/orders/[^/]+/admin", 10, 3600),  # guessing the admin code
 ]
 app.middleware("http")(guard.middleware)  # before CORS: a refusal still carries the CORS headers
 app.include_router(doc_routes.router)
@@ -187,6 +188,30 @@ def pay(order_id: str, body: PayIn) -> dict:
         raise HTTPException(502, f"Le paiement n'a pas pu démarrer : {exc}") from exc
     db.mark_pending(order_id, phone, trans_id)
     return {**_public(db.get_order(order_id)), "pay_link": link}
+
+
+class AdminIn(BaseModel):
+    code: str = ""
+
+
+def _admin_or_403(code: str) -> None:
+    if not config.ADMIN_CODE or not hmac.compare_digest(code.encode(), config.ADMIN_CODE.encode()):
+        raise HTTPException(403, "Code incorrect")
+
+
+@app.post("/admin/check")
+def admin_check(body: AdminIn) -> dict:
+    _admin_or_403(body.code)
+    return {"ok": True}
+
+
+@app.post("/orders/{order_id}/admin")
+def admin_unlock(order_id: str, body: AdminIn) -> dict:
+    """The team does not pay for its own documents: the admin code unlocks the order as if it were paid."""
+    _admin_or_403(body.code)
+    _order_or_404(order_id)
+    db.grant(order_id)
+    return _public(db.get_order(order_id))
 
 
 def _sync_with_fapshi(order: dict) -> dict:
