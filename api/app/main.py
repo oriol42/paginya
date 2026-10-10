@@ -217,7 +217,7 @@ def admin_login(body: AdminLoginIn) -> dict:
 def admin_unlock(order_id: str, body: AdminIn) -> dict:
     """The team does not pay for its own documents: a valid pass unlocks the order as if it were paid."""
     if admin.email_of(body.token) is None:
-        raise HTTPException(403, "Connexion équipe expirée : reconnecte-toi sur /admin")
+        raise HTTPException(403, "Connexion équipe expirée : reconnecte-toi")
     _order_or_404(order_id)
     db.grant(order_id)
     return _public(db.get_order(order_id))

@@ -40,7 +40,7 @@ export const api = {
   getOrder: (id: string) => call<Order>(`/orders/${id}`),
   pay: (id: string, phone: string) =>
     call<Order>(`/orders/${id}/pay`, { method: "POST", body: JSON.stringify({ phone, return_url: `${window.location.origin}/paiement/` }) }),
-  /** The team's own documents: after a Google sign-in on /admin, the pass unlocks an order without a payment. */
+  /** The team's own documents: after a Google sign-in on the team page, the pass unlocks an order without a payment. */
   adminConfig: () => call<{ client_id: string }>("/admin/config"),
   adminLogin: (credential: string) => call<{ token: string; email: string }>("/admin/login", { method: "POST", body: JSON.stringify({ credential }) }),
   adminUnlock: (id: string, token: string) => call<Order>(`/orders/${id}/admin`, { method: "POST", body: JSON.stringify({ token }) }),
