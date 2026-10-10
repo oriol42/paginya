@@ -255,7 +255,19 @@ export function DocumentApp() {
   const missing = doc.has_cover && cover ? coverIncomplete(cover) : [];
 
   const keeping = doc.mode === "keep";
-  const panelBody = keeping ? (
+  const converting = !!doc.convert;
+  const target = doc.convert === "pdf" ? "PDF" : "Word";
+  const panelBody = converting ? (
+    <div className="space-y-4">
+      <p className="text-[15px] leading-relaxed text-ink/75">
+        {doc.convert === "pdf"
+          ? "Ton fichier Word est converti en PDF tel qu'il est : rien n'est ajouté ni changé."
+          : "Le texte, les titres et les tableaux de ton PDF sont remis dans un fichier Word que tu peux modifier."}
+      </p>
+      <p className="text-[14px] leading-relaxed text-ink/60">Regarde l&apos;aperçu, puis télécharge. Pour ajouter une page de garde, un sommaire ou des numéros, utilise plutôt la mise en forme.</p>
+      <Link href="/document" className="press block w-full rounded-md px-3 py-3 text-center text-[14px] font-bold ring-1 ring-black/15 hover:bg-ink/5">Mettre en forme un document</Link>
+    </div>
+  ) : keeping ? (
     <div className="space-y-4">
       <p className="text-[14px] leading-relaxed text-ink/65">Ton texte et tes styles ne sont pas touchés : tu choisis seulement ce qui change.</p>
       <PlanChoices existing={doc.meta.existing ?? null} mode="keep" plan={doc.plan} onPlan={changePlan} hint={doc.analysis?.hint} />
@@ -301,7 +313,7 @@ export function DocumentApp() {
     </>
   );
 
-  const title = `${KIND_LABEL[doc.meta.kind] ?? "Document"} · ${pages} page${pages > 1 ? "s" : ""}`;
+  const title = `${converting ? `Conversion en ${target}` : KIND_LABEL[doc.meta.kind] ?? "Document"} · ${pages} page${pages > 1 ? "s" : ""}`;
   const views = [
     { value: "after" as View, label: "Après" },
     { value: "before" as View, label: "Avant" },
@@ -331,7 +343,7 @@ export function DocumentApp() {
           <span className="ml-1 min-w-0 truncate text-[15px] font-semibold text-white/80 sm:ml-4">{title}</span>
           <div className="ml-auto flex items-center gap-2">
             {rendering && <span className="stamp stamp-in hidden bg-paper/90 text-[15px] sm:inline-flex">En cours</span>}
-            {!keeping && <ChangesPill doc={doc} />}
+            {!keeping && !converting && <ChangesPill doc={doc} />}
             <button type="button" onClick={() => setZoom(!zoom)} aria-pressed={zoom} className="press hidden h-10 items-center gap-1.5 rounded-md px-3 text-[14px] font-bold text-white/80 ring-1 ring-white/20 hover:bg-white/10 hover:text-white lg:inline-flex" title="Agrandir les pages pour mieux lire">
               <Icon name={zoom ? "zoom-out" : "zoom-in"} size={18} />{zoom ? "Réduire" : "Agrandir"}
             </button>
@@ -344,7 +356,7 @@ export function DocumentApp() {
       <div className="flex min-h-0 flex-1">
         {/* Desktop: tool rail + its panel, on a sheet of paper */}
         <nav className="hidden w-[78px] shrink-0 flex-col items-center gap-1 border-r border-black/10 bg-paper py-3 text-ink lg:flex">
-          {PANELS.map((p) => (
+          {!converting && PANELS.map((p) => (
             <button
               key={p.id}
               type="button"
@@ -358,7 +370,7 @@ export function DocumentApp() {
           <div className="mt-auto w-full px-2"><MoreMenu onNew={reset} onDelete={remove} /></div>
         </nav>
         <aside className="hidden w-[350px] shrink-0 flex-col border-r border-black/10 bg-paper text-ink lg:flex">
-          <p className="px-5 pt-6 font-display text-[26px] leading-none font-black uppercase">{PANELS.find((p) => p.id === panel)?.title}</p>
+          <p className="px-5 pt-6 font-display text-[26px] leading-none font-black uppercase">{converting ? "Conversion" : PANELS.find((p) => p.id === panel)?.title}</p>
           <div key={panel} className="panel-in min-h-0 flex-1 overflow-y-auto px-5 pt-4 pb-6">{panelBody}</div>
         </aside>
 
@@ -386,7 +398,7 @@ export function DocumentApp() {
           <div className="sheet-in paper relative flex h-[48dvh] flex-col rounded-t-xl">
             <span className="pin top-2 left-1/2 -translate-x-1/2" aria-hidden />
             <div className="flex items-center justify-between px-4 pt-6 pb-2">
-              <Tabs panel={panel} onPanel={setPanel} compact />
+              {converting ? <span className="font-display text-[22px] font-black uppercase">Conversion</span> : <Tabs panel={panel} onPanel={setPanel} compact />}
               <button type="button" onClick={() => setDrawer(false)} className="press ml-2 grid h-10 w-10 shrink-0 place-items-center rounded-md text-ink/60 ring-1 ring-black/10" aria-label="Fermer">
                 <Icon name="x" size={18} />
               </button>
@@ -395,7 +407,7 @@ export function DocumentApp() {
           </div>
         )}
         <div className="flex items-center gap-1.5 border-t border-black/10 bg-paper px-2 pt-2 text-ink pb-[max(.6rem,env(safe-area-inset-bottom))]">
-          {PANELS.map((p) => (
+          {(converting ? PANELS.slice(0, 1) : PANELS).map((p) => (
             <button
               key={p.id}
               type="button"
@@ -415,8 +427,8 @@ export function DocumentApp() {
           orderId={doc.id}
           amount={doc.amount}
           status={doc.status}
-          heading="Ton document est prêt"
-          bullets={[
+          heading={converting ? `Ton fichier ${target} est prêt` : "Ton document est prêt"}
+          bullets={converting ? [`${pages} page${pages > 1 ? "s" : ""} converties en ${target}`, doc.convert === "pdf" ? "PDF prêt à imprimer ou à envoyer" : "Word que tu peux modifier", "Téléchargements gratuits pendant 7 jours"] : [
             `${pages} pages mises en forme`,
             keeping
               ? ["ton texte et tes styles gardés", doc.plan.cover === "redo" && "page de garde refaite", doc.plan.cover === "add" && "page de garde ajoutée", doc.plan.toc === "add" && "sommaire ajouté", doc.plan.toc === "redo" && "sommaire refait", doc.plan.numbers !== "keep" && doc.plan.numbers !== "none" && "numéros de page aux normes"].filter(Boolean).join(" · ")
@@ -424,7 +436,7 @@ export function DocumentApp() {
             "Word modifiable + PDF prêt à imprimer",
             "Modifications gratuites pendant 7 jours",
           ]}
-          formats={["pdf", "docx"]}
+          formats={doc.convert ? [doc.convert] : ["pdf", "docx"]}
           sharePath={`/document?doc=${doc.id}`}
           missing={missing}
           onStatus={onStatus}

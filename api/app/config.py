@@ -28,8 +28,10 @@ FAPSHI_FORWARD = dict(x.split("=", 1) for x in os.getenv("FAPSHI_FORWARD", "").s
 
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
 
-# The team's own documents are free: this code (typed once on /admin) unlocks an order without paying. Empty = off.
-ADMIN_CODE = os.getenv("ADMIN_CODE", "")
+# The team's own documents are free (see admin.py): Google sign-in, limited to these addresses. Any one empty = off.
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+ADMIN_EMAILS = {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()}
+ADMIN_SECRET = os.getenv("ADMIN_SECRET", "")  # signs the 30-day pass: any long random text
 
 # Paid orders stay downloadable/editable this long (decision: 7 days).
 ORDER_VALIDITY_DAYS = 7

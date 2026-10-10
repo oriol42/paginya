@@ -107,11 +107,21 @@ def test_edit_after_payment_within_7_days(client, monkeypatch):
     assert client.put(f"/orders/{order['id']}", json={"svg": SVG}).status_code == 403
 
 
-def test_the_team_unlocks_an_order_with_its_code_and_nobody_else_does(client, monkeypatch):
+def test_the_team_signs_in_with_google_and_unlocks_an_order_nobody_else_does(client, monkeypatch):
+    from app import admin
+
     order = client.post("/orders", json={"svg": SVG, "form": {}}).json()
-    assert client.post(f"/orders/{order['id']}/admin", json={"code": "x"}).status_code == 403  # no code set: off
-    monkeypatch.setattr(config, "ADMIN_CODE", "equipe-secret")
-    assert client.post("/admin/check", json={"code": "faux"}).status_code == 403
-    assert client.post(f"/orders/{order['id']}/admin", json={"code": ""}).status_code == 403
-    assert client.post(f"/orders/{order['id']}/admin", json={"code": "equipe-secret"}).json()["status"] == "PAID"
+    assert client.get("/admin/config").json() == {"client_id": ""}  # nothing set: off
+    assert client.post(f"/orders/{order['id']}/admin", json={"token": "x"}).status_code == 403
+    monkeypatch.setattr(config, "GOOGLE_CLIENT_ID", "abc.apps.googleusercontent.com")
+    monkeypatch.setattr(config, "ADMIN_EMAILS", {"chef@gmail.com"})
+    monkeypatch.setattr(config, "ADMIN_SECRET", "s3cret")
+    monkeypatch.setattr(admin, "google_email", lambda credential: credential)  # Google is not called in tests
+    assert client.post("/admin/login", json={"credential": "intrus@gmail.com"}).status_code == 403
+    token = client.post("/admin/login", json={"credential": "chef@gmail.com"}).json()["token"]
+    assert admin.email_of(token) == "chef@gmail.com"
+    assert admin.email_of(token, now=time.time() + 31 * 86400) is None  # the pass expires
+    assert admin.email_of(admin.issue("chef@gmail.com")[:-4] + "AAAA") is None  # and cannot be forged
+    assert client.post(f"/orders/{order['id']}/admin", json={"token": "faux"}).status_code == 403
+    assert client.post(f"/orders/{order['id']}/admin", json={"token": token}).json()["status"] == "PAID"
     assert client.get(f"/orders/{order['id']}/file.pdf").status_code == 200

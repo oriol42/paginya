@@ -30,7 +30,7 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
   const [phone, setPhone] = useState(() => {
     try { return localStorage.getItem(PHONE_KEY) ?? ""; } catch { return ""; }
   });
-  const [adminCode] = useState(() => {
+  const [adminPass] = useState(() => {
     try { return localStorage.getItem(ADMIN_KEY) ?? ""; } catch { return ""; }
   });
   const [error, setError] = useState("");
@@ -76,7 +76,7 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
     setError("");
     setBusy(true);
     try {
-      const o = await api.adminUnlock(orderId, adminCode);
+      const o = await api.adminUnlock(orderId, adminPass);
       onStatus(o.status);
       setPhase("paid");
     } catch (e) {
@@ -157,7 +157,7 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
             <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[13px] text-ink/55">
               <Icon name="shield-check" size={15} /> MTN MoMo ou Orange Money · paiement sécurisé Fapshi
             </p>
-            {adminCode && (
+            {adminPass && (
               <button type="button" disabled={busy} onClick={unlock} className="mt-3 w-full text-[15px] font-bold text-board underline">
                 Équipe Paginya : débloquer sans payer
               </button>

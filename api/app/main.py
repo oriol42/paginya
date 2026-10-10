@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import config, db, doc_routes, fapshi, forms_routes, guard, pricing, storage
+from . import admin, config, db, doc_routes, fapshi, forms_routes, guard, pricing, storage
 from .render import render_cover
 from .svg_safe import UnsafeSvg, sanitize_svg
 
@@ -48,7 +48,7 @@ guard.LIMITS[:] = [
     ("POST", r"/orders", 30, 3600),
     ("POST", r"/(orders|documents|forms)/[^/]+/pay", 20, 3600),
     ("POST", r"/forms", 40, 3600),
-    ("POST", r"/admin/check|/orders/[^/]+/admin", 10, 3600),  # guessing the admin code
+    ("POST", r"/admin/login|/orders/[^/]+/admin", 20, 3600),
 ]
 app.middleware("http")(guard.middleware)  # before CORS: a refusal still carries the CORS headers
 app.include_router(doc_routes.router)
@@ -190,25 +190,34 @@ def pay(order_id: str, body: PayIn) -> dict:
     return {**_public(db.get_order(order_id)), "pay_link": link}
 
 
+class AdminLoginIn(BaseModel):
+    credential: str = ""  # Google's ID token
+
+
 class AdminIn(BaseModel):
-    code: str = ""
+    token: str = ""  # the pass given by /admin/login
 
 
-def _admin_or_403(code: str) -> None:
-    if not config.ADMIN_CODE or not hmac.compare_digest(code.encode(), config.ADMIN_CODE.encode()):
-        raise HTTPException(403, "Code incorrect")
+@app.get("/admin/config")
+def admin_config() -> dict:
+    """What the sign-in page needs: Google's public client id (empty when the team access is off)."""
+    return {"client_id": config.GOOGLE_CLIENT_ID if admin.enabled() else ""}
 
 
-@app.post("/admin/check")
-def admin_check(body: AdminIn) -> dict:
-    _admin_or_403(body.code)
-    return {"ok": True}
+@app.post("/admin/login")
+def admin_login(body: AdminLoginIn) -> dict:
+    try:
+        email = admin.google_email(body.credential)
+        return {"token": admin.issue(email), "email": email}
+    except admin.AdminError as exc:
+        raise HTTPException(403, str(exc)) from exc
 
 
 @app.post("/orders/{order_id}/admin")
 def admin_unlock(order_id: str, body: AdminIn) -> dict:
-    """The team does not pay for its own documents: the admin code unlocks the order as if it were paid."""
-    _admin_or_403(body.code)
+    """The team does not pay for its own documents: a valid pass unlocks the order as if it were paid."""
+    if admin.email_of(body.token) is None:
+        raise HTTPException(403, "Connexion équipe expirée : reconnecte-toi sur /admin")
     _order_or_404(order_id)
     db.grant(order_id)
     return _public(db.get_order(order_id))

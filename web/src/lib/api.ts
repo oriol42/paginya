@@ -40,9 +40,10 @@ export const api = {
   getOrder: (id: string) => call<Order>(`/orders/${id}`),
   pay: (id: string, phone: string) =>
     call<Order>(`/orders/${id}/pay`, { method: "POST", body: JSON.stringify({ phone, return_url: `${window.location.origin}/paiement/` }) }),
-  /** The team's own documents: the admin code (saved on /admin) unlocks the order without a payment. */
-  adminCheck: (code: string) => call<{ ok: boolean }>("/admin/check", { method: "POST", body: JSON.stringify({ code }) }),
-  adminUnlock: (id: string, code: string) => call<Order>(`/orders/${id}/admin`, { method: "POST", body: JSON.stringify({ code }) }),
+  /** The team's own documents: after a Google sign-in on /admin, the pass unlocks an order without a payment. */
+  adminConfig: () => call<{ client_id: string }>("/admin/config"),
+  adminLogin: (credential: string) => call<{ token: string; email: string }>("/admin/login", { method: "POST", body: JSON.stringify({ credential }) }),
+  adminUnlock: (id: string, token: string) => call<Order>(`/orders/${id}/admin`, { method: "POST", body: JSON.stringify({ token }) }),
   retry: (id: string) => call<Order>(`/orders/${id}/retry`, { method: "POST" }),
   fileUrl: (id: string, fmt: "pdf" | "docx" | "png") => `${API_URL}/orders/${id}/file.${fmt}`,
 };

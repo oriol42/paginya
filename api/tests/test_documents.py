@@ -264,3 +264,19 @@ def test_form_survives_a_server_restart(client, tmp_path):
     f = client.post("/forms", json={"kind": "lettre", "data": LETTER}).json()
     shutil.rmtree(tmp_path / "forms")
     assert client.get(f"/forms/{f['id']}/pages/1.webp").content[8:12] == b"WEBP"
+
+
+def test_a_conversion_changes_the_format_and_nothing_else(client, tmp_path):
+    import base64
+    from docx import Document
+
+    d = Document()
+    d.add_paragraph("Mon titre")
+    d.add_paragraph("Un paragraphe de texte. " * 10)
+    path = tmp_path / "c.docx"
+    d.save(path)
+    data = base64.b64encode(path.read_bytes()).decode()
+    view = client.post("/documents", json={"filename": "c.docx", "data": data, "convert": True}).json()
+    assert view["convert"] == "pdf" and view["confirmed"] is True and view["mode"] == "keep"
+    assert view["plan"] == {"cover": "keep", "toc": "keep", "numbers": "keep"}
+    assert client.post("/documents", json={"filename": "c.txt", "data": data, "convert": True}).status_code == 400

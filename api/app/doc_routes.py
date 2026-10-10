@@ -33,6 +33,7 @@ router = APIRouter(prefix="/documents")
 MAX_UPLOAD = 15 * 1024 * 1024
 MAX_TEXT = 1_500_000
 TIERS = ["document_court", "rapport", "memoire"]
+CONVERTIBLE = (".docx",)
 BLOCK_TYPES = {"heading", "paragraph", "list", "table", "figure", "caption", "source", "quote", "code", "title"}
 BLOCK_KEYS = {"id", "type", "text", "level", "ordered", "rows", "image", "of", "special", "role",
               "term", "definition", "part", "hidden", "sub"}
@@ -90,6 +91,7 @@ class DocIn(BaseModel):
     text: str | None = None
     filename: str | None = None
     data: str | None = None  # base64 file content
+    convert: bool = False  # only change the format (Word -> PDF, PDF -> Word): nothing is added or restyled
 
 
 class DocPatch(BaseModel):
@@ -133,6 +135,7 @@ def view(order: dict) -> dict:
         "plan": plan_of(doc),
         "analysis": doc.get("analysis"),
         "confirmed": doc.get("confirmed", True),  # documents made before the analysis screen existed
+        "convert": doc.get("convert"),  # "pdf" | "docx" when the order is a plain conversion
     }
 
 
@@ -228,6 +231,20 @@ def create(body: DocIn) -> dict:
     doc["confirmed"] = False
     if existing and (existing["cover"] or existing["toc"] or existing["page_numbers"] or existing["own_layout"]):
         doc["mode"] = "keep"  # rebuilding would lose what only this file has (its cover, text boxes, letterhead…)
+    if body.convert:
+        ext = Path(body.filename or "").suffix.lower()
+        # PDF -> Word is written below but not sold yet: read from the text alone it loses the pictures and the cover
+        if ext not in CONVERTIBLE:
+            _discard(tmp_id)
+            raise HTTPException(400, "Pour l'instant, la conversion prend un fichier Word (.docx) et en fait un PDF")
+        doc["confirmed"] = True  # nothing to choose: the file is shown converted straight away
+        if ext == ".docx":  # the Word file exactly as it is, printed to PDF
+            doc.update(convert="pdf", mode="keep", plan={"cover": "keep", "toc": "keep", "numbers": "keep"})
+        else:  # the text, titles and tables of the PDF in a plain Word file, with no page added
+            doc.pop("mode", None)
+            doc["meta"]["kind"] = "document"
+            doc.update(convert="docx", options={k: False for k in DEFAULT_OPTIONS}, style={"theme": "simple", "color": "#0E9F6E"},
+                       plan={"cover": "none", "toc": "none", "numbers": "none"})
     if tmp_id is None:
         order_id = db.create_order("document_court", pricing.price_for("document_court"), {"doc": doc})
     else:
@@ -365,7 +382,9 @@ def render(order_id: str) -> dict:
     build = folder / "build"
     build.mkdir(parents=True, exist_ok=True)
     source_docx = folder / "source.docx"
-    if doc.get("mode") == "keep" and source_docx.is_file():
+    if doc.get("convert") == "pdf" and source_docx.is_file():
+        shutil.copy(source_docx, build / "raw.docx")  # a conversion never edits the file
+    elif doc.get("mode") == "keep" and source_docx.is_file():
         plan = plan_of(doc)
         cover_png = None
         if plan["cover"] in ("redo", "add") and doc.get("cover_svg"):
