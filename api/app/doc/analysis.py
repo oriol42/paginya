@@ -56,8 +56,8 @@ def default_plan(kind: str, existing: dict | None, options: dict) -> dict:
         plan["cover"] = "add"
     if ex.get("toc"):
         plan["toc"] = "keep"
-    elif options.get("toc") and (ex.get("titles", 0) >= 3 or not ex):
-        plan["toc"] = "add"
+    elif (options.get("toc") or ex.get("toc_title")) and (ex.get("titles", 0) >= 3 or not ex):
+        plan["toc"] = "add"  # asked by the kind of document, or by a "Sommaire" page left empty
     if ex.get("page_numbers"):
         plan["numbers"] = "keep"
     elif options.get("page_numbers"):

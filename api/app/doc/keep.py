@@ -23,12 +23,13 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Mm, Pt
 
+from .extract import _numbering_formats
 from .render import _field
 
 _COVER_WORDS = re.compile(
     r"(?i)\b(par\s*:|présenté|presente|matricule|année\s+(académique|scolaire|universitaire)|encadr|superviseur|"
     r"enseignant|république|republic|université|university|institut|faculté|école|ecole|mémoire|rapport|projet|"
-    r"sujet|thème|soutenu|filière|département|niveau|classe|stage|élève|etudiant|étudiant)"
+    r"sujet|thème|soutenu|fili[èe]re|département|niveau|classe|stage|[ée]l[èe]ve|[ée]tudiant)"
 )
 _PAGE_FIELD = re.compile(r"(?<![A-Z])PAGE(?![A-Z])")
 _OWN_ONLY = re.compile(r"^[\s\-–—/.|]*(page|p\.?)?[\s\-–—/.|]*(sur|of)?[\s\-–—/.|]*$", re.I)
@@ -42,7 +43,7 @@ _TITLE_WORDS = re.compile(
     r"(premi[èe]re|deuxi[èe]me|troisi[èe]me|quatri[èe]me|cinqui[èe]me)\s+partie)\b"
 )
 _NO_TOC = re.compile(r"(?i)^(sommaire|table\s+des\s+mati[èe]res|d[ée]dicace|[ée]pigraphe|contents)\b")
-_TOC_TITLE = re.compile(r"(?i)^\W*(sommaire|table\s+des\s+mati[èe]res|contents?)\W*$")
+_TOC_TITLE = re.compile(r"(?i)^\W*(sommaires?|table\s+des\s+mati[èe]res|contents?)\W*$")
 _INTRO = re.compile(r"(?i)^\W*(introduction|intro)\b")
 _ROMAN_ITEM = re.compile(r"^[IVXLC]+\s*[.\-–)]\s+\S")
 _DECIMAL3 = re.compile(r"^\d+\.\d+\.\d+\.?\s+\S")
@@ -93,8 +94,103 @@ def _is_heading(paragraph) -> bool:
     return name.startswith(("heading", "titre")) and not name.startswith(("titre de", "titre du"))
 
 
-def _cover_end(doc) -> int | None:
-    """Index of the first paragraph after the cover page, or None when the file has no cover page."""
+def _own_text(p) -> str:
+    """The paragraph's own words, without those of a text box anchored to it."""
+    return "".join(t.text or "" for t in p.iter(qn("w:t")) if not any(a.tag == qn("w:txbxContent") for a in t.iterancestors()))
+
+
+def _flow(doc) -> list:
+    """The paragraphs and tables of the body, in order: what LibreOffice lists when it reports the pages."""
+    return [c for c in doc.element.body.iterchildren() if c.tag in (qn("w:p"), qn("w:tbl"))]
+
+
+def page_map(doc, layout: list | None) -> dict:
+    """{paragraph element: its real page} from LibreOffice's layout ([[page, text]] per paragraph or table).
+
+    The two lists normally line up one to one. When they do not, only the paragraphs whose text is found
+    again, in order, get a page: empty ones stay unknown and nothing is decided from them.
+    """
+    if not layout:
+        return {}
+    flow = _flow(doc)
+
+    def key(text: str) -> str:
+        return re.sub(r"\s+", " ", text).strip()[:40]
+
+    pages: dict = {}
+    if len(flow) == len(layout):
+        for el, (page, _) in zip(flow, layout):
+            if el.tag == qn("w:p") and page:
+                pages[el] = int(page)
+        return pages
+    j = 0
+    for el in flow:
+        if el.tag != qn("w:p"):
+            continue
+        want = key(_own_text(el))
+        if not want:
+            continue
+        for k in range(j, min(j + 12, len(layout))):
+            if layout[k][0] and key(str(layout[k][1])) == want:
+                pages[el] = int(layout[k][0])
+                j = k + 1
+                break
+    return pages
+
+
+def _is_blank(el) -> bool:
+    """An empty line: a paragraph that only pushes what follows further down."""
+    if el.tag != qn("w:p") or _paragraph_text(el).strip():
+        return False
+    if _has_page_break(el) or el.find(qn("w:pPr") + "/" + qn("w:numPr")) is not None:
+        return False
+    return not any(node.tag in (qn("w:drawing"), qn("w:pict"), qn("w:object"), qn("w:fldChar")) for node in el.iter())
+
+
+def _header_text(doc) -> str:
+    """Everything printed in the headers and footers (a cover's letterhead often sits there)."""
+    parts = [rel.target_part for rel in doc.part.rels.values() if rel.reltype.endswith(("/header", "/footer"))]
+    return "\n".join(_paragraph_text(p) for part in parts for p in part.element.iter(qn("w:p")))
+
+
+def _cover_end_on_page(doc, pages: dict) -> int | None:
+    """The cover is the first page as it is really laid out: few short lines, the usual words, then a new page."""
+    paragraphs = list(doc.element.body.iterchildren(qn("w:p")))
+    nxt = next((i for i, p in enumerate(paragraphs) if pages.get(p, 0) >= 2), None)
+    if not nxt:
+        return None
+    while nxt < len(paragraphs) - 1 and _is_blank(paragraphs[nxt]):
+        nxt += 1  # empty lines that spilled onto the second page still belong to the push
+    first = paragraphs[nxt]
+    lines: list[str] = []
+    for child in doc.element.body.iterchildren():
+        if child is first:
+            break
+        for p in child.iter(qn("w:p")):
+            text = _own_text(p).strip()
+            if text and text not in lines:
+                lines.append(text)
+    if len(lines) < 3 or max(len(t.split()) for t in lines) > 60 or sum(len(t.split()) for t in lines) > 300:
+        return None
+    score = sum(1 for t in lines + _header_text(doc).splitlines() if _COVER_WORDS.search(t))
+    trailing = 0
+    for p in reversed(paragraphs[:nxt]):
+        if not _is_blank(p):
+            break
+        trailing += 1
+    pushed = trailing >= 2 or any(_has_page_break(p) for p in paragraphs[:nxt])
+    pushed = pushed or first.find(qn("w:pPr") + "/" + qn("w:pageBreakBefore")) is not None
+    return nxt if score >= 2 and pushed else None
+
+
+def _cover_end(doc, pages: dict | None = None) -> int | None:
+    """Index of the first paragraph after the cover page, or None when the file has no cover page.
+
+    With the real pages (`pages`), the first page is looked at as it prints: a cover made with empty lines
+    instead of a page break is found too. Without them, only a cover closed by a page break is.
+    """
+    if pages:
+        return _cover_end_on_page(doc, pages)
     body = list(doc.element.body.iterchildren(qn("w:p")))[:80]
     lines = 0
     score = 0
@@ -141,6 +237,16 @@ def _outline_level(paragraph) -> int | None:
     return None
 
 
+def _num_of(paragraph) -> tuple[str, str] | None:
+    """(numId, ilvl) when the paragraph is numbered by Word itself ("I.", "1.", "a)" typed by nobody)."""
+    node = paragraph._p.find(qn("w:pPr") + "/" + qn("w:numPr"))
+    num_id = node.find(qn("w:numId")) if node is not None else None
+    if num_id is None or num_id.get(qn("w:val")) in (None, "0"):
+        return None
+    level = node.find(qn("w:ilvl"))
+    return num_id.get(qn("w:val")), (level.get(qn("w:val")) if level is not None else "0")
+
+
 def find_titles(doc, after: int = 0) -> list[tuple[object, int]]:
     """[(paragraph, level)] for the titles of the document, however they are written.
 
@@ -150,6 +256,8 @@ def find_titles(doc, after: int = 0) -> list[tuple[object, int]]:
     """
     paragraphs = doc.paragraphs
     found: list[tuple[object, int]] = []
+    formats = _numbering_formats(doc)
+    numbered: dict[tuple[str, str], int] = {}  # Word's own numbering: each list/level met is one level deeper
     for i, p in enumerate(paragraphs):
         if i < after or _is_toc_style(p):
             continue
@@ -171,7 +279,13 @@ def find_titles(doc, after: int = 0) -> list[tuple[object, int]]:
         centered = p.alignment == WD_ALIGN_PARAGRAPH.CENTER
         big = _runs_size(p) >= 13
         caps = text.upper() == text and sum(c.isalpha() for c in text) >= 4
-        if _TITLE_WORDS.match(text) and words <= 14:
+        num = _num_of(p)
+        known = _TITLE_WORDS.match(text)
+        if known and not re.search(r"(?i)chap|partie", known.group()) and re.match(r"\s*:\s*\S", text[known.end():]):
+            continue  # "Conclusion : valide" is a sentence of the text, not the Conclusion
+        if num and formats.get(num, "bullet") not in ("bullet", "none") and bold and words <= 16:
+            found.append((p, min(numbered.setdefault(num, len(numbered) + 1), 3)))
+        elif known and words <= 14:
             found.append((p, 1))
         elif _DECIMAL3.match(text) and bold and words <= 16:
             found.append((p, 3))
@@ -213,15 +327,43 @@ def _numbering_of(doc) -> dict:
     return {"scheme": scheme, "on_cover": bool(on_cover)}
 
 
-def inspect(path: Path) -> dict:
-    """What the Word file already has: cover, sommaire, page numbers (and their scheme), titles, sections."""
+def _own_layout(doc) -> bool:
+    """Things placed by hand that only exist in this file: text boxes, shapes, a letterhead, a page border."""
+    body = doc.element.body
+    if any(node.tag in (qn("w:txbxContent"), qn("w:pict")) for node in body.iter()):
+        return True
+    if any(True for _ in body.iter(qn("w:pgBorders"))):
+        return True
+    for rel in doc.part.rels.values():
+        if rel.reltype.endswith(("/header", "/footer")):
+            element = rel.target_part.element
+            if _paragraph_text(element).strip() or any(True for _ in element.iter(qn("w:drawing"))):
+                return True
+    return False
+
+
+def _empty_toc_title(doc, cover_end: int | None):
+    """The "SOMMAIRE" written above a page left empty (to be filled by hand), or None."""
+    paragraphs = list(doc.element.body.iterchildren(qn("w:p")))
+    for p in paragraphs[cover_end or 0:]:
+        if _TOC_TITLE.match(_own_text(p).strip()):
+            nxt = p.getnext()
+            return None if nxt is not None and _paragraph_text(nxt).startswith("[[TOC") else p
+    return None
+
+
+def inspect(path: Path, layout: list | None = None) -> dict:
+    """What the Word file already has: cover, sommaire, page numbers (and their scheme), titles, sections.
+
+    `layout` is LibreOffice's real pagination (office.layout): with it the cover is the page that prints first.
+    """
     doc = Document(str(path))
     body = doc.element.body
     toc = any(re.match(r"\s*TOC\b", i.text or "") for i in body.iter(qn("w:instrText")))
     toc = toc or any((f.get(qn("w:instr")) or "").strip().startswith("TOC") for f in body.iter(qn("w:fldSimple")))
     if not toc:
         toc = any(_is_toc_style(p) for p in doc.paragraphs)
-    cover_end = _cover_end(doc)
+    cover_end = _cover_end(doc, page_map(doc, layout))
     titles = _titles_after_cover(doc, cover_end)
     numbering = _numbering_of(doc)
     return {
@@ -234,6 +376,8 @@ def inspect(path: Path) -> dict:
         "numbering": numbering["scheme"],
         "numbers_on_cover": numbering["on_cover"],
         "intro": any(_INTRO.match((p.text or "").strip()) for p, lv in titles if lv == 1),
+        "own_layout": _own_layout(doc),
+        "toc_title": not toc and _empty_toc_title(doc, cover_end) is not None,
     }
 
 
@@ -463,6 +607,44 @@ def _replace_cover(doc, cover_end: int | None, png: bytes) -> None:
     _strip_first_page(final)
 
 
+# --- Real page breaks ---------------------------------------------------------------------------
+
+def _starts_page(p) -> bool:
+    if p.find(qn("w:pPr") + "/" + qn("w:pageBreakBefore")) is not None:
+        return True
+    previous = p.getprevious()
+    return previous is not None and previous.tag == qn("w:p") and _has_page_break(previous)
+
+
+def _page_break_before(doc, p) -> None:
+    from docx.text.paragraph import Paragraph
+
+    Paragraph(p, doc._body).paragraph_format.page_break_before = True
+
+
+def _real_page_breaks(doc, pages: dict, after_cover=None) -> int:
+    """Empty lines typed until the next page are replaced by a page break. Returns how many places changed.
+
+    Only a run of empty lines that really crosses a page is touched (three lines or more, or the end of the
+    cover): spacing inside a page stays as it is.
+    """
+    changed = 0
+    run: list = []
+    for el in _flow(doc):
+        if _is_blank(el):
+            run.append(el)
+            continue
+        if run and el.tag == qn("w:p") and pages.get(el) and pages.get(run[0]) and pages[el] > pages[run[0]]:
+            if len(run) >= 3 or el is after_cover:
+                for blank in run:
+                    blank.getparent().remove(blank)
+                if not _starts_page(el):
+                    _page_break_before(doc, el)
+                changed += 1
+        run = []
+    return changed
+
+
 # --- Sommaire -----------------------------------------------------------------------------------
 
 def _toc_field_paragraphs(doc) -> list | None:
@@ -567,6 +749,7 @@ def touch(
     numbers: str = "",
     cover: str = "keep",
     cover_png: bytes | None = None,
+    layout: list | None = None,
 ) -> list[str]:
     """Writes a copy of `src` where the cover, sommaire and page numbers are kept, added or redone.
 
@@ -574,13 +757,22 @@ def touch(
     toc:     "keep" | "add" | "redo" | "none"        (True means "add")
     cover:   "keep" | "redo" | "add"  (needs `cover_png`, Paginya's cover as a picture)
     page_numbers=True is the older spelling of numbers="add".
+    layout:  LibreOffice's real pagination of `src` (office.layout); pages held apart by empty lines then
+             get a real page break, so that adding a sommaire does not push everything out of place.
     Returns what was done, in words.
     """
     numbers = numbers or ("add" if page_numbers else "keep")
     toc = "add" if toc is True else "keep" if toc is False else toc
     doc = Document(str(src))
     done: list[str] = []
-    cover_end = _cover_end(doc)
+    pages = page_map(doc, layout)
+    cover_end = _cover_end(doc, pages)
+    if pages:
+        paragraphs = list(doc.element.body.iterchildren(qn("w:p")))
+        after_cover = paragraphs[cover_end] if cover_end else None
+        _real_page_breaks(doc, pages, after_cover)
+        if after_cover is not None:
+            cover_end = list(doc.element.body.iterchildren(qn("w:p"))).index(after_cover)
 
     if cover in ("redo", "add") and cover_png:
         if cover == "add" and cover_end is not None:
@@ -608,6 +800,20 @@ def touch(
                 el.getparent().remove(el)
         _mark_outline(titles)
         done.append("sommaire refait")
+    elif toc in ("add", "redo") and not had_toc and titles and _empty_toc_title(doc, cover_end) is not None:
+        # the page is there, with its title: the sommaire goes under it, and what follows starts a new page
+        _mark_outline(titles)
+        holder = _empty_toc_title(doc, cover_end)
+        while holder.getnext() is not None and _is_blank(holder.getnext()):
+            holder.getparent().remove(holder.getnext())
+        following = holder.getnext()
+        marker = OxmlElement("w:p")
+        holder.addnext(marker)
+        _insert_marker_paragraphs(marker, with_title=False, levels=2)
+        marker.getparent().remove(marker)
+        if following is not None and following.tag == qn("w:p") and not _starts_page(following):
+            _page_break_before(doc, following)
+        done.append("sommaire")
     elif toc in ("add", "redo") and not had_toc and titles and not any(p.text.startswith("[[TOC") for p in doc.paragraphs):
         _mark_outline(titles)
         first = next((p for p, _ in titles if p._p.getprevious() is not None), titles[0][0])

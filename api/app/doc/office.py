@@ -1,6 +1,7 @@
 """Calls the LibreOffice worker (system python + uno) and renders page previews."""
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import threading
@@ -25,15 +26,16 @@ class OfficeError(RuntimeError):
     pass
 
 
-def finalize(src_docx: Path, out_docx: Path | None, out_pdf: Path | None) -> None:
+def finalize(src_docx: Path, out_docx: Path | None, out_pdf: Path | None, out_layout: Path | None = None) -> None:
     """Real indexes + exports. Pass None to skip an output (previews only need the PDF)."""
     profile = DATA_DIR / "lo-profile"
     profile.mkdir(parents=True, exist_ok=True)
-    expected = out_pdf or out_docx
+    expected = out_pdf or out_docx or out_layout
     with _lock:
         for attempt in range(2):
             proc = subprocess.run(
-                [UNO_PYTHON, str(WORKER), PIPE, str(profile), str(src_docx), str(out_docx or "-"), str(out_pdf or "-")],
+                [UNO_PYTHON, str(WORKER), PIPE, str(profile), str(src_docx), str(out_docx or "-"), str(out_pdf or "-"),
+                 str(out_layout or "-")],
                 capture_output=True, timeout=240,
             )
             if proc.returncode == 0 and expected is not None and expected.is_file():
@@ -42,6 +44,23 @@ def finalize(src_docx: Path, out_docx: Path | None, out_pdf: Path | None) -> Non
                 # A crashed soffice leaves a dead pipe: kill it and retry once.
                 subprocess.run(["pkill", "-f", f"pipe,name={PIPE}"], capture_output=True)
         raise OfficeError(proc.stderr.decode("utf-8", "replace")[-800:] or "Échec de la mise en page")
+
+
+def layout(src_docx: Path, cache: Path, out_pdf: Path | None = None) -> list[list] | None:
+    """The real page of each top-level paragraph ([[page, text]], a table is page 0), read once then cached.
+
+    None when LibreOffice cannot tell: callers fall back on what the file itself says.
+    """
+    if not cache.is_file():
+        try:
+            finalize(src_docx, None, out_pdf, cache)
+        except (OfficeError, subprocess.TimeoutExpired, OSError):
+            return None
+    try:
+        rows = json.loads(cache.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return rows if isinstance(rows, list) else None
 
 
 def page_count(pdf: Path) -> int:

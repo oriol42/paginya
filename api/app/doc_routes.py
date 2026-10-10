@@ -204,8 +204,10 @@ def create(body: DocIn) -> dict:
     is_docx = bool(body.data and body.filename and Path(body.filename).suffix.lower() == ".docx")
     if is_docx:
         # What the Word file already has (cover page, sommaire, page numbers): shown to the user, kept unless they say otherwise.
+        (folder / "before").mkdir(exist_ok=True)
         try:
-            existing = keep.inspect(src)
+            # the real pages, as LibreOffice lays the file out (its PDF is the "Avant" view, made once)
+            existing = keep.inspect(src, office.layout(src, folder / "layout.json", folder / "before" / "before.pdf"))
         except Exception:  # an odd file python-docx cannot read: the normal flow still works
             existing = None
         if existing:
@@ -224,8 +226,8 @@ def create(body: DocIn) -> dict:
     doc["analysis"] = report
     doc["plan"] = report["plan"]
     doc["confirmed"] = False
-    if existing and (existing["cover"] or existing["toc"] or existing["page_numbers"]):
-        doc["mode"] = "keep"
+    if existing and (existing["cover"] or existing["toc"] or existing["page_numbers"] or existing["own_layout"]):
+        doc["mode"] = "keep"  # rebuilding would lose what only this file has (its cover, text boxes, letterhead…)
     if tmp_id is None:
         order_id = db.create_order("document_court", pricing.price_for("document_court"), {"doc": doc})
     else:
@@ -369,7 +371,8 @@ def render(order_id: str) -> dict:
         if plan["cover"] in ("redo", "add") and doc.get("cover_svg"):
             cover_png = cover_render.svg_to_png(doc["cover_svg"], 200)
         keep.touch(source_docx, build / "raw.docx", numbers=plan["numbers"], toc=plan["toc"],
-                   cover=plan["cover"] if cover_png else "keep", cover_png=cover_png)
+                   cover=plan["cover"] if cover_png else "keep", cover_png=cover_png,
+                   layout=office.layout(source_docx, folder / "layout.json"))
     else:
         (build / "raw.docx").write_bytes(build_docx(doc, folder / "images"))
     (build / "final.docx").unlink(missing_ok=True)  # made again from raw.docx when downloaded
@@ -464,7 +467,8 @@ def before(order_id: str) -> dict:
                 plain.add_paragraph(line)
             plain.save(docx)
         try:
-            office.finalize(docx, None, pdf)
+            if not pdf.is_file() or docx != source:
+                office.finalize(docx, None, pdf)
         except office.OfficeError as exc:
             raise HTTPException(500, "Aperçu de l'original indisponible") from exc
     return {"pages": office.previews(pdf, pages_dir, watermark=False)}

@@ -1,11 +1,13 @@
 """LibreOffice finisher, run with the *system* python (the one that ships `uno`).
 
-    python3 uno_worker.py <pipe_name> <profile_dir> <in.docx> <out.docx> <out.pdf>
+    python3 uno_worker.py <pipe_name> <profile_dir> <in.docx> <out.docx> <out.pdf> [<layout.json>]
 
 - Reuses a running headless soffice listening on a named pipe (starts it if needed).
 - Replaces [[TOC:n]], [[LOT]], [[LOF]] markers with real indexes, updates them
   (twice, so page numbers settle) and exports the final .docx and .pdf.
+- With <layout.json>: also writes the real page of every top-level paragraph, as LibreOffice lays the file out.
 """
+import json
 import os
 import subprocess
 import sys
@@ -55,8 +57,24 @@ def insert_index(doc, marker, service, setup):
     doc.getText().insertTextContent(found, index, False)
 
 
+def layout_of(doc):
+    """[[page, text]] for each top-level paragraph, in order; a table is [0, ""]."""
+    cursor = doc.getCurrentController().getViewCursor()
+    rows = []
+    items = doc.getText().createEnumeration()
+    while items.hasMoreElements():
+        item = items.nextElement()
+        if item.supportsService("com.sun.star.text.Paragraph"):
+            cursor.gotoRange(item.getStart(), False)
+            rows.append([cursor.getPage(), item.getString()[:80]])
+        else:
+            rows.append([0, ""])
+    return rows
+
+
 def main():
     pipe, profile, src, out_docx, out_pdf = sys.argv[1:6]
+    out_layout = sys.argv[6] if len(sys.argv) > 6 else "-"
     ctx = connect(pipe, profile)
     desktop = ctx.ServiceManager.createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
     doc = desktop.loadComponentFromURL(uno.systemPathToFileUrl(os.path.abspath(src)), "_blank", 0, (pv("Hidden", True),))
@@ -93,6 +111,9 @@ def main():
             doc.storeToURL(uno.systemPathToFileUrl(os.path.abspath(out_docx)), (pv("FilterName", "MS Word 2007 XML"),))
         if out_pdf != "-":
             doc.storeToURL(uno.systemPathToFileUrl(os.path.abspath(out_pdf)), (pv("FilterName", "writer_pdf_Export"),))
+        if out_layout != "-":
+            with open(out_layout, "w", encoding="utf-8") as handle:
+                json.dump(layout_of(doc), handle)
     finally:
         doc.close(True)
 

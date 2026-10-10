@@ -249,3 +249,43 @@ def test_full_flow_confirm_then_render_with_the_cameroonian_numbers(client, tmp_
         feet.append(lines[-1] if lines else "")
     assert feet[0] != "1" and feet[1] == "ii"  # cover: no number, then the sommaire is "ii"
     assert "1" in feet  # the body restarts at 1 on the Introduction
+
+
+def handmade_docx(tmp_path):
+    """A cover held on its page by empty lines (no page break), an empty "SOMMAIRES" page, titles numbered by Word."""
+    doc = Document()
+    for line in ("FILIERE PROFESSIONNELLE", "CONTRÔLE CONTINU", "Par : Jean Dupont", "Matricule : 22X0070"):
+        doc.add_paragraph(line)
+    for _ in range(3):
+        doc.add_paragraph("")
+    doc.add_paragraph("SOMMAIRES")
+    for _ in range(4):
+        doc.add_paragraph("")
+    doc.add_paragraph("INTRODUCTION").runs[0].bold = True
+    doc.add_paragraph("Texte de l'introduction. " * 20)
+    doc.add_paragraph("Conclusion : valide").runs[0].bold = True
+    doc.add_paragraph("CONCLUSION").runs[0].bold = True
+    doc.add_paragraph("Texte de la conclusion.")
+    path = tmp_path / "handmade.docx"
+    doc.save(path)
+    # the pages as LibreOffice would report them: cover, sommaire (one empty line spilled onto it), body
+    layout = [[1, ""]] * 6 + [[2, ""]] * 5 + [[3, ""]] * 6
+    return path, layout
+
+
+def test_a_cover_pushed_by_empty_lines_is_seen_with_the_real_pages(tmp_path):
+    path, layout = handmade_docx(tmp_path)
+    assert keep.inspect(path)["cover"] is False  # the file alone does not say where the page ends
+    info = keep.inspect(path, layout)
+    assert info["cover"] is True and info["toc_title"] is True and info["titles"] == 2
+
+
+def test_touch_fills_the_empty_sommaire_and_puts_real_page_breaks(tmp_path):
+    path, layout = handmade_docx(tmp_path)
+    out = tmp_path / "out.docx"
+    assert keep.touch(path, out, numbers="none", toc="add", layout=layout) == ["sommaire"]
+    texts = [p.text for p in Document(str(out)).paragraphs]
+    assert texts[:7] == ["FILIERE PROFESSIONNELLE", "CONTRÔLE CONTINU", "Par : Jean Dupont", "Matricule : 22X0070",
+                         "SOMMAIRES", "[[TOC:2]]", "INTRODUCTION"]
+    after = Document(str(out)).paragraphs
+    assert after[4].paragraph_format.page_break_before and after[6].paragraph_format.page_break_before
