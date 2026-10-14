@@ -253,3 +253,9 @@ Le script lance les tests du serveur (s'ils échouent, rien n'est publié), enre
 - `brag-output/brag.mp4` (vertical 1080×1920, 20 s, 5,5 Mo, pour statut WhatsApp / TikTok), `brag.jpg` (miniature), `share-copy.txt` (texte à publier), `brag-plan.md` (storyboard). Dossier exclu de Git (trop lourd).
 - Fabriquée avec les vrais rendus de Paginya (page de garde du studio, sommaire et liste des figures du moteur, page « après » du site) ; composition HTML (`work/video.html`, une image = fonction du temps), 600 images capturées dans Chrome, musique et effets synthétisés (afro-pop 100 BPM en la mineur), encodage ffmpeg.
 - Skill installée : `~/.claude/skills/brag-slim` (MIT). Pour une autre vidéo : « /brag-slim » dans Claude Code.
+
+## Année académique automatique (14/10/2026) — local, PAS encore publié
+- Test complet en local (texte collé → 16 pages → paiement simulé → PDF + Word) : OK.
+- « 2025-2026 » était écrit en dur (page de garde, studio, épreuve). Remplacé par `academicYear()` (`web/src/lib/cover/year.ts`) : l'année commence en septembre.
+- Réveil des serveurs laissé tel quel (9 h-19 h) : décision du fondateur, les étudiants travaillent surtout en journée pour l'instant.
+- À faire avant la pub : vrai paiement Fapshi sur téléphone (le seul essai, le 28/09, a fini en FAILED).

@@ -1,5 +1,6 @@
 import { MINESEC_EN, MINESEC_FR, MINISTRY_EN, MINISTRY_FR, REPUBLIC_EN, REPUBLIC_FR, institution } from "../institutions";
 import type { CoverForm, CoverModel, DocKind, StyleId } from "./types";
+import { academicYear } from "./year";
 
 export type FieldKey =
   | "title" | "structure" | "period" | "degree" | "specialty"
@@ -186,7 +187,7 @@ export function emptyForm(kind: DocKind = "rapport_stage"): CoverForm {
     supervisors: def.supervisorRoles.map((role) => ({ name: "", role, info: "" })),
     jury: "",
     place: "",
-    year: "2025-2026",
+    year: academicYear(),
     date: "",
   };
 }

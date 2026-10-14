@@ -1,6 +1,7 @@
 import { esc, textBlock, wrap, type FontSpec } from "../text";
 import type { CoverModel, Person } from "../types";
 import { PAGE_H, PAGE_W } from "../types";
+import { academicYear } from "../year";
 
 export const W = PAGE_W;
 export const H = PAGE_H;
@@ -85,6 +86,6 @@ export function withPlaceholders(m: CoverModel): CoverModel {
     authors: m.authors.length ? m.authors : [{ name: "NOM Prénom", info: "Matricule : 00X000" }],
     mention: m.mention.length ? m.mention : m.sample.mention,
     supervisors: [...m.supervisors, ...m.sample.supervisors.filter((s) => !namedSupervisors.has(s.role))],
-    footerLeft: m.footerLeft || "Année académique 2025-2026",
+    footerLeft: m.footerLeft || `Année académique ${academicYear()}`,
   };
 }

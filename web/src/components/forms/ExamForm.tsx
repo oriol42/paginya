@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { PALETTES } from "@/lib/cover/palettes";
+import { academicYear } from "@/lib/cover/year";
 import type { FormView } from "@/lib/forms";
 import { Field, Input, TextArea, Toggle } from "../ui";
 import { FormShell } from "./FormShell";
@@ -56,7 +57,7 @@ export function initialExam(): Exam {
     school: "",
     school_en: "",
     department: "",
-    year: "2025-2026",
+    year: academicYear(),
     exam: "Évaluation de la 1ère séquence",
     subject: "",
     class: "",
