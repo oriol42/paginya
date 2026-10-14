@@ -48,7 +48,7 @@ export function people(
 ): number {
   const columns: { label: string; persons: Person[] }[] = [];
   if (m.authors.length) columns.push({ label: m.authorsLabel, persons: m.authors });
-  for (const s of m.supervisors) columns.push({ label: `${s.role ?? "Encadreur"} :`, persons: [{ name: s.name, info: s.info }] });
+  for (const s of m.supervisors) columns.push({ label: /:\s*$/.test(s.role ?? "") ? s.role! : `${s.role ?? "Encadreur"} :`, persons: [{ name: s.name, info: s.info }] });
 
   const perRow = columns.length > 1 ? 2 : 1;
   const colW = opts.width / perRow;
@@ -86,6 +86,6 @@ export function withPlaceholders(m: CoverModel): CoverModel {
     authors: m.authors.length ? m.authors : [{ name: "NOM Prénom", info: "Matricule : 00X000" }],
     mention: m.mention.length ? m.mention : m.sample.mention,
     supervisors: [...m.supervisors, ...m.sample.supervisors.filter((s) => !namedSupervisors.has(s.role))],
-    footerLeft: m.footerLeft || `Année académique ${academicYear()}`,
+    footerLeft: m.footerLeft || `${m.juryLabel.startsWith("Members") ? "Academic year" : "Année académique"} ${academicYear()}`,
   };
 }

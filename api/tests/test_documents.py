@@ -36,7 +36,7 @@ def headings(blocks):
 def test_plain_text_structure():
     res = detect(from_text(FIXTURE.read_text()))
     h = dict(headings(res["blocks"]))
-    assert h["PREMIERE PARTIE : PRESENTATION DE LA STRUCTURE D'ACCUEIL"] == 1
+    assert h["PREMIÈRE PARTIE : PRÉSENTATION DE LA STRUCTURE D'ACCUEIL"] == 1
     assert h["CHAPITRE I : HISTORIQUE ET MISSIONS"] == 2
     assert h["I. Historique"] == 3
     assert h["1.1 Tri et classement des archives"] == 3  # same depth as "I." in another chapter
@@ -142,9 +142,16 @@ def test_upload_docx(client, tmp_path):
     assert client.post(f"/documents/{r.json()['id']}/render").status_code == 200
 
 
-def test_rejects_old_doc_format(client):
-    r = client.post("/documents", json={"filename": "x.doc", "data": base64.b64encode(b"abc").decode()})
-    assert r.status_code == 400 and ".docx" in r.json()["detail"]
+def test_old_word_formats_are_converted(client, tmp_path):
+    """.doc / .odt / .rtf: LibreOffice saves them as .docx on arrival, then they are Word files like any other."""
+    rtf = (r"{\rtf1\ansi\deff0 {\fonttbl{\f0 Times New Roman;}}\f0\fs24 "
+           r"{\b INTRODUCTION}\par Ce rapport pr\'e9sente le stage effectu\'e9 \'e0 Douala pendant trois mois.\par "
+           r"{\b I- Pr\'e9sentation de l'entreprise}\par L'entreprise a \'e9t\'e9 cr\'e9\'e9e en 2004 et compte cent employ\'e9s.\par }").encode()
+    r = client.post("/documents", json={"filename": "rapport.rtf", "data": base64.b64encode(rtf).decode()})
+    assert r.status_code == 200, r.text
+    doc = r.json()
+    assert [b["text"] for b in doc["blocks"] if b["type"] == "heading"][:2] == ["INTRODUCTION", "I- Présentation de l'entreprise"]
+    assert doc["analysis"]["docx"] is True
 
 
 def photo_of_page(tmp_path) -> bytes:
@@ -280,3 +287,58 @@ def test_a_conversion_changes_the_format_and_nothing_else(client, tmp_path):
     assert view["convert"] == "pdf" and view["confirmed"] is True and view["mode"] == "keep"
     assert view["plan"] == {"cover": "keep", "toc": "keep", "numbers": "keep"}
     assert client.post("/documents", json={"filename": "c.txt", "data": data, "convert": True}).status_code == 400
+
+
+def test_numbered_titles_keep_one_level_per_numbering():
+    """"I) / 1) / 2)": the items under a roman title all sit one level below it (the model must not move them)."""
+    long = "Cette structure occupe une place importante dans le tissu économique de la région du Centre. " * 3
+    text = "\n\n".join(["Introduction", long, "I) Les causes lointaines", "1) Les rivalités coloniales", long, "2) La course aux armements", long,
+                         "II) Les causes immédiates", "1) L'attentat de Sarajevo", long, "2) L'engrenage des alliances", long, "Conclusion", long])
+    h = dict(headings(detect(from_text(text))["blocks"]))
+    assert h["I) Les causes lointaines"] == h["II) Les causes immédiates"] == 2
+    assert {h[k] for k in h if k[0].isdigit()} == {3}
+
+
+def test_body_is_never_hidden_as_a_cover_page(tmp_path):
+    """A cover followed by titles the engine does not know by name ("A/ Objectif du TP") used to be read as one
+    long cover page: every short line of the document was hidden."""
+    doc = Document()
+    for line in ("RÉPUBLIQUE DU CAMEROUN", "INSTITUT UNIVERSITAIRE DE TECHNOLOGIE", "COMPTE RENDU DE TP", "Rédigé et présenté par :",
+                 "MBIDA Kevin", "Sous la supervision de :", "M. TAKAM", "Année académique 2025-2026"):
+        doc.add_paragraph(line)
+    for title in ("A/ Objectif du TP", "B/ Matériel utilisé", "C/ Manipulations"):
+        doc.add_paragraph(title).runs[0].bold = True
+        doc.add_paragraph("Nous avons configuré le réseau local de la salle avec trois commutateurs et un routeur.")
+    path = tmp_path / "tp.docx"
+    doc.save(path)
+    blocks = detect(from_docx(path, tmp_path / "img"))["blocks"]
+    shown = [b["text"] for b in blocks if not b.get("hidden") and b.get("text")]
+    assert [t for t in shown if t[1:2] == "/"] == ["A/ Objectif du TP", "B/ Matériel utilisé", "C/ Manipulations"]
+    assert sum("Nous avons configuré" in t for t in shown) == 3
+    assert all(b.get("hidden") for b in blocks if b.get("text") in ("MBIDA Kevin", "COMPTE RENDU DE TP"))
+
+
+def test_announced_chapters_are_a_list_and_typed_lines_are_cleaned():
+    long = "Le service dispose de cinq ordinateurs, de deux imprimantes et d'une connexion internet instable. " * 3
+    text = "\n\n".join(["INTRODUCTION", "Ce rapport s'articule autour de trois chapitres :", "Chapitre 1 : Présentation", "Chapitre 2 : Déroulement",
+                         "Chapitre 3 : Bilan", "__________________________", "CHAPITRE 1 : PRESENTATION", long, "Plan du chapitre……………………",
+                         "CHAPITRE 2 : DEROULEMENT", long, "CHAPITRE 3 : BILAN", long])
+    blocks = detect(from_text(text))["blocks"]
+    chapters = [b["text"] for b in blocks if b["type"] == "heading" and b["text"].upper().startswith("CHAPITRE")]
+    assert chapters == ["CHAPITRE 1 : PRÉSENTATION", "CHAPITRE 2 : DÉROULEMENT", "CHAPITRE 3 : BILAN"]  # capitals, accents restored
+    assert sum(b["type"] == "list" for b in blocks) == 3
+    assert not any("____" in (b.get("text") or "") or "……" in (b.get("text") or "") for b in blocks)
+
+
+def test_shift_enter_lines_become_their_own_paragraphs(tmp_path):
+    doc = Document()
+    p = doc.add_paragraph()
+    for k, line in enumerate(["- Absence de tableaux de bord", "", "2.2 Limites de l'existant", "Cette situation générait plusieurs problèmes pour",
+                               "les équipes du terrain chaque fin de mois."]):
+        run = p.add_run(line)
+        if k < 4:
+            run.add_break()
+    path = tmp_path / "soft.docx"
+    doc.save(path)
+    texts = [r.text for r in from_docx(path, tmp_path / "img")]
+    assert texts == ["- Absence de tableaux de bord", "2.2 Limites de l'existant", "Cette situation générait plusieurs problèmes pour les équipes du terrain chaque fin de mois."]

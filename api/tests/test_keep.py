@@ -235,8 +235,9 @@ def test_full_flow_confirm_then_render_with_the_cameroonian_numbers(client, tmp_
 
     data = base64.b64encode(report_docx(tmp_path, numbers=True).read_bytes()).decode()
     doc = client.post("/documents", json={"filename": "r.docx", "data": data}).json()
-    assert doc["mode"] == "keep" and doc["plan"]["numbers"] == "keep" and doc["analysis"]["hint"]
-    done = client.put(f"/documents/{doc['id']}", json={"plan": {"numbers": "redo", "toc": "add"}, "confirm": True}).json()
+    # titles typed in bold, not with Word styles: rebuilt by default, and the user may still keep the file
+    assert doc["mode"] == "rebuild" and doc["analysis"]["handmade"] and doc["plan"]["numbers"] == "keep" and doc["analysis"]["hint"]
+    done = client.put(f"/documents/{doc['id']}", json={"mode": "keep", "plan": {"numbers": "redo", "toc": "add"}, "confirm": True}).json()
     assert done["confirmed"] is True and done["plan"] == {"cover": "keep", "toc": "add", "numbers": "redo"}
     rendered = client.post(f"/documents/{doc['id']}/render").json()
     assert rendered["render"]["pages"] >= 5

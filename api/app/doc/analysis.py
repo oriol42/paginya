@@ -89,6 +89,8 @@ def analyze(kind: str, meta: dict, blocks: list[dict], options: dict, existing: 
         "exam": exam["likely"],
         "docx": is_docx,
         "existing": existing,
+        # titles made by hand (bold, capitals) instead of Word styles: the file is rebuilt unless the user says otherwise
+        "handmade": bool(existing and existing.get("handmade")),
         "plan": default_plan(kind, existing, options),
         "hint": numbers_hint(kind, existing),
     }

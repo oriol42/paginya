@@ -141,6 +141,9 @@ def build_exam(data: dict) -> bytes:
     if school:
         en.append((_s(data, "school_en") or school, True, False))
 
+    english = _s(data, "lang") == "en"  # English-speaking school: English on the left, English labels
+    if english:
+        fr, en = en, fr
     head = doc.add_table(rows=1, cols=2 if bilingual else 1)
     no_borders(head)
     head.autofit = False
@@ -158,17 +161,17 @@ def build_exam(data: dict) -> bytes:
 
     if _s(data, "year"):
         p = para(doc, "", space_before=10, align="right")
-        p.add_run("Année scolaire : ").font.size = Pt(11)
+        p.add_run("School year: " if english else "Année scolaire : ").font.size = Pt(11)
         p.add_run(_s(data, "year")).font.size = Pt(11)
 
-    facts = [("Classe", _s(data, "class")), ("Durée", _s(data, "duration")),
-             ("Coefficient", _s(data, "coef")), ("Examinateur", _s(data, "teacher"))]
+    facts = [("Class" if english else "Classe", _s(data, "class")), ("Duration" if english else "Durée", _s(data, "duration")),
+             ("Coefficient", _s(data, "coef")), ("Examiner" if english else "Examinateur", _s(data, "teacher"))]
     first = True
     for label, value in facts:
         if value:
             p = para(doc, "", space_before=10 if first else 0)
             first = False
-            r = p.add_run(f"{label} : {value}")
+            r = p.add_run(f"{label}: {value}" if english else f"{label} : {value}")
             r.bold = True
             r.font.size = Pt(11)
 
@@ -180,10 +183,10 @@ def build_exam(data: dict) -> bytes:
         points = float(total) if total else total_points(items)
     except ValueError:
         points = total_points(items)
-    title = f"ÉPREUVE DE {_s(data, 'subject', 'MATIÈRE').upper()}"
+    title = f"{_s(data, 'subject', 'SUBJECT').upper()} PAPER" if english else f"ÉPREUVE DE {_s(data, 'subject', 'MATIÈRE').upper()}"
     if points:
         shown = f"{points:g}"
-        title += f", {shown} pt{'s' if points > 1 else ''}"
+        title += f", {shown} {'mark' if english else 'pt'}{'s' if points > 1 else ''}"
     p = para(doc, "", align="center", space_before=10, space_after=6)
     r = p.add_run(title)
     r.bold = r.underline = True

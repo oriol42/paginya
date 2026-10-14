@@ -32,6 +32,8 @@ class Raw:
     image: str = ""          # stored image file name (figure)
     source: str = "text"     # text | docx | pdf | md
     explicit: bool = False   # structure given by the source (Markdown): never guessed over
+    new_page: bool = False   # starts a new page (page break, section break or "page break before")
+    gap: int = 0             # empty paragraphs just before (pages are often pushed with empty lines)
 
 
 class ExtractError(ValueError):
@@ -64,11 +66,18 @@ def from_text(text: str, source: str = "text") -> list[Raw]:
     lines = [ln.rstrip() for ln in text.split("\n")]
     paras: list[Raw] = []
     buf: list[str] = []
+    blank, page = 0, False  # empty lines / a page change (form feed) since the last paragraph
+
+    def mark(raw: Raw) -> Raw:
+        nonlocal blank, page
+        raw.gap, raw.new_page = max(0, blank - 1), page
+        blank, page = 0, False
+        return raw
 
     def flush() -> None:
         if buf:
             joined = " ".join(s.strip() for s in buf)
-            paras.append(Raw(text=re.sub(r"[ \t]+", " ", joined).strip(), indent=_indent(buf[0]), source=source))
+            paras.append(mark(Raw(text=re.sub(r"[ \t]+", " ", joined).strip(), indent=_indent(buf[0]), source=source)))
             buf.clear()
 
     def next_text(i: int) -> str:
@@ -78,15 +87,22 @@ def from_text(text: str, source: str = "text") -> list[Raw]:
         return ""
 
     for i, line in enumerate(lines):
+        if "\f" in line:
+            flush()
+            page = True
+            line = line.replace("\f", "")
         if not line.strip():
+            if not buf:
+                blank += 1
             # PDF: a sentence cut around a picture continues after an empty line ("… l'effervescence du" / "mouvement")
             if source == "pdf" and buf and _cut(buf[-1].strip(), next_text(i), strict=True):
                 continue
             flush()
+            blank += 1
             continue
         if "\t" in line.strip() or " | " in line:
             flush()
-            paras.append(Raw(text=line.strip(), indent=_indent(line), source=source))
+            paras.append(mark(Raw(text=line.strip(), indent=_indent(line), source=source)))
             continue
         if buf:
             prev = buf[-1].strip()
@@ -496,6 +512,38 @@ def _paragraph(p: Paragraph, fmts: dict, images_dir: Path, doc) -> Raw:
     return raw
 
 
+def _split_breaks(raw: Raw) -> list[Raw]:
+    """A Word paragraph typed with Shift+Enter holds several lines. Lines that only wrap a sentence are joined
+    back; lines that are things of their own (a title, a bullet, an entry of a typed sommaire) become paragraphs."""
+    if "\n" not in raw.text or raw.image or raw.rows:
+        return [raw]
+    parts: list[str] = []
+    blank = False
+    for line in (ln.strip() for ln in raw.text.split("\n")):
+        if not line:
+            blank = True
+            continue
+        prev = parts[-1] if parts else ""
+        wraps = prev and not blank and not _STARTS_BLOCK.match(line) and (_cut(prev, line) or (len(prev) >= 55 and not _END.search(prev)))
+        if wraps:
+            parts[-1] = f"{prev} {line}"
+        else:
+            parts.append(line)
+        blank = False
+    if len(parts) <= 1:
+        raw.text = parts[0] if parts else ""
+        return [raw]
+    out = []
+    for k, text in enumerate(parts):
+        piece = Raw(**{**raw.__dict__, "text": text, "rows": []})
+        if k:
+            piece.new_page, piece.gap = False, 0
+            if raw.list_kind:
+                piece.list_kind = ""  # only the first line carries Word's bullet
+        out.append(piece)
+    return out
+
+
 def from_docx(path: Path, images_dir: Path) -> list[Raw]:
     try:
         doc = DocxDocument(str(path))
@@ -504,11 +552,31 @@ def from_docx(path: Path, images_dir: Path) -> list[Raw]:
     images_dir.mkdir(parents=True, exist_ok=True)
     fmts = _numbering_formats(doc)
     out: list[Raw] = []
+    gap, new_page = 0, False
     for el in doc.element.body.iterchildren():
         if el.tag == qn("w:p"):
             raw = _paragraph(Paragraph(el, doc), fmts, images_dir, doc)
+            ppr = el.pPr
+            before = ppr is not None and ppr.find(qn("w:pageBreakBefore")) is not None
+            leading = trailing = False  # a page break typed before / after the text of this paragraph
+            seen_text = False
+            for node in el.iter(qn("w:br"), qn("w:t")):
+                if node.tag == qn("w:t"):
+                    seen_text = seen_text or bool((node.text or "").strip())
+                elif node.get(qn("w:type")) == "page":
+                    if seen_text:
+                        trailing = True
+                    else:
+                        leading = True
             if raw.text or raw.image:
-                out.append(raw)
+                raw.new_page, raw.gap = new_page or before or leading, gap
+                out.extend(_split_breaks(raw))
+                gap, new_page = 0, trailing
+            else:
+                gap += 1
+                new_page = new_page or before or leading or trailing
+            if ppr is not None and ppr.find(qn("w:sectPr")) is not None:
+                new_page = True  # a section ends here: what follows is on a new page
         elif el.tag == qn("w:tbl"):
             table = Table(el, doc)
             rows = []
@@ -520,7 +588,8 @@ def from_docx(path: Path, images_dir: Path) -> list[Raw]:
                 dedup = [c for i, c in enumerate(cells) if i == 0 or c != cells[i - 1] or not c]
                 rows.append(dedup)
             if rows and any(any(c for c in r) for r in rows):
-                out.append(Raw(rows=rows, source="docx"))
+                out.append(Raw(rows=rows, source="docx", new_page=new_page, gap=gap))
+                gap, new_page = 0, False
     return out
 
 

@@ -204,14 +204,14 @@ export function ImportScreen({ error, onText, onFile, onOpen }: Props) {
             >
               <Icon name="file-text" size={44} stroke={1.5} className="text-board" />
               <span className="mt-4 font-display text-[26px] leading-none font-black uppercase">Choisis ton fichier</span>
-              <span className="mt-2 text-[14px] text-ink/60">Word (.docx), PDF, image, texte ou Markdown · 15 Mo max</span>
+              <span className="mt-2 text-[14px] text-ink/60">Word (.docx, .doc), PDF, image ou texte · 15 Mo max</span>
               <span className="mt-5 inline-flex items-center gap-2 rounded-md bg-hi px-5 py-3 text-[16px] font-bold text-ink shadow-[0_2px_0_0_var(--color-hi-deep)]">
                 <Icon name="folder-open" size={18} /> Parcourir
               </span>
               <input
                 ref={input}
                 type="file"
-                accept=".docx,.pdf,.txt,.md,image/*,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,text/plain"
+                accept=".docx,.doc,.odt,.rtf,.pdf,.txt,.md,image/*,application/msword,application/vnd.oasis.opendocument.text,application/rtf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,text/plain"
                 className="hidden"
                 onChange={(e) => { pickFiles(e.target.files); e.target.value = ""; }}
               />

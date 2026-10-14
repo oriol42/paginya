@@ -262,7 +262,7 @@ def find_titles(doc, after: int = 0) -> list[tuple[object, int]]:
         if i < after or _is_toc_style(p):
             continue
         text = (p.text or "").strip()
-        if not text or len(text) > 140:
+        if not text or len(text) > 140 or _TYPED_TOC.match(text):
             continue
         if _is_heading(p):
             digits = re.search(r"(\d)\s*$", _style_name(p))
@@ -340,6 +340,14 @@ def _own_layout(doc) -> bool:
             if _paragraph_text(element).strip() or any(True for _ in element.iter(qn("w:drawing"))):
                 return True
     return False
+
+
+_TYPED_TOC = re.compile(r"^.{2,150}?(?:[.…_·]\s?){3,}\s*([ivxlcdm]+|\d+)?\s*$|^.{2,110}\t+\s*([ivxlcdm]+|\d+)\s*$", re.I)
+
+
+def _typed_toc_line(el) -> bool:
+    """A line of a sommaire typed by hand: "Introduction ........ 4" (dots or a tab, then the page)."""
+    return el.tag == qn("w:p") and bool(_TYPED_TOC.match(_paragraph_text(el).strip()))
 
 
 def _empty_toc_title(doc, cover_end: int | None):
@@ -804,7 +812,7 @@ def touch(
         # the page is there, with its title: the sommaire goes under it, and what follows starts a new page
         _mark_outline(titles)
         holder = _empty_toc_title(doc, cover_end)
-        while holder.getnext() is not None and _is_blank(holder.getnext()):
+        while holder.getnext() is not None and (_is_blank(holder.getnext()) or _typed_toc_line(holder.getnext())):
             holder.getparent().remove(holder.getnext())
         following = holder.getnext()
         marker = OxmlElement("w:p")

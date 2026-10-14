@@ -31,6 +31,11 @@ créances crédit crédits épargne clientèle célèbre équipe équipes équip
 déjà très après près là-bas âge âgé âgée mètre mètres kilomètre kilomètres télécommunications téléphone téléphonie
 numérique numérisation informatique réalisée gérer gestion géré gérée générer réseaux égalité égal égale également
 conclusion introduction généralités recommandations suggestions perspectives acquis limites présentation organisation
+générale général généraux dédicace résumé théorique théoriques méthodologique méthodologiques méthodologie méthode méthodes
+résultat résultats étude études littérature matériel réalisation déroulement présentations définition définitions problématique
+hypothèse hypothèses stratégie stratégies système systèmes modèle modèles schéma schémas critère critères caractéristiques
+activité activités entité entités sécurité propriété propriétés spécification spécifications spécificités détaillée détaillé
+épigraphe abréviations abréviation réseaux implémentation déploiement modélisation synthèse analyse généralité intégré
 """.split()
 ACCENTS = {unicodedata.normalize("NFD", w).encode("ascii", "ignore").decode(): w for w in _ACCENTED}
 
@@ -47,6 +52,11 @@ def _upper_ratio(s: str) -> float:
     return sum(c.isupper() for c in letters) / len(letters) if len(letters) >= 4 else 0.0
 
 
+# Small words typed in capitals inside a title ("ACCOMPAGNEMENT DES CONSEILLERS") are not acronyms.
+SMALL = set("""de des du la le les un une et ou en au aux a à par pour sur dans avec sans sous vers chez entre que qui dont ce ces cet cette
+se sa son ses leur leurs notre nos votre vos mon ma mes est sont the of and in on at to for by an or with from is are as""".split())
+
+
 def vocabulary(texts: list[str]) -> tuple[set[str], set[str]]:
     """Acronyms (MTN, ENEO…) and proper nouns seen in normally-typed text of the document."""
     acr: set[str] = set()
@@ -56,7 +66,7 @@ def vocabulary(texts: list[str]) -> tuple[set[str], set[str]]:
             continue
         for i, m in enumerate(WORD.finditer(t)):
             w = m.group(0)
-            if len(w) >= 2 and w.isupper() and not ROMAN.match(w):
+            if len(w) >= 2 and w.isupper() and not ROMAN.match(w) and w.lower() not in SMALL:
                 acr.add(w)
             elif i > 0 and w[:1].isupper() and w[1:].islower() and t[max(0, m.start() - 2):m.start()].strip() not in (".", "!", "?"):
                 proper.add(w.lower())
@@ -88,6 +98,30 @@ def sentence_case(text: str, acr: set[str], proper: set[str]) -> str:
         pos = m.end()
     out.append(text[pos:])
     return "".join(out)
+
+
+def upper_title(text: str) -> str:
+    """"Conclusion generale" → "CONCLUSION GÉNÉRALE": capitals, with the accents a keyboard in capitals often loses."""
+    def one(m: re.Match) -> str:
+        low = m.group(0).lower()
+        base = unicodedata.normalize("NFD", low).encode("ascii", "ignore").decode()
+        return (ACCENTS.get(base, low) if base == low else low).upper()
+
+    return WORD.sub(one, text)
+
+
+def harmonise_tops(items: list[dict]) -> int:
+    """The big titles (special pages, parts, chapters) are written the same way: when most are in capitals, all are."""
+    tops = [it for it in items if it.get("type") == "heading" and it.get("kind") in ("special", "partie", "chapitre") and not it.get("hidden")]
+    if len(tops) < 2 or sum(_upper_ratio(it["text"]) > 0.85 for it in tops) * 2 < len(tops):
+        return 0
+    n = 0
+    for it in tops:
+        new = upper_title(it["text"])
+        if new != it["text"]:
+            it["text"] = new
+            n += 1
+    return n
 
 
 def fix_caps(text: str) -> tuple[str, int]:
@@ -226,6 +260,7 @@ def clean(items: list[dict]) -> dict:
                 caps += 1
             it["text"], n = fix_caps(it["text"])
             caps += n
+    caps += harmonise_tops(items)
     stats["lists_harmonised"] = harmonise_lists(items)
     stats["caps"] = caps
     return stats

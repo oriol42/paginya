@@ -11,6 +11,8 @@ import { Icon } from "@/components/Icon";
 export type Exam = {
   country: boolean;
   bilingual: boolean;
+  /** "en": English-speaking school, English first and English labels. */
+  lang?: "fr" | "en";
   ministry: string;
   ministry_en: string;
   delegation: string;
@@ -161,6 +163,7 @@ function ExamSteps({ e, set, view }: { e: Exam; set: (patch: Partial<Exam>) => v
           </div>
           <Field label="Année scolaire"><Input value={e.year} onChange={(x) => set({ year: x.target.value })} /></Field>
           <Toggle label="En-tête bilingue : français | anglais" checked={e.bilingual} onChange={(bilingual) => set({ bilingual })} />
+          <Toggle label="École anglophone : anglais d'abord (English first)" checked={e.lang === "en"} onChange={(on) => set({ lang: on ? "en" : "fr" })} />
           {e.bilingual && (
             <div className="space-y-3">
               <Field label="Établissement en anglais"><Input value={e.school_en} placeholder="Saint Rosa Venerini Technical Institute" onChange={(x) => set({ school_en: x.target.value })} /></Field>

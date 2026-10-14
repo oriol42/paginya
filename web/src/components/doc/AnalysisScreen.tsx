@@ -82,7 +82,22 @@ export function AnalysisScreen({ doc, busy, error, onKind, onExam, onApply }: Pr
               ? "Choisis pour chaque élément : je garde ce que tu as fait, ou je le refais. Ton texte, tes styles et ton tableau ne sont jamais touchés."
               : "Coche ce que tu veux : tu pourras changer d'avis ensuite."}
           </p>
+          {mode === "rebuild" && report.handmade && (
+            <p className="mb-4 rounded-md bg-ink/5 px-3 py-2.5 text-[14px] text-ink/80">
+              Tes titres sont faits à la main (gras, majuscules) et non avec les styles de Word : je refais donc la mise en page avec de vrais titres, des polices et des alignements réguliers. Ton texte, tes tableaux et tes images sont gardés.
+            </p>
+          )}
           <PlanChoices existing={report.existing} mode={mode} plan={plan} onPlan={setPlan} hint={report.hint} />
+          {mode === "rebuild" && report.handmade && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onApply("keep", plan)}
+              className="press mt-4 w-full rounded-md px-3 py-3 text-[14px] font-bold ring-1 ring-black/15 hover:bg-ink/5 disabled:opacity-50"
+            >
+              Plutôt garder mon fichier tel quel
+            </button>
+          )}
           {mode === "keep" && (
             <button
               type="button"

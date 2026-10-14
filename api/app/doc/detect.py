@@ -28,26 +28,28 @@ def upper_ratio(s: str) -> float:
 ENDS_SENTENCE = re.compile(r"[.;,!?]$")
 
 SPECIALS: dict[str, tuple[str, ...]] = {
-    "dedicace": ("dedicace", "dedicaces"),
+    "dedicace": ("dedicace", "dedicaces", "dedication", "dedications"),
     "epigraphe": ("epigraphe",),
-    "remerciements": ("remerciements", "remerciement"),
-    "avant_propos": ("avant-propos", "avant propos"),
+    "remerciements": ("remerciements", "remerciement", "acknowledgements", "acknowledgement", "acknowledgments", "acknowledgment"),
+    "avant_propos": ("avant-propos", "avant propos", "foreword", "preface"),
     "sigles": (
         "sigles", "sigles et abreviations", "liste des sigles", "liste des sigles et abreviations",
         "liste des abreviations", "abreviations", "sigles et acronymes", "sigles, abreviations et acronymes",
         "liste des sigles, abreviations et acronymes", "liste des abreviations et sigles", "acronymes",
         "liste des sigles et acronymes", "list of abbreviations", "abbreviations",
     ),
-    "resume": ("resume",),
+    "resume": ("resume", "summary", "executive summary"),
     "abstract": ("abstract",),
+    "glossaire": ("glossaire", "glossary", "lexique"),
     "introduction": ("introduction", "introduction generale", "general introduction"),
     "conclusion": (
         "conclusion", "conclusion generale", "conclusion et recommandations", "conclusion et perspectives",
-        "general conclusion",
+        "general conclusion", "conclusion and recommendations", "conclusion et suggestions", "conclusion partielle",
     ),
     "bibliographie": (
         "bibliographie", "references", "references bibliographiques", "webographie",
-        "bibliographie et webographie", "sources et bibliographie", "bibliography",
+        "bibliographie et webographie", "sources et bibliographie", "bibliography", "references bibliographiques et webographiques",
+        "sources", "sitographie", "list of references",
     ),
     "annexes": ("annexes", "annexe", "liste des annexes", "appendices", "appendix"),
     "toc": (
@@ -65,6 +67,9 @@ CAPTION = re.compile(
     re.I,
 )
 SOURCE = re.compile(r"^(source|sources)\s*:", re.I)
+RULE_LINE = re.compile(r"^[\s_*=\-–—~#.·•❖◆■\uf000-\uf0ff]{5,}$")
+PAGE_ONLY = re.compile(r"^(page\s*)?[-–]?\s*\d{1,3}\s*(/\s*\d{1,3})?\s*[-–]?$", re.I)
+LEADERS_END = re.compile(r"\s*(?:\.{6,}|…{2,}|(?:\. ){5,})[.…\s]*$")
 LINKS = re.compile(r"https?://\S+|(?<![/\w])www\.\S+|[\w.+-]+@[\w-]+\.\w+")
 PARTIE = re.compile(
     r"^((premi[eè]re|deuxi[eè]me|troisi[eè]me|quatri[eè]me|cinqui[eè]me|seconde|\d+\s*(e|[eè]me|re))\s+partie"
@@ -77,7 +82,7 @@ DEFINITION = re.compile(r"^\d{1,2}(?:\.\d{1,2})*\s*[.)]?\s+[^:]{2,60}\s:\s+[a-z�
 SECTION = re.compile(r"^(section|sous[- ]section|paragraphe)\s+([ivx]+|\d+|premi[eè]re?|unique)\b", re.I)
 DECIMAL = re.compile(r"^(\d{1,2}(?:\.\d{1,2})+)\.?\s+(\S.*)$")
 # "1. ", "1) ", "1- ", "1°) ", "1-Texte" (no space) — but not "1-2 fois" or "10.000 F"
-SINGLE_NUM = re.compile(r"^(\d{1,2})\s*(?:°\)|[.)°]\s|-)\s*(?=[^\d\s])(\S.*)$")
+SINGLE_NUM = re.compile(r"^(\d{1,2})\s*(?:°\)|[.)°/]\s|-)\s*(?=[^\d\s])(\S.*)$")
 NUM_NODOT = re.compile(r"^(\d{1,2})\s+([A-ZÀ-Ý][^\d].*)$")  # "1 Historique" (number without a dot)
 ROMAN = re.compile(r"^([IVX]{1,5})\s*[.\-–—)/]\s*(\S.*)$")
 LETTER = re.compile(r"^([A-H])\s*[.\-–—)/]\s+(\S.*)$")
@@ -129,6 +134,7 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
     stats = {"toc_lines": 0, "captions_moved": 0}
     from .cover_info import extract as cover_fields
 
+    _unflatten_styles(raws)
     cover, old_cover = cover_fields(raws)  # the student's own cover page: read, then kept hidden
     stats["cover_lines"] = len(old_cover)
 
@@ -156,6 +162,15 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
         text = r.text.strip()
         if r.style.startswith("toc") or r.style.startswith("table of figures"):
             continue
+        if RULE_LINE.match(text) or (r.source == "pdf" and PAGE_ONLY.match(text)):
+            dropped.append(idx)  # a line drawn with the keyboard (_____, *****), or a page number left by the PDF
+            continue
+        if LEADERS_END.search(text) and len(text) < 200:
+            text = LEADERS_END.sub("", text).strip()  # "Présentation du projet…………": the dots of a plan typed by hand
+            r.text = text
+            if not text:
+                dropped.append(idx)
+                continue
         if r.style == "code":
             items.append({"type": "code", "text": r.text, "_src": idx})
             continue
@@ -191,6 +206,7 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
         items.append({**_classify_text(r, nxt, base), "_src": idx})
 
     items = _text_tables(items)
+    _announced_chapters(items)
     items = _resolve_numbered(items)
     _assign_levels(items)
     _roles_in_sections(items)
@@ -232,6 +248,39 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
         it.pop("_nomark", None)
         it.pop("_explicit", None)
     return out
+
+
+def _label_family(text: str) -> str | None:
+    """Which numbering a title line carries: "I-" and "II." are one family, "1)" another, "a/" another."""
+    t = text.strip()
+    if CHAPITRE.match(t) or PARTIE.match(t):
+        return "chapitre"
+    if DECIMAL.match(t):
+        return "decimal"
+    if ROMAN.match(t):
+        return "roman"
+    if LETTER.match(t):
+        return "letter"
+    if SINGLE_NUM.match(t):
+        return "digit"
+    if LOWER_ITEM.match(t):
+        return "lower"
+    return None
+
+
+def _unflatten_styles(raws: list[Raw]) -> None:
+    """A file where every title uses the same Word style ("Titre 1" for chapters and sub-sections alike)
+    says nothing about depth; when those titles are numbered in at least two ways, the numbering does.
+    Their style is then ignored, so the usual numbering rules decide the level."""
+    styled = [r for r in raws if re.match(r"^(heading|titre|title)\s*\d?$", r.style) and r.text.strip()]
+    if len(styled) < 5 or len({r.style for r in styled}) != 1:
+        return
+    families = {f for r in styled if (f := _label_family(r.text)) and f != "chapitre"}
+    if len(families) < 2:
+        return
+    for r in styled:
+        if _label_family(r.text):
+            r.style, r.bold = "normal", True
 
 
 def _guess_title(blocks: list[dict]) -> str:
@@ -308,9 +357,10 @@ def _classify_explicit(r: Raw) -> dict | None:
 def _classify_text(r: Raw, nxt: Raw | None, base: float) -> dict:
     text = r.text.strip()
 
-    if PARTIE.match(text) and len(text) < 160:
+    # (a line Word shows with a bullet is an item, even when it reads "Chapitre 1 : …": the plan announced in the introduction)
+    if PARTIE.match(text) and len(text) < 160 and r.list_kind != "bullet":
         return {"type": "heading", "kind": "partie", "text": text}
-    if CHAPITRE.match(text) and len(text) < 160:
+    if CHAPITRE.match(text) and len(text) < 160 and r.list_kind != "bullet":
         return {"type": "heading", "kind": "chapitre", "text": text}
 
     m = re.match(r"^(heading|titre|title)\s*(\d)?$", r.style)
@@ -330,11 +380,6 @@ def _classify_text(r: Raw, nxt: Raw | None, base: float) -> dict:
         body = BULLET.match(text)
         clean = body.group(2) if body else text
         return {"type": "list", "ordered": r.list_kind == "number", "level": min(r.indent, 2), "text": clean}
-
-    if PARTIE.match(text) and len(text) < 160:
-        return {"type": "heading", "kind": "partie", "text": text}
-    if CHAPITRE.match(text) and len(text) < 160:
-        return {"type": "heading", "kind": "chapitre", "text": text}
 
     if SECTION.match(text) and len(text) < 180 and not ENDS_SENTENCE.search(text):
         return {"type": "heading", "kind": "section", "text": text}
@@ -412,6 +457,35 @@ def _cells(text: str) -> list[str] | None:
     return cells if len(cells) >= 2 else None
 
 
+def _announced_chapters(items: list[dict]) -> None:
+    """"Ce rapport s'articule autour de six chapitres : / Chapitre 1 : … / Chapitre 2 : …": chapters announced one
+    under the other in the introduction are a list, not six titles (each would get a page of its own).
+    They are recognised as a run of chapter lines with nothing between them, whose chapters come again later."""
+    def number(it: dict) -> str:
+        m = CHAPITRE.match(it["text"]) or PARTIE.match(it["text"])
+        return plain(m.group(0)) if m else ""
+
+    i = 0
+    while i < len(items):
+        j = i
+        seen: set[str] = set()
+        while j < len(items) and items[j].get("type") == "heading" and items[j].get("kind") in ("chapitre", "partie"):
+            if number(items[j]) in seen:
+                break  # "Chapitre 1" again: the real chapter starts right after the announced ones
+            seen.add(number(items[j]))
+            j += 1
+        if j - i >= 2:
+            later = {number(it) for it in items[j:] if it.get("type") == "heading" and it.get("kind") in ("chapitre", "partie")}
+            run = items[i:j] if j < len(items) else []
+            again = sum(number(it) in later for it in run)
+            # three chapter lines in a row with no text between them are never three chapters; two must come again later
+            if run and later and (len(run) >= 3 and again >= 1 or again == len(run)):
+                for it in run:
+                    it.pop("kind", None)
+                    it.update({"type": "list", "ordered": False, "level": 0, "_nomark": True})
+        i = max(j, i + 1)
+
+
 def _resolve_numbered(items: list[dict]) -> list[dict]:
     """'1. xxx' lines: a run of them is a numbered list; an isolated short one is a heading."""
     out = []
@@ -421,6 +495,8 @@ def _resolve_numbered(items: list[dict]) -> list[dict]:
             continue
         prev_c = i > 0 and items[i - 1].get("type") in ("numcand", "list")
         next_c = i + 1 < len(items) and items[i + 1].get("type") in ("numcand", "list")
+        if next_c and items[i + 1].get("type") == "list" and not items[i + 1].get("ordered") and not prev_c:
+            next_c = False  # "2. Matériel utilisé" then bullets: a title and its list, not a numbered list
         # after a *bullet* list, a short "2. Xxx" followed by text is the next section, not a list item
         after_bullets = i > 0 and items[i - 1].get("type") == "list" and not items[i - 1].get("ordered")
         if it["title_like"] and not next_c and (not prev_c or after_bullets or it.get("bold") or it.get("nodot")):
@@ -508,12 +584,20 @@ def _meta(blocks: list[dict]) -> dict:
     text_head = " ".join(b.get("text", "") for b in blocks[:40]).lower()
     headings = [b for b in blocks if b["type"] == "heading"]
     titles = " ".join(b.get("text", "") for b in blocks[:3] if b["type"] in ("title", "heading"))
-    if "memoire" in plain(text_head) or "mémoire" in text_head:
+    head = plain(text_head)
+    letter = words < 700 and len(headings) <= 2 and re.search(r"\bobjet\s*:|veuillez agreer|je vous prie d.agreer|je soussign", head)
+    if letter:
+        kind = "administratif"  # "Objet : demande de stage académique" is a letter, not an internship report
+    elif re.search(r"\bmemoire\b|\bthese\b|\bdissertation\b|\bthesis\b", head):
         kind = "memoire"
-    elif re.search(r"rapport de stage|stage acad|stage professionnel", text_head):
+    elif re.search(r"rapport de stage|stage acad|stage professionnel|stage effectue|internship report|stage de (participation|perfectionnement|fin)", head):
         kind = "rapport_stage"
     elif words < 1500 and ADMIN.search(text_head):
         kind = "administratif"
+    elif re.search(r"\bexpose\b", head) and words < 6000:
+        kind = "expose"
+    elif re.search(r"rapport d[e'’ ]\s?(projet|activit|etude|mission|synthese|tp|travaux)|projet (tutore|de fin|tuteure)|cahier des charges|\breport\b", head):
+        kind = "rapport"
     elif COURSE.search(titles):
         kind = "cours"
     elif words >= 2500 and len(headings) >= 5:

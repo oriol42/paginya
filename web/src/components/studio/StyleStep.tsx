@@ -2,7 +2,8 @@
 
 import { STYLES } from "@/lib/cover";
 import { PALETTES } from "@/lib/cover/palettes";
-import type { StyleId } from "@/lib/cover/types";
+import type { FontId, StyleId } from "@/lib/cover/types";
+import { CustomColor, FontPicker } from "./LookExtras";
 import { CoverView } from "../CoverView";
 import { Toggle } from "../ui";
 import { Icon } from "@/components/Icon";
@@ -17,6 +18,10 @@ type Props = {
   onPalette: (id: string) => void;
   onMono: (v: boolean) => void;
   onFrame: (v: boolean) => void;
+  fontId: FontId;
+  customColor?: string;
+  onFont: (id: FontId) => void;
+  onCustom: (color: string) => void;
 };
 
 export function StyleStep(p: Props) {
@@ -66,9 +71,15 @@ export function StyleStep(p: Props) {
             onClick={() => p.onMono(!p.mono)}
             className={`h-12 rounded-full px-4 text-sm font-bold transition ${p.mono ? "bg-ink text-white" : "bg-paper text-ink/80 ring-1 ring-black/10"}`}
           >
-            ◐ Noir & blanc
+            Noir & blanc
           </button>
+          <CustomColor customColor={p.customColor} customActive={!p.mono && p.paletteId === "custom"} onCustom={p.onCustom} />
         </div>
+      </section>
+
+      <section>
+        <h3 className="mb-3 text-xs font-bold tracking-wider text-ink/60 uppercase">Police</h3>
+        <FontPicker fontId={p.fontId} onFont={p.onFont} />
       </section>
 
       {p.style === "officiel" && <Toggle label="Cadre autour de la page" checked={p.frame} onChange={p.onFrame} />}

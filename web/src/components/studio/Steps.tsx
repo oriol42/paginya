@@ -42,7 +42,7 @@ export function EssentialsStep({ form, onChange }: StepProps) {
             value={form.institutionId}
             onChange={async (e) => {
               const inst = institution(e.target.value);
-              onChange({ institutionId: inst.id, headerFr: inst.fr.join("\n"), headerEn: inst.en.join("\n") });
+              onChange({ institutionId: inst.id, headerFr: inst.fr.join("\n"), headerEn: inst.en.join("\n"), lang: inst.english ? "en" : "fr" });
               setCustom(inst.id === "autre" || inst.id === "lycee");
               // the school's logos come with it (the user can still change or remove them)
               const [logo, logo2] = await Promise.all([inst.logo ? logoData(inst.logo) : undefined, inst.logo2 ? logoData(inst.logo2) : undefined]);
@@ -58,6 +58,20 @@ export function EssentialsStep({ form, onChange }: StepProps) {
               <p className="text-xs text-ink/60">Une ligne par niveau : français en haut, anglais en bas.</p>
             </div>
           )}
+          <div className="mt-3 flex items-center gap-2 text-[14px]">
+            <span className="text-ink/70">Langue de la page :</span>
+            {(["fr", "en"] as const).map((l) => (
+              <button
+                key={l}
+                type="button"
+                aria-pressed={(form.lang ?? "fr") === l}
+                onClick={() => onChange({ lang: l })}
+                className={`press rounded-md px-3 py-1.5 font-bold ${(form.lang ?? "fr") === l ? "bg-ink text-white" : "bg-paper text-ink/80 ring-1 ring-black/10"}`}
+              >
+                {l === "fr" ? "Français d'abord" : "English first"}
+              </button>
+            ))}
+          </div>
         </Field>
       ) : (
         <Field label="Entreprise, association ou école">

@@ -23,7 +23,7 @@ from PIL import Image
 
 from .. import render as cover_render
 
-PRELIM_SPECIALS = {"dedicace", "epigraphe", "remerciements", "avant_propos", "sigles", "resume", "abstract"}
+PRELIM_SPECIALS = {"dedicace", "epigraphe", "remerciements", "avant_propos", "sigles", "resume", "abstract", "glossaire"}
 NO_TOC_SPECIALS = {"dedicace", "epigraphe"}  # never listed in the table of contents
 
 THEMES: dict[str, dict] = {

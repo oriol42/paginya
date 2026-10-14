@@ -6,13 +6,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, type Order } from "@/lib/api";
 import { STYLES, loadCoverFonts, renderCover } from "@/lib/cover";
 import { KINDS } from "@/lib/cover/kinds";
-import { PALETTES } from "@/lib/cover/palettes";
 import type { CoverForm, StyleId } from "@/lib/cover/types";
 import { CoverView } from "../CoverView";
 import { Logo } from "../Logo";
 import { PaySheet } from "../PaySheet";
 import { KindPicker } from "./KindPicker";
-import { ORDER_KEY, STORAGE_KEY, initialState, missingFields, switchKind, type StudioState } from "./state";
+import { ORDER_KEY, STORAGE_KEY, coverOpts, initialState, missingFields, switchKind, type StudioState } from "./state";
 import { DetailsStep, EssentialsStep } from "./Steps";
 import { StyleStep } from "./StyleStep";
 import { Icon } from "@/components/Icon";
@@ -63,8 +62,7 @@ export function Studio() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* quota / private mode */ }
   }, [state, fontsReady, step]);
 
-  const palette = PALETTES.find((p) => p.id === state.paletteId) ?? PALETTES[0];
-  const opts = useMemo(() => ({ palette, mono: state.mono, frame: state.frame }), [palette, state.mono, state.frame]);
+  const opts = useMemo(() => coverOpts(state), [state.paletteId, state.customColor, state.mono, state.frame, state.fontId]); // eslint-disable-line react-hooks/exhaustive-deps
   const svg = useMemo(() => (fontsReady ? renderCover(state.form, state.style, opts) : ""), [fontsReady, state.form, state.style, opts]);
   const thumbs = useMemo(() => {
     if (!fontsReady || step !== 3) return null;
@@ -192,6 +190,10 @@ export function Studio() {
                 thumbs={thumbs}
                 onStyle={(style) => setState((s) => ({ ...s, style, styleTouched: true }))}
                 onPalette={(paletteId) => setState((s) => ({ ...s, paletteId }))}
+                fontId={state.fontId ?? "auto"}
+                customColor={state.customColor}
+                onFont={(fontId) => setState((s) => ({ ...s, fontId }))}
+                onCustom={(customColor) => setState((s) => ({ ...s, customColor, paletteId: "custom", mono: false }))}
                 onMono={(mono) => setState((s) => ({ ...s, mono }))}
                 onFrame={(frame) => setState((s) => ({ ...s, frame }))}
               />

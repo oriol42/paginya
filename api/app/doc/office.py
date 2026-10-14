@@ -46,6 +46,26 @@ def finalize(src_docx: Path, out_docx: Path | None, out_pdf: Path | None, out_la
         raise OfficeError(proc.stderr.decode("utf-8", "replace")[-800:] or "Échec de la mise en page")
 
 
+def to_docx(src: Path, dst: Path) -> None:
+    """An old Word (.doc), OpenDocument (.odt) or RTF file saved as .docx by LibreOffice, so the rest works as usual."""
+    profile = DATA_DIR / "lo-convert"  # its own profile: the layout worker keeps the other one open
+    profile.mkdir(parents=True, exist_ok=True)
+    out_dir = dst.parent / "converted"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with _lock:
+        try:
+            proc = subprocess.run(
+                ["soffice", f"-env:UserInstallation=file://{profile}", "--headless", "--norestore", "--convert-to", "docx:MS Word 2007 XML",
+                 "--outdir", str(out_dir), str(src)], capture_output=True, timeout=180)
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            raise OfficeError("Conversion impossible") from exc
+    made = out_dir / f"{src.stem}.docx"
+    if not made.is_file() or made.stat().st_size == 0:
+        raise OfficeError(proc.stderr.decode("utf-8", "replace")[-400:] or "Conversion impossible")
+    made.replace(dst)
+    out_dir.rmdir()
+
+
 def layout(src_docx: Path, cache: Path, out_pdf: Path | None = None) -> list[list] | None:
     """The real page of each top-level paragraph ([[page, text]], a table is page 0), read once then cached.
 
@@ -71,12 +91,15 @@ def page_count(pdf: Path) -> int:
     return 0
 
 
-def _rasterize(pdf: Path, out_dir: Path, first: int, last: int, watermark: bool, dpi: int) -> None:
+def _rasterize(pdf: Path, out_dir: Path, first: int, last: int, watermark: bool, dpi: int, alive=lambda: True) -> None:
     prefix = out_dir / f"r{first}"
     # Raw PPM output: pdftoppm's own PNG compression costs ~15x the drawing itself.
     subprocess.run(["pdftoppm", "-r", str(dpi), "-f", str(first), "-l", str(last), str(pdf), str(prefix)],
                    check=True, capture_output=True)
     for raw in sorted(out_dir.glob(f"r{first}-*.ppm")):
+        if not alive():
+            raw.unlink(missing_ok=True)  # a newer layout started: these pages are no longer the document
+            continue
         n = int(raw.stem.rsplit("-", 1)[1])
         with Image.open(raw) as img:
             page = img.convert("RGB")
@@ -88,10 +111,26 @@ def _rasterize(pdf: Path, out_dir: Path, first: int, last: int, watermark: bool,
         raw.unlink()
 
 
+# One background drawing per document at a time: {folder: (generation, thread)}. Laying a document out again while
+# the pages of the previous layout are still being drawn used to mix old pages into the new ones, and the old
+# job removed the new ".pending" marker (pages then answered "not found").
+_jobs: dict[str, tuple[int, threading.Thread | None]] = {}
+_jobs_lock = threading.Lock()
+
+
 def previews(pdf: Path, out_dir: Path, watermark: bool, dpi: int = PREVIEW_DPI, pages: int | None = None) -> int:
     """First pages now, the others in a background thread (the page route waits for them)."""
+    key = str(out_dir)
+    with _jobs_lock:
+        generation = _jobs.get(key, (0, None))[0] + 1
+        previous = _jobs.get(key, (0, None))[1]
+        _jobs[key] = (generation, None)
+    if previous is not None and previous.is_alive():
+        previous.join(timeout=60)  # it stops at its next page
+    alive = lambda: _jobs.get(key, (0, None))[0] == generation  # noqa: E731
+
     out_dir.mkdir(parents=True, exist_ok=True)
-    for old in [*out_dir.glob("*.webp"), *out_dir.glob("*.png")]:
+    for old in [*out_dir.glob("*.webp"), *out_dir.glob("*.png"), *out_dir.glob("*.ppm"), *out_dir.glob(".*.webp")]:
         old.unlink(missing_ok=True)
     total = pages or page_count(pdf)
     if total == 0:
@@ -105,11 +144,20 @@ def previews(pdf: Path, out_dir: Path, watermark: bool, dpi: int = PREVIEW_DPI, 
         def rest() -> None:
             try:
                 for start in range(head + 1, total + 1, 8):
-                    _rasterize(pdf, out_dir, start, min(start + 7, total), watermark, dpi)
+                    if not alive():
+                        return
+                    _rasterize(pdf, out_dir, start, min(start + 7, total), watermark, dpi, alive)
+            except (OSError, subprocess.CalledProcessError):
+                pass  # the folder was removed or replaced under us (document deleted, new layout)
             finally:
-                marker.unlink(missing_ok=True)
+                if alive():
+                    marker.unlink(missing_ok=True)
 
-        threading.Thread(target=rest, daemon=True).start()
+        thread = threading.Thread(target=rest, daemon=True)
+        with _jobs_lock:
+            if alive():
+                _jobs[key] = (generation, thread)
+        thread.start()
     return total
 
 

@@ -134,7 +134,10 @@ def model() -> Model | None:
 
 
 # the rules' own bullet pattern (wider than the model feature: "=>", "->", "+ ")
-from .detect import BULLET as _BULLET  # noqa: E402
+from .detect import BULLET as _BULLET, _label_family  # noqa: E402
+
+
+_NUMBERED_KINDS = ("roman", "letter", "dec1", "dec2", "dec3", "dec4")
 
 
 def refine(raws: list[Raw], trace: dict[int, dict], base: float, threshold: float = 0.9) -> int:
@@ -163,6 +166,8 @@ def refine(raws: list[Raw], trace: dict[int, dict], base: float, threshold: floa
             continue  # a heading never follows "… les suivantes :" (that's an enumeration)
         if H1 <= k <= H4:
             lvl = k - H1 + 1
+            if t == "heading" and (it.get("kind") in _NUMBERED_KINDS or _label_family(raws[i].text)):
+                continue  # "1)" under "I)": its depth comes from the numbering, the same for all its siblings
             if t != "heading" or it.get("level") != lvl:
                 if t != "heading":
                     it.pop("ordered", None)

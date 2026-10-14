@@ -259,3 +259,28 @@ Le script lance les tests du serveur (s'ils échouent, rien n'est publié), enre
 - « 2025-2026 » était écrit en dur (page de garde, studio, épreuve). Remplacé par `academicYear()` (`web/src/lib/cover/year.ts`) : l'année commence en septembre.
 - Réveil des serveurs laissé tel quel (9 h-19 h) : décision du fondateur, les étudiants travaillent surtout en journée pour l'instant.
 - À faire avant la pub : vrai paiement Fapshi sur téléphone (le seul essai, le 28/09, a fini en FAILED).
+
+## Banc d'essai sur 86 documents + corrections du moteur + pages de garde (14/10/2026) — local, PAS encore publié
+**Corpus** (`api/data/corpus/`, non versionné, 34 Mo) : 8 rapports/mémoires PDF de DICAMES, 34 fichiers d'étudiants pris sur GitHub (.docx, .doc, .odt), 11 documents réels de l'ordinateur, 33 documents « mis en forme à la main » fabriqués par `handmade.py` (titres en gras/soulignés/majuscules sans styles Word, numérotations I- 1) a/ A/, sommaire tapé, pages poussées par des lignes vides, Maj+Entrée, avec ou sans page de garde, version collée en texte). Les 33 ont leur plan attendu (`*.truth.json`).
+**Outils** (`api/ml/study/bench/`) : `bench.py <corpus> <sortie> [filtre]` (vraie API : création → validation → rendu, dans les deux modes), `report.py <sortie>`, `sheet.py` (planche d'images d'un PDF), `kinds.py` (tous les types sur 8 documents), `handmade.py <dossier>`. Lancer avec `PROPRE_DATA_DIR=<dossier temporaire>`.
+**Mesure** sur les 31 documents à plan connu : titres retrouvés 95,2 % → 100 %, précision 95,0 % → 98,3 %, bons niveaux 81,0 % → 95,7 %. 86 documents, 0 échec.
+
+Corrigé :
+- Garde : un document dont le 1er titre n'est pas un mot connu (« A/ Objectif du TP ») était lu comme une longue page de garde et ses lignes courtes étaient cachées. La garde s'arrête maintenant au saut de page, à 6 lignes vides, après l'année académique, à un titre Word ou numéroté, à un vrai paragraphe (`cover_info._body_starts` ; `Raw.new_page` / `Raw.gap` remplis par `from_docx` et `from_text`). Garde sans noms (logo + « RAPPORT DE STAGE » + sujet) reconnue.
+- Niveaux : le modèle ne change plus le niveau d'un titre numéroté (`ml.refine` + `detect._label_family`) ; titres tous en « Titre 1 » mais numérotés de 2 façons : la numérotation décide (`_unflatten_styles`) ; « 1/ » reconnu ; « 2. Matériel » suivi de puces = titre.
+- Word « fait à la main » (moins de 60 % des titres avec un style Word, pas de sommaire automatique) : mode `rebuild` par défaut au lieu de `keep` (`existing.handmade`, calculé dans `doc_routes.create`), expliqué sur l'écran d'analyse avec le bouton « Plutôt garder mon fichier tel quel ».
+- Mode `keep` : un sommaire tapé à la main sous « SOMMAIRE » est remplacé, plus doublé.
+- Paragraphes à plusieurs lignes (Maj+Entrée) découpés ou recollés (`extract._split_breaks`). Lignes de tirets/astérisques et numéros de page seuls (PDF) retirés, pointillés d'un plan tapé retirés, chapitres annoncés dans l'introduction = liste.
+- Majuscules : « DE, DES, LA… » ne sont plus pris pour des sigles ; pages spéciales, parties et chapitres harmonisés en capitales avec accents quand la majorité l'est (`clean.harmonise_tops`).
+- Sections en anglais (Dedication, Acknowledgements…), glossaire ; type : lettre avec « Objet : demande de stage » = administratif, exposé, rapport de projet.
+- `.doc`, `.odt`, `.rtf` acceptés : convertis en `.docx` par LibreOffice à l'arrivée (`office.to_docx`).
+- Aperçus : relancer une mise en page pendant que les pages de la précédente se dessinaient mélangeait les pages et donnait des « page introuvable » (`office.previews`, un seul travail de fond par document).
+- Changer de type de document : testé sur 8 documents × 7 types, rien ne casse.
+
+Pages de garde : 12 modèles (+ Classique, Bloc couleur, Rubans, Deux tons), 17 couleurs + « Ma couleur », choix de police (Times, Poppins, Playfair, Inter), langue « English first » (colonne anglaise à gauche, libellés en anglais ; automatique pour Buea, Bamenda, ICT University, CUIB), 12 établissements ajoutés (facultés de Buea et Bamenda, lycée bilingue, GHS, collège). Épreuves : option « École anglophone ».
+
+Reste, par ordre d'intérêt :
+1. PDF : tableaux (liste des tableaux, sigles) aplatis en lignes, notes de bas de page prises pour des titres. Les PDF restent nettement moins bons que les Word.
+2. Mode `keep` : il utilise son propre détecteur de titres (`keep.find_titles`), plus faible que `detect` (ex. 2 titres trouvés contre 47).
+3. Garde lue : rôle des encadreurs parfois générique ; les nouveaux modèles n'ont pas été vérifiés avec deux logos.
+4. Élargir le corpus avec de vrais Word camerounais (ceux des premiers utilisateurs, avec leur accord).

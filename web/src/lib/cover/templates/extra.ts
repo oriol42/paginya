@@ -4,7 +4,7 @@ import type { CoverModel, RenderOptions } from "../types";
 import { H, W, close, logo, logos, open, people } from "./common";
 
 /** Bilingual header columns (FR left, EN right) with star separators; returns the y below. */
-function columns(out: string[], m: CoverModel, colW: number, xL: number, xR: number, y0: number, color: string, starColor: string, size = 9): number {
+export function columns(out: string[], m: CoverModel, colW: number, xL: number, xR: number, y0: number, color: string, starColor: string, size = 9): number {
   const head: FontSpec = { family: "Tinos", weight: 700, size };
   const motto: FontSpec = { family: "Tinos", size, italic: true };
   const draw = (groups: string[][], x: number): number => {
@@ -21,7 +21,7 @@ function columns(out: string[], m: CoverModel, colW: number, xL: number, xR: num
   return Math.max(draw(m.headerFr, xL), draw(m.headerEn, xR));
 }
 
-function footer(out: string[], m: CoverModel, y: number, f: FontSpec, color: string, x = W / 2): void {
+export function footer(out: string[], m: CoverModel, y: number, f: FontSpec, color: string, x = W / 2): void {
   const text = [m.footerLeft, m.footerRight].filter(Boolean).join("  ·  ");
   textBlock(out, [text], x, y, f, color, { anchor: x === W / 2 ? "middle" : "start" });
 }
@@ -82,10 +82,10 @@ export function cadre(m: CoverModel, o: RenderOptions): string {
   const head: FontSpec = { family: "Tinos", weight: 700, size: 10 };
   let y = 60;
   for (const line of m.headerFr.flat()) {
-    const f = /Paix/.test(line) ? { ...head, weight: 400, italic: true } : head;
+    const f = /Paix|Peace/.test(line) ? { ...head, weight: 400, italic: true } : head;
     y = textBlock(out, wrap(line, f, W - 260), W / 2, y, f, "#111111", { anchor: "middle", lineHeight: 12.5 });
   }
-  const en = m.headerEn.flat().filter((l) => !/Peace|REPUBLIC|MINISTRY/.test(l));
+  const en = m.headerEn.flat().filter((l) => !/Peace|REPUBLIC|MINISTRY|Paix|RÉPUBLIQUE|MINISTÈRE/.test(l));
   if (en.length) {
     y = textBlock(out, en.slice(-2), W / 2, y + 2, { family: "Tinos", size: 9, italic: true }, "#444444", { anchor: "middle", lineHeight: 11 });
   }
@@ -123,7 +123,7 @@ export function lateral(m: CoverModel, o: RenderOptions): string {
   out.push(`<g transform="translate(${band / 2 + label.size * 0.35} ${H - 90}) rotate(-90)">`);
   textBlock(out, label.lines, 0, 0, { family: "Poppins", weight: 800, size: label.size, letterSpacing: 2 }, "#FFFFFF");
   out.push("</g>");
-  textBlock(out, [m.footerLeft.replace(/^Année académique\s*/, "")], band / 2, 70, { family: "Poppins", weight: 700, size: 12 }, "#FFFFFF", { anchor: "middle" });
+  textBlock(out, [m.footerLeft.replace(/^(Année académique|Academic year)\s*/, "")], band / 2, 70, { family: "Poppins", weight: 700, size: 12 }, "#FFFFFF", { anchor: "middle" });
 
   const X = band + 42;
   const R = W - 44;
@@ -132,7 +132,7 @@ export function lateral(m: CoverModel, o: RenderOptions): string {
   if (m.logo2) { logo(out, m.logo2, lx, 44, 58); lx += 66; }
   const orgF: FontSpec = { family: "Poppins", weight: 600, size: 8.5, letterSpacing: 0.6 };
   let y = m.logo || m.logo2 ? 124 : 60;
-  const org = m.headerFr.flat().filter((l) => !/RÉPUBLIQUE|Paix|MINISTÈRE/i.test(l));
+  const org = m.headerFr.flat().filter((l) => !/RÉPUBLIQUE|Paix|MINISTÈRE|REPUBLIC|Peace|MINISTRY/i.test(l));
   y = textBlock(out, org.flatMap((l) => wrap(l, orgF, R - X)).slice(0, 4), X, y, orgF, "#475569", { lineHeight: 11.5 });
 
   y = Math.max(y + 110, 300);
@@ -163,7 +163,7 @@ export function vague(m: CoverModel, o: RenderOptions): string {
   out.push(`<path d="M0 ${H - 130}C${W * 0.35} ${H - 60} ${W * 0.7} ${H - 170} ${W} ${H - 110}V${H - 124}C${W * 0.68} ${H - 186} ${W * 0.33} ${H - 78} 0 ${H - 148}Z" fill="${c.accent}" opacity="0.6"/>`);
 
   const orgF: FontSpec = { family: "Poppins", weight: 600, size: 9, letterSpacing: 0.8 };
-  const org = m.headerFr.flat().filter((l) => !/RÉPUBLIQUE|Paix|MINISTÈRE/i.test(l));
+  const org = m.headerFr.flat().filter((l) => !/RÉPUBLIQUE|Paix|MINISTÈRE|REPUBLIC|Peace|MINISTRY/i.test(l));
   textBlock(out, org.flatMap((l) => wrap(l, orgF, W - 120)).slice(0, 3), W / 2, 40, orgF, "#FFFFFF", { anchor: "middle", lineHeight: 12 });
   if (m.logo || m.logo2) {
     const w = logos(out, m, W / 2, 180, 74, 14);

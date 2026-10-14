@@ -77,6 +77,8 @@ export type DocAnalysis = {
   exam: boolean;
   docx: boolean;
   existing: DocExisting | null;
+  /** A Word file formatted by hand (bold titles, no styles): rebuilt by default, the user may keep it instead. */
+  handmade?: boolean;
   plan: DocPlan;
   hint: string;
 };

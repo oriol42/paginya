@@ -34,6 +34,7 @@ MAX_UPLOAD = 15 * 1024 * 1024
 MAX_TEXT = 1_500_000
 TIERS = ["document_court", "rapport", "memoire"]
 CONVERTIBLE = (".docx",)
+OLD_WORD = (".doc", ".odt", ".rtf")  # opened by LibreOffice and saved as .docx on arrival
 BLOCK_TYPES = {"heading", "paragraph", "list", "table", "figure", "caption", "source", "quote", "code", "title"}
 BLOCK_KEYS = {"id", "type", "text", "level", "ordered", "rows", "image", "of", "special", "role",
               "term", "definition", "part", "hidden", "sub"}
@@ -165,6 +166,15 @@ def create(body: DocIn) -> dict:
         src = folder / f"source{ext}"
         src.write_bytes(raw_bytes)
         try:
+            if ext in OLD_WORD:  # .doc, .odt, .rtf: LibreOffice saves it as .docx, then it is a Word file like any other
+                upload = src.rename(folder / f"upload{ext}")
+                src, ext = folder / "source.docx", ".docx"
+                try:
+                    office.to_docx(upload, src)
+                except office.OfficeError as exc:
+                    raise ExtractError("Ce fichier est illisible. Enregistre-le en .docx (Fichier > Enregistrer sous) puis réessaie.") from exc
+                finally:
+                    upload.unlink(missing_ok=True)
             if ext == ".docx":
                 raws = from_docx(src, folder / "images")
             elif ext == ".pdf":
@@ -172,8 +182,6 @@ def create(body: DocIn) -> dict:
             elif ext in (".txt", ".md", ".markdown"):
                 content = raw_bytes.decode("utf-8", "replace")
                 raws = from_markdown(content) if ext != ".txt" or looks_like_markdown(content) else from_text(content)
-            elif ext == ".doc":
-                raise ExtractError("Ancien format .doc : enregistre-le en .docx (Fichier > Enregistrer sous) puis réessaie.")
             else:
                 raise ExtractError("Format non pris en charge. Utilise un fichier Word (.docx), PDF ou texte.")
         except ExtractError as exc:
@@ -204,7 +212,7 @@ def create(body: DocIn) -> dict:
         "render": None,
     }
     existing = None
-    is_docx = bool(body.data and body.filename and Path(body.filename).suffix.lower() == ".docx")
+    is_docx = bool(body.data and body.filename and Path(body.filename).suffix.lower() in (".docx", *OLD_WORD))
     if is_docx:
         # What the Word file already has (cover page, sommaire, page numbers): shown to the user, kept unless they say otherwise.
         (folder / "before").mkdir(exist_ok=True)
@@ -214,6 +222,12 @@ def create(body: DocIn) -> dict:
         except Exception:  # an odd file python-docx cannot read: the normal flow still works
             existing = None
         if existing:
+            # Titles only made to look like titles (bold, capitals, numbers typed by hand) instead of Word's styles:
+            # the file has no real structure, so it is rebuilt by default (keeping it would keep its disorder).
+            styled = sum(1 for r in raws if re.match(r"^(heading|titre)\s*\d", r.style) and r.text.strip())
+            found = doc["meta"].get("headings", 0)
+            existing["styled"] = styled
+            existing["handmade"] = not existing["toc"] and found >= 3 and styled < 0.6 * found
             doc["meta"]["existing"] = existing
             cover_info = doc["meta"].get("cover")
             if cover_info is not None and not cover_info.get("header_fr"):
@@ -229,8 +243,9 @@ def create(body: DocIn) -> dict:
     doc["analysis"] = report
     doc["plan"] = report["plan"]
     doc["confirmed"] = False
-    if existing and (existing["cover"] or existing["toc"] or existing["page_numbers"] or existing["own_layout"]):
+    if existing and (existing["cover"] or existing["toc"] or existing["page_numbers"] or existing["own_layout"]) and not existing.get("handmade"):
         doc["mode"] = "keep"  # rebuilding would lose what only this file has (its cover, text boxes, letterhead…)
+    # A file formatted by hand (titles in bold, no Word styles) is rebuilt: keeping it would keep its disorder.
     if body.convert:
         ext = Path(body.filename or "").suffix.lower()
         # PDF -> Word is written below but not sold yet: read from the text alone it loses the pictures and the cover

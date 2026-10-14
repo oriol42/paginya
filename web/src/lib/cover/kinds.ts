@@ -1,5 +1,6 @@
 import { MINESEC_EN, MINESEC_FR, MINISTRY_EN, MINISTRY_FR, REPUBLIC_EN, REPUBLIC_FR, institution } from "../institutions";
 import type { CoverForm, CoverModel, DocKind, StyleId } from "./types";
+import { coverWords } from "./lang";
 import { academicYear } from "./year";
 
 export type FieldKey =
@@ -98,6 +99,8 @@ function groups(lines: string): string[][] {
 export function compose(form: CoverForm): CoverModel {
   const def = KINDS[form.kind];
   const inst = institution(form.institutionId);
+  const lang = form.lang ?? "fr";
+  const words = coverWords(lang);
   const headerFr: string[][] = [];
   const headerEn: string[][] = [];
   if (def.academic && form.showRepublic) {
@@ -114,8 +117,10 @@ export function compose(form: CoverForm): CoverModel {
   headerFr.push(...fr.flatMap((g) => g.map((l) => [l])));
   headerEn.push(...en.flatMap((g) => g.map((l) => [l])));
 
-  const mention: string[] = [];
-  if (form.kind === "rapport_stage") {
+  const mention: string[] = words.mention(form.kind, form);
+  if (lang === "en") {
+    // written above in English
+  } else if (form.kind === "rapport_stage") {
     if (form.structure || form.period)
       mention.push(`Stage effectué ${form.structure ? `à ${form.structure}` : ""} ${form.period.replace(/^(Du|Période)\b/, (w) => w.toLowerCase())}`.replace(/\s+/g, " ").trim());
     if (form.degree) mention.push(`Présenté en vue de l'obtention du diplôme de ${form.degree}`);
@@ -127,33 +132,36 @@ export function compose(form: CoverForm): CoverModel {
     mention.push(form.degree);
   }
 
+  const own = lang === "en" && en.length ? en : fr; // the school's name in the language of the cover
   const orgLine = def.academic
-    ? (fr[fr.length - 1]?.[fr[fr.length - 1].length - 1] ?? inst.fr[inst.fr.length - 1])
+    ? (own[own.length - 1]?.[own[own.length - 1].length - 1] ?? (lang === "en" ? inst.en : inst.fr).slice(-1)[0])
     : (fr.flat()[0] ?? "");
 
-  const yearText = form.year ? `Année académique ${form.year}` : "";
+  const yearText = form.year ? words.year(form.year) : "";
   const dateText = [form.place, form.date].filter(Boolean).join(", ");
 
   return {
-    headerFr,
-    headerEn,
+    // the first language of the school is printed on the left: English for Buea, Bamenda…
+    headerFr: lang === "en" ? headerEn : headerFr,
+    headerEn: lang === "en" ? headerFr : headerEn,
     headerMissing: def.academic && !form.headerFr.trim(),
     logo: form.logo,
     logo2: form.logo2,
     org: orgLine,
-    docLabel: form.docLabel || def.docLabel,
+    docLabel: words.docLabel(form.docLabel || def.docLabel),
     title: form.title.trim(),
     mention,
     specialty: form.specialty,
-    authorsLabel: def.authorsLabel,
+    authorsLabel: words.authors(def.authorsLabel),
     authors: form.authors.filter((a) => a.name.trim()),
-    supervisors: form.supervisors.filter((s) => s.name.trim()),
+    supervisors: form.supervisors.filter((s) => s.name.trim()).map((s) => ({ ...s, role: words.role(s.role ?? words.supervisor) + (lang === "en" ? ":" : "") })),
     jury: form.jury.split("\n").map((l) => l.trim()).filter(Boolean),
+    juryLabel: words.jury,
     footerLeft: yearText || dateText,
     footerRight: yearText ? dateText : "",
     sample: {
       mention: SAMPLE_MENTION[form.kind],
-      supervisors: def.supervisorRoles.map((role) => ({ role, name: "Nom de l'encadreur", info: "Grade / fonction" })),
+      supervisors: def.supervisorRoles.map((role) => ({ role: words.role(role) + (lang === "en" ? ":" : ""), name: lang === "en" ? "Name of the supervisor" : "Nom de l'encadreur", info: lang === "en" ? "Grade / position" : "Grade / fonction" })),
     },
   };
 }
@@ -173,6 +181,7 @@ export function emptyForm(kind: DocKind = "rapport_stage"): CoverForm {
   return {
     kind,
     institutionId: inst.id,
+    lang: inst.english ? "en" : "fr",
     headerFr: inst.fr.join("\n"),
     headerEn: inst.en.join("\n"),
     showRepublic: true,

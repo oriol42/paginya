@@ -14,6 +14,7 @@ export type Institution = {
   logo?: string; // university (or the school's only logo)
   logo2?: string; // the faculty / school's own logo, drawn on the other side of the cover
   secondary?: boolean; // secondary school: Ministry of Secondary Education
+  english?: boolean; // English-speaking school: English first on covers and letterheads
 };
 
 // [french, english, university logo]
@@ -22,6 +23,8 @@ const UY2 = ["UNIVERSITÉ DE YAOUNDÉ II – SOA", "THE UNIVERSITY OF YAOUNDE II
 const UDO = ["UNIVERSITÉ DE DOUALA", "THE UNIVERSITY OF DOUALA", "udo"];
 const UDS = ["UNIVERSITÉ DE DSCHANG", "UNIVERSITY OF DSCHANG", "uds"];
 const UN = ["UNIVERSITÉ DE NGAOUNDÉRÉ", "THE UNIVERSITY OF NGAOUNDERE", "un"];
+const UB = ["UNIVERSITÉ DE BUEA", "UNIVERSITY OF BUEA", "ub"];
+const UBA = ["UNIVERSITÉ DE BAMENDA", "THE UNIVERSITY OF BAMENDA", "uba"];
 const UMA = ["UNIVERSITÉ DE MAROUA", "THE UNIVERSITY OF MAROUA", "uma"];
 
 /** A faculty/school of a university carries both logos: the university's and its own (when we have it). */
@@ -31,6 +34,9 @@ function school(id: string, short: string, uni: string[] | null, fr: string, en:
   const own = logo && logo !== uniLogo ? logo : undefined;
   return { id, short, fr: [uni[0], fr], en: [uni[1], en], logo: uniLogo ?? own, logo2: uniLogo ? own : undefined };
 }
+
+/** English-speaking school: its covers print English first. */
+const en = (i: Institution): Institution => ({ ...i, english: true });
 
 export const INSTITUTIONS: Institution[] = [
   // --- Public universities
@@ -56,8 +62,16 @@ export const INSTITUTIONS: Institution[] = [
   school("uds", "Université de Dschang", null, UDS[0], UDS[1], "uds"),
   school("uds-fasa", "UDs · FASA (Agronomie)", UDS, "FACULTÉ D'AGRONOMIE ET DES SCIENCES AGRICOLES", "FACULTY OF AGRONOMY AND AGRICULTURAL SCIENCES", "uds"),
   school("uds-iutfv", "IUT Fotso Victor de Bandjoun", UDS, "INSTITUT UNIVERSITAIRE DE TECHNOLOGIE FOTSO VICTOR", "FOTSO VICTOR UNIVERSITY INSTITUTE OF TECHNOLOGY", "uds"),
-  school("ub", "University of Buea", null, "UNIVERSITÉ DE BUEA", "UNIVERSITY OF BUEA", "ub"),
-  school("uba", "University of Bamenda", null, "UNIVERSITÉ DE BAMENDA", "THE UNIVERSITY OF BAMENDA", "uba"),
+  en(school("ub", "University of Buea", null, "UNIVERSITÉ DE BUEA", "UNIVERSITY OF BUEA", "ub")),
+  en(school("ub-fet", "UB · Faculty of Engineering and Technology", UB, "FACULTÉ DE GÉNIE ET DE TECHNOLOGIE", "FACULTY OF ENGINEERING AND TECHNOLOGY", "ub")),
+  en(school("ub-fs", "UB · Faculty of Science", UB, "FACULTÉ DES SCIENCES", "FACULTY OF SCIENCE", "ub")),
+  en(school("ub-sms", "UB · Social and Management Sciences", UB, "FACULTÉ DES SCIENCES SOCIALES ET DE GESTION", "FACULTY OF SOCIAL AND MANAGEMENT SCIENCES", "ub")),
+  en(school("ub-cot", "UB · College of Technology", UB, "COLLÈGE DE TECHNOLOGIE", "COLLEGE OF TECHNOLOGY", "ub")),
+  en(school("uba", "University of Bamenda", null, "UNIVERSITÉ DE BAMENDA", "THE UNIVERSITY OF BAMENDA", "uba")),
+  en(school("uba-httc", "UBa · HTTC Bambili", UBA, "ÉCOLE NORMALE SUPÉRIEURE DE BAMBILI", "HIGHER TEACHER TRAINING COLLEGE BAMBILI", "uba")),
+  en(school("uba-htttc", "UBa · HTTTC Bambili", UBA, "ÉCOLE NORMALE SUPÉRIEURE D'ENSEIGNEMENT TECHNIQUE DE BAMBILI", "HIGHER TECHNICAL TEACHER TRAINING COLLEGE BAMBILI", "uba")),
+  en(school("uba-nahpi", "UBa · NAHPI (Polytechnic)", UBA, "ÉCOLE NATIONALE SUPÉRIEURE POLYTECHNIQUE DE BAMENDA", "NATIONAL HIGHER POLYTECHNIC INSTITUTE", "uba")),
+  en(school("uba-coltech", "UBa · College of Technology", UBA, "COLLÈGE DE TECHNOLOGIE", "COLLEGE OF TECHNOLOGY", "uba")),
   school("un", "Université de Ngaoundéré", null, UN[0], UN[1], "un"),
   school("un-ensai", "ENSAI Ngaoundéré", UN, "ÉCOLE NATIONALE SUPÉRIEURE DES SCIENCES AGRO-INDUSTRIELLES", "NATIONAL SCHOOL OF AGRO-INDUSTRIAL SCIENCES"),
   school("uma", "Université de Maroua", null, UMA[0], UMA[1], "uma"),
@@ -75,14 +89,17 @@ export const INSTITUTIONS: Institution[] = [
   school("ucac", "UCAC (Université Catholique d'Afrique Centrale)", null, "UNIVERSITÉ CATHOLIQUE D'AFRIQUE CENTRALE", "CATHOLIC UNIVERSITY OF CENTRAL AFRICA", "ucac"),
   school("udm", "Université des Montagnes", null, "UNIVERSITÉ DES MONTAGNES", "UNIVERSITÉ DES MONTAGNES", "udm"),
   school("cosendai", "Université Adventiste Cosendai", null, "UNIVERSITÉ ADVENTISTE COSENDAI", "COSENDAI ADVENTIST UNIVERSITY", "cosendai"),
-  school("ictu", "The ICT University", null, "THE ICT UNIVERSITY", "THE ICT UNIVERSITY", "ictu"),
-  school("cuib", "Catholic University Institute of Buea", null, "INSTITUT UNIVERSITAIRE CATHOLIQUE DE BUEA", "CATHOLIC UNIVERSITY INSTITUTE OF BUEA", "cuib"),
+  en(school("ictu", "The ICT University", null, "THE ICT UNIVERSITY", "THE ICT UNIVERSITY", "ictu")),
+  en(school("cuib", "Catholic University Institute of Buea", null, "INSTITUT UNIVERSITAIRE CATHOLIQUE DE BUEA", "CATHOLIC UNIVERSITY INSTITUTE OF BUEA", "cuib")),
   school("iujns", "Institut Universitaire Joseph Ndi Samba", null, "INSTITUT UNIVERSITAIRE JOSEPH NDI SAMBA", "JOSEPH NDI SAMBA UNIVERSITY INSTITUTE", "iujns"),
   school("iuc", "IUC Douala", null, "INSTITUT UNIVERSITAIRE DE LA CÔTE", "UNIVERSITY INSTITUTE OF THE COAST", "iuc"),
   school("siantou", "Institut Universitaire Siantou", null, "INSTITUT UNIVERSITAIRE SIANTOU", "SIANTOU UNIVERSITY INSTITUTE", "siantou"),
   school("upac", "UPAC (Université Protestante d'Afrique Centrale)", null, "UNIVERSITÉ PROTESTANTE D'AFRIQUE CENTRALE", "PROTESTANT UNIVERSITY OF CENTRAL AFRICA", "upac"),
   // --- Secondary
-  { id: "lycee", short: "Lycée / collège", fr: ["LYCÉE DE …"], en: ["… HIGH SCHOOL"], secondary: true },
+  { id: "lycee", short: "Lycée / collège", fr: ["LYCÉE DE …"], en: ["GOVERNMENT HIGH SCHOOL …"], secondary: true },
+  { id: "lycee-bilingue", short: "Lycée bilingue", fr: ["LYCÉE BILINGUE DE …"], en: ["GOVERNMENT BILINGUAL HIGH SCHOOL …"], secondary: true },
+  { id: "ghs", short: "Government High School (English)", fr: ["LYCÉE DE …"], en: ["GOVERNMENT HIGH SCHOOL …"], secondary: true, english: true },
+  { id: "college", short: "Collège privé", fr: ["COLLÈGE …"], en: ["… COLLEGE"], secondary: true },
   { id: "autre", short: "Autre établissement / entreprise", fr: ["NOM DE L'ÉTABLISSEMENT"], en: ["NAME OF THE INSTITUTION"] },
 ];
 

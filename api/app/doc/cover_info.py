@@ -58,9 +58,41 @@ def _cell_lines(cell: str) -> list[str]:
     return [p.strip() for p in parts if p.strip() and not _ADDRESS.match(p.strip())]
 
 
+_NUMBERED = re.compile(r"^([IVX]{1,4}|[A-H]|\d{1,2})\s*[.\-–)/]\s*(\S.*)$")
+_PEOPLE = re.compile(r"(?i)\b(pr[ée]sent|r[ée]dig|r[ée]alis|par\s*:|membres|encadr|supervis|direction de|sous la)")
+
+
+def _closes_cover(text: str, seen: list[tuple[int, str]]) -> bool:
+    """The academic year written under the names is the last line of a Cameroonian cover page."""
+    m = YEAR.search(text)
+    return bool(m and len(text) < 60 and len(seen) >= 5 and any(_PEOPLE.search(ln) for _, ln in seen))
+
+
+def _body_starts(r, text: str, seen: int, closed: bool) -> bool:
+    """True when this paragraph is no longer the cover page: the text of the document has begun.
+
+    Without this, a document whose first title is not a known word ("A/ Objectif du TP") was read as
+    one long cover page and its short lines were hidden.
+    """
+    if seen < 3:
+        return False
+    if getattr(r, "new_page", False) or getattr(r, "gap", 0) >= 6:
+        return True  # a cover is one page
+    if closed:
+        return not (YEAR.search(text) or HEADER.match(text) or len(text) < 40 and re.search(r"(?i)\b(19|20)\d{2}\b|^(yaound|douala|dschang|buea|bamenda|maroua|ngaound|bertoua|ebolowa|garoua)", text))
+    if re.match(r"^(heading|titre)\s*\d", r.style) and seen >= 5:
+        return True  # a real Word title after the cover lines
+    m = _NUMBERED.match(text)
+    named = re.search(r"\b[A-ZÀ-Ý]{3,}\b", m.group(2)) and len(m.group(2).split()) <= 5 if m else False  # "1- KAMGA Paul"
+    if m and not named and len(text) < 120:
+        return True  # "A/ Objectif du TP", "II- Historique": a section, not a line of the cover
+    return len(text) > 200 and text.rstrip().endswith((".", "!", "?"))  # a real paragraph of text
+
+
 def _lines(raws) -> tuple[list[tuple[int, str]], int]:
     """(raw index, line) for the lines before the body starts (first special page or chapter), table cells included."""
     out, end = [], 0
+    closed = False  # the line that ends a cover ("Année académique 2025-2026" under the names) has been read
     for i, r in enumerate(raws[:60]):
         text = (r.text or "").strip()
         if r.rows:
@@ -77,6 +109,11 @@ def _lines(raws) -> tuple[list[tuple[int, str]], int]:
             continue
         if START.match(text) or r.style.startswith("toc") or len(text) > 400:
             break
+        if closed and _PEOPLE.search(text):
+            closed = False  # the supervisors come after the year on this cover
+        if out and _body_starts(r, text, len(out), closed):
+            break
+        closed = closed or _closes_cover(text, out)
         out.extend((i, ln.strip()) for ln in text.split("\n") if ln.strip())
         end = i + 1
     return _join_wrapped(out), end
@@ -224,8 +261,18 @@ def extract(raws) -> tuple[dict, set[int]]:
             f["title"] = r.text.strip()
             break
 
-    if signals < 2.5 or not (f["header_fr"] or f.get("doc_label")) or not (f["authors"] or f["supervisors"] or f.get("year")):
+    complete = signals >= 2.5 and (f["header_fr"] or f.get("doc_label")) and (f["authors"] or f["supervisors"] or f.get("year"))
+    # A title page with only "RAPPORT DE STAGE" and the subject (no names): still a cover, as long as it is short
+    # and the text clearly starts after it (a special page, a chapter, a new page).
+    bare = bool(f.get("doc_label")) and len(lines) <= 14 and end < len(raws) and all(len(ln) < 160 for _, ln in lines)
+    if not complete and not bare:
         return {}, set()
+    if not complete and "title" not in f:
+        after = [ln for _, ln in lines if ln != f.get("doc_label", "") and not ln.rstrip(" :") == f["doc_label"]]
+        label_at = next((k for k, (_, ln) in enumerate(lines) if ln.rstrip(" :") == f["doc_label"]), -1)
+        rest = [ln for _, ln in lines[label_at + 1:] if 12 <= len(ln) <= 200 and not re.search(r"[.;]$", ln)]
+        if rest:
+            f["title"] = " ".join(rest[:2]).strip(" :«»\"")
     if level := f.pop("level", None):
         f["specialty"] = f"{f['specialty']} · Niveau {level}" if f.get("specialty") else f"Niveau {level}"
     for k in ("header_fr", "header_en"):

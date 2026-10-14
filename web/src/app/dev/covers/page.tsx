@@ -26,6 +26,25 @@ const FORM: CoverForm = {
   date: "Novembre 2026",
 };
 
+const ENGLISH: CoverForm = {
+  ...emptyForm("rapport_stage"),
+  lang: "en",
+  institutionId: "ub-fet",
+  headerFr: "UNIVERSITÉ DE BUEA\nFACULTÉ DE GÉNIE ET DE TECHNOLOGIE",
+  headerEn: "UNIVERSITY OF BUEA\nFACULTY OF ENGINEERING AND TECHNOLOGY",
+  title: "Design and implementation of a stock management system for a pharmacy",
+  structure: "MTN Cameroon, Buea branch",
+  period: "from 1 July to 30 September 2026",
+  degree: "the Bachelor of Engineering (B.Eng) degree in Computer Engineering",
+  specialty: "Option: Software Engineering",
+  authors: [{ name: "NGWA Blessing Fru", info: "Matricule: FE21A256" }],
+  supervisors: [
+    { name: "Dr TABI Peter", role: "Encadreur académique", info: "Senior Lecturer" },
+    { name: "Mr. EBAI John", role: "Encadreur professionnel", info: "IT Manager" },
+  ],
+  date: "October 2026",
+};
+
 export default function DevCovers() {
   const [ready, setReady] = useState(false);
   useEffect(() => { loadCoverFonts().then(() => setReady(true)); }, []);
@@ -37,6 +56,12 @@ export default function DevCovers() {
         <div key={s.id}>
           <p className="mb-2 font-bold">{s.name}</p>
           <CoverView svg={renderCover(FORM, s.id, { palette: PALETTES[i], mono: false, frame: true })} />
+        </div>
+      ))}
+      {STYLES.map((s, i) => (
+        <div key={`${s.id}-en`}>
+          <p className="mb-2 font-bold">{s.name} · English · {["tinos", "poppins", "playfair", "inter"][i % 4]}</p>
+          <CoverView svg={renderCover(ENGLISH, s.id, { palette: PALETTES[(i + 9) % PALETTES.length], mono: false, frame: true, font: (["tinos", "poppins", "playfair", "inter"] as const)[i % 4] }, false)} />
         </div>
       ))}
       {STYLES.map((s) => (

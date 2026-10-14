@@ -113,7 +113,7 @@ export function officiel(m: CoverModel, o: RenderOptions): string {
 
   if (m.jury.length) {
     blocks.push(block((b) => {
-      let y = textBlock(b, ["Membres du jury"], W / 2, 12, { family: "Tinos", weight: 700, size: 11.5 }, ink, { anchor: "middle" });
+      let y = textBlock(b, [m.juryLabel], W / 2, 12, { family: "Tinos", weight: 700, size: 11.5 }, ink, { anchor: "middle" });
       y = textBlock(b, m.jury.slice(0, 5), W / 2, y + 2, { family: "Tinos", size: 11 }, ink, { anchor: "middle" });
       return y;
     }));

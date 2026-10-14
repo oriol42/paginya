@@ -9,7 +9,8 @@ import type { DocCoverInfo, DocMeta } from "@/lib/documents";
 import { INSTITUTIONS, institution, logoData } from "@/lib/institutions";
 import { CoverView } from "../CoverView";
 import { Icon } from "../Icon";
-import { STORAGE_KEY as STUDIO_KEY, initialState, switchKind, type StudioState } from "../studio/state";
+import { STORAGE_KEY as STUDIO_KEY, coverOpts, initialState, switchKind, type StudioState } from "../studio/state";
+import { CustomColor, FontPicker } from "../studio/LookExtras";
 import { DetailsStep, EssentialsStep } from "../studio/Steps";
 import { Select, Toggle } from "../ui";
 
@@ -62,12 +63,17 @@ function fromDocument(meta: DocMeta, info: DocCoverInfo): StudioState {
     const extra = (lines?: string[]) => (lines ?? []).filter((l) => /^(facult|[ée]cole|school|institut|d[ée]partement|department|fili[èe]re|option)/i.test(l) && !known.has(plain(l)));
     Object.assign(form, {
       institutionId: inst.id,
+      lang: inst.english ? "en" : "fr",
       headerFr: [...inst.fr, ...extra(info.header_fr)].join("\n"),
       headerEn: [...inst.en, ...extra(info.header_en)].join("\n"),
     });
   } else if (info.header_fr?.length) {
     const own = (lines?: string[]) => (lines ?? []).filter((l) => !OFFICIAL.test(plain(l))).join("\n");
     Object.assign(form, { institutionId: "autre", headerFr: own(info.header_fr), headerEn: own(info.header_en) });
+  } else if (info.header_en?.length) {
+    // a cover written in English only: English comes first on the new one too
+    const own = (lines?: string[]) => (lines ?? []).filter((l) => !OFFICIAL.test(plain(l))).join("\n");
+    Object.assign(form, { institutionId: "autre", lang: "en", headerFr: "", headerEn: own(info.header_en) });
   }
   form.title = info.title || meta.title || "";
   if (info.authors?.length) form.authors = info.authors.map((a, i): Person => ({ name: a.name, info: a.info ?? (i === 0 ? info.matricule ?? "" : "") }));
@@ -111,7 +117,7 @@ export async function prepareCover(docId: string, meta: DocMeta): Promise<Studio
   return { ...s, form: { ...s.form, logo, logo2 } };
 }
 
-const optsOf = (s: StudioState) => ({ palette: PALETTES.find((p) => p.id === s.paletteId) ?? PALETTES[0], mono: s.mono, frame: s.frame });
+const optsOf = coverOpts;
 
 export async function coverSvg(state: StudioState): Promise<string> {
   await loadCoverFonts();
@@ -238,8 +244,14 @@ export function CoverEditor({ docId, meta, enabled, onEnabled, onSvg, onPreview,
               <button type="button" onClick={() => setState((x) => ({ ...x, mono: !x.mono }))} aria-pressed={state.mono} className={`press h-9 rounded-full px-3.5 text-[13px] font-bold ${state.mono ? "bg-ink text-white" : "bg-paper text-ink/75 ring-1 ring-black/10"}`}>
                 Noir et blanc
               </button>
+              <CustomColor customColor={state.customColor} customActive={!state.mono && state.paletteId === "custom"} onCustom={(customColor) => setState((x) => ({ ...x, customColor, paletteId: "custom", mono: false }))} />
             </div>
             {state.style === "officiel" && <Toggle label="Cadre autour de la page" checked={state.frame} onChange={(frame) => setState((x) => ({ ...x, frame }))} />}
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="font-display text-[19px] leading-none font-black uppercase">Police</h3>
+            <FontPicker fontId={state.fontId ?? "auto"} onFont={(fontId) => setState((x) => ({ ...x, fontId }))} />
           </section>
 
           <section className="space-y-3 border-t border-ink/10 pt-5">

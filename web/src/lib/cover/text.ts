@@ -14,7 +14,27 @@ export type FontSpec = {
 
 let ctx: CanvasRenderingContext2D | null = null;
 
-export function measure(text: string, f: FontSpec): number {
+// Weights each family really ships (same files in web/public/fonts and api/fonts).
+const WEIGHTS: Record<string, number[]> = { Tinos: [400, 700], Poppins: [400, 600, 800], "Playfair Display": [400, 700], Inter: [400, 600] };
+let override: string | null = null;
+
+/** Draw every text with this family (null = the fonts each design was drawn with). */
+export function setCoverFont(family: string | null): void {
+  override = family;
+}
+
+/** The font actually used: the chosen family, at the nearest weight it has. */
+function resolved(f: FontSpec): FontSpec {
+  if (!override || override === f.family) return f;
+  const have = WEIGHTS[override] ?? [400, 700];
+  const want = f.weight ?? 400;
+  const weight = have.reduce((best, w) => (Math.abs(w - want) < Math.abs(best - want) ? w : best), have[0]);
+  const italic = f.italic && override !== "Poppins" && override !== "Inter"; // no italic files for these two
+  return { ...f, family: override, weight, italic };
+}
+
+export function measure(text: string, f0: FontSpec): number {
+  const f = resolved(f0);
   if (typeof document !== "undefined") {
     ctx ??= document.createElement("canvas").getContext("2d");
   }
@@ -76,10 +96,11 @@ export function textBlock(
   lines: string[],
   x: number,
   y: number,
-  f: FontSpec,
+  f0: FontSpec,
   color: string,
   opts: { anchor?: Anchor; lineHeight?: number } = {},
 ): number {
+  const f = resolved(f0);
   const lh = opts.lineHeight ?? f.size * 1.25;
   lines.forEach((line, i) => {
     out.push(

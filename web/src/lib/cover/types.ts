@@ -6,7 +6,14 @@ export type DocKind =
   | "rapport_pro"
   | "autre";
 
-export type StyleId = "officiel" | "moderne" | "corporate" | "minimal" | "bandeau" | "cadre" | "lateral" | "vague";
+export type StyleId =
+  | "officiel" | "moderne" | "corporate" | "minimal" | "bandeau" | "cadre" | "lateral" | "vague"
+  | "bloc" | "ruban" | "classique" | "duo";
+
+/** Typeface of the whole cover: "auto" keeps the fonts each design was drawn with. */
+export type FontId = "auto" | "tinos" | "poppins" | "playfair" | "inter";
+/** Language of the cover: English-speaking schools print English first (left column, English labels). */
+export type CoverLang = "fr" | "en";
 
 /** Author (info = matricule) or supervisor (role + info = grade/fonction). */
 export type Person = { name: string; role?: string; info?: string };
@@ -14,6 +21,7 @@ export type Person = { name: string; role?: string; info?: string };
 /** Everything the user typed in the studio form. */
 export type CoverForm = {
   kind: DocKind;
+  lang?: CoverLang;
   institutionId: string;
   headerFr: string; // one line per level, "" line = separator group break
   headerEn: string;
@@ -59,6 +67,7 @@ export type CoverModel = {
   authors: Person[];
   supervisors: Person[];
   jury: string[];
+  juryLabel: string;
   footerLeft: string;
   footerRight: string;
   /** True when an academic cover has no institution yet (preview shows an example). */
@@ -71,6 +80,7 @@ export type RenderOptions = {
   palette: Palette;
   mono: boolean;
   frame: boolean;
+  font?: FontId;
 };
 
 export const PAGE_W = 595.28;
