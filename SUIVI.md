@@ -284,3 +284,10 @@ Reste, par ordre d'intérêt :
 2. Mode `keep` : il utilise son propre détecteur de titres (`keep.find_titles`), plus faible que `detect` (ex. 2 titres trouvés contre 47).
 3. Garde lue : rôle des encadreurs parfois générique ; les nouveaux modèles n'ont pas été vérifiés avec deux logos.
 4. Élargir le corpus avec de vrais Word camerounais (ceux des premiers utilisateurs, avec leur accord).
+
+## Pages blanches (14/10/2026) — local, PAS encore publié
+- Les sauts de page étaient des paragraphes vides avec un saut : quand la page d'avant était pleine, ils laissaient une page blanche. Remplacés par un paragraphe minuscule « saut de page avant » (`render.Builder.page_break`). Le paragraphe laissé par l'index LibreOffice ne prend plus de place (`uno_worker.insert_index`). Corpus : 17 pages blanches → 2 (les 2 viennent des fichiers d'origine).
+- Reste : logos des facultés et écoles manquants (FS, FALSH, FSE, FMSB de UY1 ; FSJP UY2 ; ENSET, FGI Douala ; FASA, IUT Fotso Victor ; facultés de Buea et Bamenda ; ENSAI ; ENSPM) ; reprendre les logos présents sur la garde du document importé ; placement des logos.
+- Logos (14/10/2026, suite) : sceau de l'Université de Buea (à la place de la bannière avec texte), emblème de l'ENSET Douala (`enset2.png`, à côté de celui de l'Université de Douala). Les sites officiels des autres facultés (FS, FALSH, FSE, FMSB, FSJP, FGI, FASA, facultés de Buea et Bamenda, ENSAI, ENSPM) ne publient que le logo de leur université ou sont injoignables : pour eux, c'est désormais le document de l'étudiant qui fournit le logo.
+- Logos du document : les images de la page de garde de l'étudiant (y compris dans un tableau d'en-tête) sont lues (`meta.cover.logos`) et reprises sur la nouvelle garde, dans leur ordre, si elles ressemblent à des logos (`CoverEditor.ownLogo`). Vérifié sur le rapport PFE de l'utilisateur : logos de l'Université d'Ebolowa et de la Faculté des sciences.
+- Aperçu de garde : plus d'encadreur d'exemple ajouté quand le document nomme déjà ses encadreurs.

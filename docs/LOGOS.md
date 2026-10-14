@@ -17,7 +17,7 @@ les retire sur simple demande (contact dans les mentions légales). L'utilisateu
 | enspd.png | ENSP Douala | site officiel enspd-udo.cm |
 | enset.png | ENSET Douala | site officiel enset-douala.cm (non utilisé par défaut : bannière) |
 | uds.png | Université de Dschang | site officiel univ-dschang.org |
-| ub.png | University of Buea | en.wikipedia « University of Buea Logo.png » |
+| ub.png | University of Buea | site officiel ubuea.cm (le sceau seul, sans le texte « University of Buea », remplace la bannière le 14/10/2026) |
 | uba.png | University of Bamenda | en.wikipedia « University of Bamenda logo.png » |
 | uma.png | Université de Maroua | Wikimedia Commons « Logo UMa.png » |
 | ug.png | Université de Garoua | site officiel univ-garoua.cm |
@@ -31,6 +31,7 @@ les retire sur simple demande (contact dans les mentions légales). L'utilisateu
 | ictu.png | The ICT University | Wikimedia Commons « ICT University shield logo.png » |
 | cuib.png | Catholic University Institute of Buea | site officiel cuib-cameroon.org |
 | iujns.png | Institut Universitaire Joseph Ndi Samba | Wikimedia Commons |
+| enset2.png | ENSET Douala (son emblème) | site officiel enset-douala.cm (favicon), utilisé avec le logo de l'Université de Douala |
 | iutfv.png | IUT Fotso Victor | site officiel (non utilisé par défaut : bannière) |
 | iutd.png | IUT de Douala | Wikimedia Commons « Logo IUT Douala.png » (CC BY-SA 4.0) |
 | un.png | Université de Ngaoundéré | site officiel de l'Université d'Ebolowa (unv-ebolowa.cm) |

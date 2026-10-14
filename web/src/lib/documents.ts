@@ -84,6 +84,8 @@ export type DocAnalysis = {
 };
 
 export type DocCoverInfo = {
+  /** Pictures of the student's own cover page (usually the school's logos), by name: GET /documents/{id}/images/{name}. */
+  logos?: string[];
   header_fr?: string[];
   header_en?: string[];
   title?: string;

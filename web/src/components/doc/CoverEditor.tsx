@@ -1,5 +1,6 @@
 "use client";
 
+import { API_URL } from "@/lib/api";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { STYLES, loadCoverFonts, renderCover } from "@/lib/cover";
 import { KINDS, emptyForm } from "@/lib/cover/kinds";
@@ -109,9 +110,28 @@ export function initialCover(docId: string, meta: DocMeta): StudioState {
 }
 
 /** initialCover + the school's logos (fetched once; the user can change or remove them). */
+/** A picture of the old cover as a data URL, when it looks like a logo (not a photo of a building, not a thumbnail). */
+async function ownLogo(docId: string, name: string): Promise<string | undefined> {
+  try {
+    const blob = await (await fetch(`${API_URL}/documents/${docId}/images/${encodeURIComponent(name)}`)).blob();
+    const url = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(blob); });
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const ratio = img.width / img.height;
+    return ratio > 0.45 && ratio < 2.2 && Math.min(img.width, img.height) >= 110 ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function prepareCover(docId: string, meta: DocMeta): Promise<StudioState> {
   const s = initialCover(docId, meta);
-  if (s.form.logo || s.form.logo2 || s.form.institutionId === "autre") return s;
+  if (s.form.logo || s.form.logo2) return s;
+  // the logos printed on the student's own cover: exactly their school's, in their order (left, then right)
+  const own = (await Promise.all((meta.cover?.logos ?? []).slice(0, 2).map((n) => ownLogo(docId, n)))).filter(Boolean) as string[];
+  if (own.length) return { ...s, form: { ...s.form, logo: own[0], logo2: own[1] } };
+  if (s.form.institutionId === "autre") return s;
   const inst = institution(s.form.institutionId);
   const [logo, logo2] = await Promise.all([inst.logo ? logoData(inst.logo) : undefined, inst.logo2 ? logoData(inst.logo2) : undefined]);
   return { ...s, form: { ...s.form, logo, logo2 } };

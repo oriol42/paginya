@@ -55,6 +55,14 @@ def insert_index(doc, marker, service, setup):
     index = doc.createInstance(service)
     setup(index)
     doc.getText().insertTextContent(found, index, False)
+    try:
+        # the marker's paragraph stays, empty, after the index: make it take no room (it pushed a blank page out)
+        cur = found.getText().createTextCursorByRange(found)
+        cur.CharHeight = 1
+        cur.ParaTopMargin = 0
+        cur.ParaBottomMargin = 0
+    except Exception:  # noqa: BLE001 - only cosmetic
+        pass
 
 
 def layout_of(doc):

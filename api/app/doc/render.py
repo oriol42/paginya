@@ -429,8 +429,17 @@ class Builder:
         self.first_in_section = True
 
     def page_break(self) -> None:
+        """What follows starts a new page. Not a break character in an empty paragraph: when the page before is
+        exactly full, that empty paragraph lands alone on a page and leaves it blank. A tiny paragraph that
+        itself starts the page can never leave one."""
         if not self.first_in_section:
-            self.doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+            p = self.doc.add_paragraph()
+            pf = p.paragraph_format
+            pf.page_break_before = True
+            pf.space_before = pf.space_after = Pt(0)
+            pf.line_spacing = Pt(1)
+            pf.first_line_indent = Cm(0)
+            p.add_run("").font.size = Pt(1)
         self.first_in_section = True
 
     def _para(self, text: str = "", style: str | None = None):

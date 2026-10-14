@@ -498,18 +498,25 @@ def _paragraph(p: Paragraph, fmts: dict, images_dir: Path, doc) -> Raw:
         raw.list_kind = "number"
 
     for blip in p._p.iter(qn("a:blip")):
-        rid = blip.get(qn("r:embed"))
-        if not rid or rid not in doc.part.related_parts:
-            continue
-        part = doc.part.related_parts[rid]
-        ext = Path(getattr(part, "partname", "img.png")).suffix.lower() or ".png"
-        if ext not in (".png", ".jpg", ".jpeg", ".gif", ".bmp"):
-            continue
-        name = f"{uuid.uuid4().hex}{ext}"
-        (images_dir / name).write_bytes(part.blob)
-        raw.image = name
-        break
+        name = _save_blip(blip, doc, images_dir)
+        if name:
+            raw.image = name
+            break
     return raw
+
+
+def _save_blip(blip, doc, images_dir: Path) -> str:
+    """Saves the picture a drawing points to; returns its file name ("" when it is not a usable picture)."""
+    rid = blip.get(qn("r:embed"))
+    if not rid or rid not in doc.part.related_parts:
+        return ""
+    part = doc.part.related_parts[rid]
+    ext = Path(getattr(part, "partname", "img.png")).suffix.lower() or ".png"
+    if ext not in (".png", ".jpg", ".jpeg", ".gif", ".bmp"):
+        return ""
+    name = f"{uuid.uuid4().hex}{ext}"
+    (images_dir / name).write_bytes(part.blob)
+    return name
 
 
 def _split_breaks(raw: Raw) -> list[Raw]:
@@ -590,6 +597,12 @@ def from_docx(path: Path, images_dir: Path) -> list[Raw]:
             if rows and any(any(c for c in r) for r in rows):
                 out.append(Raw(rows=rows, source="docx", new_page=new_page, gap=gap))
                 gap, new_page = 0, False
+            if len(out) <= 4:
+                # the cover's header is often a table: FR column | logos | EN column. Its logos are kept (they go
+                # on the new cover); further down, pictures in tables stay where they are, untouched.
+                for blip in list(el.iter(qn("a:blip")))[:3]:
+                    if name := _save_blip(blip, doc, images_dir):
+                        out.append(Raw(image=name, source="docx"))
     return out
 
 

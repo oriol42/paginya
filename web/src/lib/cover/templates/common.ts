@@ -85,7 +85,8 @@ export function withPlaceholders(m: CoverModel): CoverModel {
     title: m.title || "Titre de ton document",
     authors: m.authors.length ? m.authors : [{ name: "NOM Prénom", info: "Matricule : 00X000" }],
     mention: m.mention.length ? m.mention : m.sample.mention,
-    supervisors: [...m.supervisors, ...m.sample.supervisors.filter((s) => !namedSupervisors.has(s.role))],
+    // examples only on an empty cover: a document that already names its supervisors keeps exactly those
+    supervisors: m.supervisors.length ? m.supervisors : [...m.sample.supervisors.filter((s) => !namedSupervisors.has(s.role))],
     footerLeft: m.footerLeft || `${m.juryLabel.startsWith("Members") ? "Academic year" : "Année académique"} ${academicYear()}`,
   };
 }

@@ -145,6 +145,8 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
                 items.append({"type": "table", "rows": r.rows, "hidden": True, "_explicit": True})
             elif r.image:
                 items.append({"type": "figure", "image": r.image, "hidden": True, "_explicit": True})
+                if cover is not None and len(cover.setdefault("logos", [])) < 3:
+                    cover["logos"].append(r.image)  # the school's logos printed on the student's own cover
             elif r.text.strip():
                 items.append({"type": "paragraph", "text": r.text.strip(), "hidden": True, "_explicit": True, "_src": idx})
             continue
