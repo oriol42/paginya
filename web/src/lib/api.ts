@@ -26,7 +26,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error("Connexion impossible. Vérifie ta connexion internet et réessaie.");
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.detail ?? `Erreur ${res.status}`);
+  if (!res.ok) throw Object.assign(new Error(data.detail ?? `Erreur ${res.status}`), { status: res.status });
   return data as T;
 }
 
@@ -44,6 +44,14 @@ export const api = {
   adminConfig: () => call<{ client_id: string }>("/admin/config"),
   adminLogin: (credential: string) => call<{ token: string; email: string }>("/admin/login", { method: "POST", body: JSON.stringify({ credential }) }),
   adminUnlock: (id: string, token: string) => call<Order>(`/orders/${id}/admin`, { method: "POST", body: JSON.stringify({ token }) }),
+  /** Customer accounts (Google): the 30-day pass, and the team's free documents. */
+  accountConfig: () => call<{ client_id: string }>("/account/config"),
+  accountGoogle: (credential: string) =>
+    call<{ token: string; email: string; team: boolean; pass_until: number; pass_days: number }>("/account/google", { method: "POST", body: JSON.stringify({ credential }) }),
+  accountMe: (token: string) => call<{ email: string; team: boolean; pass_until: number; pass_days: number }>("/account/me", { method: "POST", body: JSON.stringify({ token }) }),
+  buyPass: (token: string) => call<{ id: string; status: OrderStatus; amount: number }>("/account/pass", { method: "POST", body: JSON.stringify({ token }) }),
+  unlock: (id: string, token: string) => call<{ id: string; status: OrderStatus }>(`/orders/${id}/unlock`, { method: "POST", body: JSON.stringify({ token }) }),
+  prices: () => call<Record<string, { label: string; amount: number }>>("/prices"),
   retry: (id: string) => call<Order>(`/orders/${id}/retry`, { method: "POST" }),
   fileUrl: (id: string, fmt: "pdf" | "docx" | "png") => `${API_URL}/orders/${id}/file.${fmt}`,
 };

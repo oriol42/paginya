@@ -32,6 +32,8 @@ CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 ADMIN_EMAILS = {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()}
 ADMIN_SECRET = os.getenv("ADMIN_SECRET", "")  # signs the 30-day pass: any long random text
+# Customer accounts (Google), needed for the 30-day pass. Off while GOOGLE_CLIENT_ID or this secret is empty.
+ACCOUNT_SECRET = os.getenv("ACCOUNT_SECRET", "") or ADMIN_SECRET
 
 # Paid orders stay downloadable/editable this long (decision: 7 days).
 ORDER_VALIDITY_DAYS = 7

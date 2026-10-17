@@ -29,6 +29,11 @@ def enabled() -> bool:
 
 def google_email(credential: str) -> str:
     """The verified e-mail behind a Google ID token. Google checks the signature and the expiry."""
+    return google_identity(credential)[1]
+
+
+def google_identity(credential: str) -> tuple[str, str]:
+    """(stable account id, verified e-mail) behind a Google ID token."""
     try:
         res = httpx.get(TOKENINFO, params={"id_token": credential}, timeout=10)
     except httpx.HTTPError as exc:
@@ -38,7 +43,7 @@ def google_email(credential: str) -> str:
         raise AdminError("Connexion Google refusée")
     if str(info.get("email_verified")).lower() != "true" or not info.get("email"):
         raise AdminError("Adresse Google non vérifiée")
-    return str(info["email"]).lower()
+    return str(info["sub"]), str(info["email"]).lower()
 
 
 def _sign(text: str) -> str:

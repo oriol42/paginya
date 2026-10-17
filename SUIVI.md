@@ -291,3 +291,12 @@ Reste, par ordre d'intérêt :
 - Logos (14/10/2026, suite) : sceau de l'Université de Buea (à la place de la bannière avec texte), emblème de l'ENSET Douala (`enset2.png`, à côté de celui de l'Université de Douala). Les sites officiels des autres facultés (FS, FALSH, FSE, FMSB, FSJP, FGI, FASA, facultés de Buea et Bamenda, ENSAI, ENSPM) ne publient que le logo de leur université ou sont injoignables : pour eux, c'est désormais le document de l'étudiant qui fournit le logo.
 - Logos du document : les images de la page de garde de l'étudiant (y compris dans un tableau d'en-tête) sont lues (`meta.cover.logos`) et reprises sur la nouvelle garde, dans leur ordre, si elles ressemblent à des logos (`CoverEditor.ownLogo`). Vérifié sur le rapport PFE de l'utilisateur : logos de l'Université d'Ebolowa et de la Faculté des sciences.
 - Aperçu de garde : plus d'encadreur d'exemple ajouté quand le document nomme déjà ses encadreurs.
+
+## 17/10/2026 — Pass 30 jours de Paginya + comptes Google (local, PAS encore publié)
+- Avant : le prix `pass_30j` (5 000 F) existait mais rien ne l'utilisait.
+- **Comptes** (`api/app/accounts.py`, table `accounts`) : connexion Google → jeton signé (180 j, `ACCOUNT_SECRET`, sinon `ADMIN_SECRET`). Routes : `/account/config`, `/account/google`, `/account/me`, `/account/pass` (crée une commande `pass_30j` payée par `/orders/{id}/pay`), `/orders/{id}/unlock`.
+- `db.settle` ajoute 30 jours au compte dans la même transaction que le paiement (crédité une seule fois). Une commande de pass ne se télécharge ni ne se modifie.
+- **Équipe** : un compte dont le Gmail est dans `ADMIN_EMAILS` débloque tout sans payer (plus besoin de `/coulisses`, qui marche toujours).
+- Site : `PaySheet` propose « Ce document » ou « Pass 30 jours » ; le pass demande Google avant le numéro ; « J'ai déjà un pass » pour un autre téléphone ; pass actif / équipe → « Télécharger sans payer ». `lib/account.ts`, `components/GoogleButton.tsx`.
+- Confidentialité : adresse Gmail ajoutée (données + durée).
+- Test : `test_pass_account_and_team`. À faire : afficher le pass sur la page Tarifs.

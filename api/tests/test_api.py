@@ -125,3 +125,39 @@ def test_the_team_signs_in_with_google_and_unlocks_an_order_nobody_else_does(cli
     assert client.post(f"/orders/{order['id']}/admin", json={"token": "faux"}).status_code == 403
     assert client.post(f"/orders/{order['id']}/admin", json={"token": token}).json()["status"] == "PAID"
     assert client.get(f"/orders/{order['id']}/file.pdf").status_code == 200
+
+
+def test_pass_account_and_team(client, monkeypatch):
+    from app import accounts, admin
+
+    users = {"t-client": ("g-1", "client@gmail.com"), "t-chef": ("g-2", "chef@gmail.com")}
+    monkeypatch.setattr(admin, "google_identity", lambda credential: users[credential])  # Google is not called in tests
+    assert client.post("/account/google", json={"credential": "t-client"}).status_code == 503  # off until configured
+    monkeypatch.setattr(config, "GOOGLE_CLIENT_ID", "cid")
+    monkeypatch.setattr(config, "ACCOUNT_SECRET", "s3cret")
+    monkeypatch.setattr(config, "ADMIN_EMAILS", {"chef@gmail.com"})
+
+    me = client.post("/account/google", json={"credential": "t-client"}).json()
+    assert me["email"] == "cl***@gmail.com" and me["team"] is False and me["pass_until"] == 0
+    token = me["token"]
+    assert accounts.account_of(token[:-4] + "AAAA") is None  # cannot be forged
+    doc = client.post("/orders", json={"svg": SVG, "form": {}}).json()
+    assert client.post(f"/orders/{doc['id']}/unlock", json={"token": token}).status_code == 402  # no pass yet
+
+    p = client.post("/account/pass", json={"token": token}).json()
+    assert p["amount"] == 5000
+    client.post(f"/orders/{p['id']}/pay", json={"phone": "670000000"})
+    assert client.get(f"/orders/{p['id']}").json()["status"] == "PAID"
+    assert client.get(f"/orders/{p['id']}").json()["status"] == "PAID"  # credited once
+    days = client.post("/account/me", json={"token": token}).json()["pass_days"]
+    assert days == 30
+    assert client.get(f"/orders/{p['id']}/file.pdf").status_code == 404  # a pass is not a document
+    assert client.put(f"/orders/{p['id']}", json={"svg": SVG, "form": {}}).status_code == 404
+    assert client.post(f"/orders/{doc['id']}/unlock", json={"token": token}).json()["status"] == "PAID"
+    assert client.get(f"/orders/{doc['id']}/file.pdf").status_code == 200
+
+    chef = client.post("/account/google", json={"credential": "t-chef"}).json()
+    assert chef["team"] is True
+    other = client.post("/orders", json={"svg": SVG, "form": {}}).json()
+    assert client.post(f"/orders/{other['id']}/unlock", json={"token": chef["token"]}).json()["status"] == "PAID"
+    assert client.post(f"/orders/{other['id']}/unlock", json={"token": "faux"}).status_code == 401

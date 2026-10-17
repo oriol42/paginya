@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ADMIN_KEY, api, formatXaf, operatorOf, type OrderStatus } from "@/lib/api";
+import { canUnlock, keepAccount, refreshAccount, savedAccount, type Account } from "@/lib/account";
+import { GoogleButton } from "./GoogleButton";
 import { Icon } from "./Icon";
 import { PinLabel } from "./ui";
 
@@ -37,21 +39,76 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
   const [busy, setBusy] = useState(false);
   const [link, setLink] = useState<string | null>(null);
   const startedAt = useRef(0);
+  // The 30-day pass lives on a Google account (never lost with the phone); a team account never pays.
+  const [account, setAccount] = useState<Account | null>(() => savedAccount());
+  const [accountsOn, setAccountsOn] = useState(false);
+  const [passPrice, setPassPrice] = useState(0);
+  const [choice, setChoice] = useState<"doc" | "pass">("doc");
+  const [showSignIn, setShowSignIn] = useState(false);
+  // What is being paid right now: this document, or a pass order (the document is unlocked right after).
+  const [paying, setPaying] = useState<{ id: string; amount: number }>({ id: orderId, amount });
+
+  useEffect(() => {
+    refreshAccount().then(setAccount);
+    api.accountConfig().then(({ client_id }) => setAccountsOn(!!client_id)).catch(() => {});
+    api.prices().then((p) => setPassPrice(p.pass_30j?.amount ?? 0)).catch(() => {});
+  }, []);
+
+  async function signIn(credential: string) {
+    setError("");
+    try {
+      const a = await api.accountGoogle(credential);
+      keepAccount(a);
+      setAccount(a);
+      if (choice === "doc" && !canUnlock(a)) setError("Pas de pass actif sur ce compte. Prends-en un ou paie ce document.");
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  /** Active pass or team account: the document is unlocked on the server, no payment. */
+  async function unlockWithAccount() {
+    if (!account) return;
+    setError("");
+    setBusy(true);
+    try {
+      const o = await api.unlock(orderId, account.token);
+      onStatus(o.status);
+      setPhase("paid");
+    } catch (e) {
+      setError((e as Error).message);
+      refreshAccount().then(setAccount);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (phase !== "pending") return;
     startedAt.current = Date.now();
     const t = setInterval(async () => {
       try {
-        const o = await api.getOrder(orderId);
-        onStatus(o.status);
-        if (o.status === "PAID") setPhase("paid");
+        const o = await api.getOrder(paying.id);
+        if (paying.id === orderId) onStatus(o.status);
+        if (o.status === "PAID" && paying.id !== orderId) {
+          // the pass is paid: it now unlocks this document
+          clearInterval(t);
+          const a = await refreshAccount();
+          setAccount(a);
+          try {
+            const d = await api.unlock(orderId, a!.token);
+            onStatus(d.status);
+            setPhase("paid");
+          } catch {
+            setPhase("summary"); // the pass is on the account: "Télécharger sans payer" is shown there
+          }
+        } else if (o.status === "PAID") setPhase("paid");
         else if (o.status === "FAILED" || o.status === "EXPIRED") setPhase("failed");
         else if (Date.now() - startedAt.current > PENDING_TIMEOUT_MS) setPhase("failed");
       } catch { /* keep polling on flaky networks */ }
     }, 3000);
     return () => clearInterval(t);
-  }, [phase, orderId, onStatus]);
+  }, [phase, orderId, paying.id, onStatus]);
 
   const operator = operatorOf(phone);
 
@@ -60,11 +117,17 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
     setBusy(true);
     try {
       try { localStorage.setItem(PHONE_KEY, phone); } catch { /* ignore */ }
-      const o = await api.pay(orderId, phone);
+      let target = { id: orderId, amount };
+      if (choice === "pass" && account) {
+        const p = await api.buyPass(account.token);
+        target = { id: p.id, amount: p.amount };
+      }
+      setPaying(target);
+      const o = await api.pay(target.id, phone);
       // Normally the customer confirms on their phone (direct pay). Fapshi's payment page is only a fallback.
       if (o.pay_link) setLink(o.pay_link);
-      onStatus(o.status);
-      setPhase(o.status === "PAID" ? "paid" : "pending");
+      if (target.id === orderId) onStatus(o.status);
+      setPhase(o.status === "PAID" && target.id === orderId ? "paid" : "pending");
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -87,8 +150,8 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
   }
 
   async function retry() {
-    const o = await api.retry(orderId).catch(() => null);
-    if (o) onStatus(o.status);
+    const o = await api.retry(paying.id).catch(() => null);
+    if (o && paying.id === orderId) onStatus(o.status);
     setPhase("summary");
   }
 
@@ -125,10 +188,46 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
               </p>
             )}
 
-            <div className="mt-5 flex items-end justify-between border-t border-dashed border-ink/25 pt-4">
-              <span className="text-[15px] font-semibold text-ink/60">À payer</span>
-              <span className="font-display text-[40px] leading-none font-black tabular">{formatXaf(amount)}</span>
-            </div>
+            {canUnlock(account) ? (
+              <>
+                <p className="mt-5 flex items-center gap-2 border-t border-dashed border-ink/25 pt-4 text-[16px] font-bold text-board">
+                  <Icon name="badge-check" size={20} />
+                  {account!.team ? "Compte de l'équipe : gratuit" : `Pass actif · encore ${account!.pass_days} jour${account!.pass_days > 1 ? "s" : ""}`}
+                </p>
+                {error && <p className="mt-2 flex gap-1.5 text-[14px] text-pin"><Icon name="triangle-alert" size={16} className="mt-0.5" />{error}</p>}
+                <PinLabel className="mt-4 w-full" disabled={busy} onClick={unlockWithAccount}>{busy ? "…" : "Télécharger sans payer"}</PinLabel>
+              </>
+            ) : (
+            <>
+            {accountsOn && passPrice > 0 ? (
+              <div className="mt-5 space-y-2 border-t border-dashed border-ink/25 pt-4">
+                {([["doc", "Ce document", amount, ""], ["pass", "Pass 30 jours", passPrice, "Tous tes documents pendant 30 jours"]] as const).map(([id, label, price, note]) => (
+                  <button key={id} type="button" onClick={() => setChoice(id)} className={`flex w-full items-center justify-between rounded-md px-3.5 py-3 text-left ring-1 ${choice === id ? "bg-hi/30 ring-2 ring-ink" : "ring-black/10"}`}>
+                    <span>
+                      <span className="block text-[16px] font-bold">{label}</span>
+                      {note && <span className="text-[13px] text-ink/65">{note}</span>}
+                    </span>
+                    <span className="font-display text-[26px] leading-none font-black tabular">{formatXaf(price)}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-5 flex items-end justify-between border-t border-dashed border-ink/25 pt-4">
+                <span className="text-[15px] font-semibold text-ink/60">À payer</span>
+                <span className="font-display text-[40px] leading-none font-black tabular">{formatXaf(amount)}</span>
+              </div>
+            )}
+
+            {accountsOn && !account && (choice === "pass" || showSignIn) ? (
+              <div className="mt-4 rounded-md bg-hi/25 p-3.5">
+                <p className="text-[14px] font-semibold">
+                  {choice === "pass" ? "Ton pass est gardé sur ton compte Google : tu le retrouves même si tu changes de téléphone." : "Connecte le compte Google de ton pass."}
+                </p>
+                <div className="mt-3"><GoogleButton onCredential={signIn} /></div>
+                {error && <p className="mt-2 flex gap-1.5 text-[14px] text-pin"><Icon name="triangle-alert" size={16} className="mt-0.5" />{error}</p>}
+              </div>
+            ) : (
+            <>
 
             <label className="mt-4 block">
               <span className="mb-1.5 block text-[13px] font-bold text-ink/80">Ton numéro Mobile Money</span>
@@ -152,12 +251,19 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
             {error && <p className="mt-2 flex gap-1.5 text-[14px] text-pin"><Icon name="triangle-alert" size={16} className="mt-0.5" />{error}</p>}
 
             <PinLabel className="mt-5 w-full" disabled={busy || phone.replace(/\D/g, "").length < 9} onClick={pay}>
-              {busy ? "Envoi…" : `Payer ${formatXaf(amount)}`}
+              {busy ? "Envoi…" : `Payer ${formatXaf(choice === "pass" ? passPrice : amount)}`}
             </PinLabel>
             <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[13px] text-ink/55">
               <Icon name="shield-check" size={15} /> MTN MoMo ou Orange Money · paiement sécurisé Fapshi
             </p>
-            {adminPass && (
+            </>
+            )}
+            {accountsOn && !account && choice === "doc" && !showSignIn && (
+              <button type="button" onClick={() => setShowSignIn(true)} className="mt-2 w-full text-[14px] font-semibold text-ink/65 underline">J&apos;ai déjà un pass</button>
+            )}
+            </>
+            )}
+            {adminPass && !canUnlock(account) && (
               <button type="button" disabled={busy} onClick={unlock} className="mt-3 w-full text-[15px] font-bold text-board underline">
                 Équipe Paginya : débloquer sans payer
               </button>
@@ -171,12 +277,12 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
             <h2 className="mt-4 font-display text-[30px] leading-[0.95] font-black uppercase">{link ? "Paie sur la page Fapshi" : "Confirme sur ton téléphone"}</h2>
             {link ? (
               <p className="mx-auto mt-3 max-w-xs text-[16px] text-ink/75">
-                Choisis MTN MoMo ou Orange Money et paie <b>{formatXaf(amount)}</b>. Cette page se débloque toute seule dès que c&apos;est payé.{" "}
+                Choisis MTN MoMo ou Orange Money et paie <b>{formatXaf(paying.amount)}</b>. Cette page se débloque toute seule dès que c&apos;est payé.{" "}
                 <a href={link} target="_blank" rel="noopener" className="font-bold text-pen underline">Ouvrir la page de paiement</a>
               </p>
             ) : (
               <p className="mx-auto mt-3 max-w-xs text-[16px] text-ink/75">
-                Une demande de <b>{formatXaf(amount)}</b> a été envoyée au {phone}. Valide-la avec ton code secret.
+                Une demande de <b>{formatXaf(paying.amount)}</b> a été envoyée au {phone}. Valide-la avec ton code secret.
               </p>
             )}
             <p className="mt-5 flex items-center justify-center gap-2 text-[14px] text-ink/55"><Icon name="loader-circle" size={16} className="animate-spin" />On attend la confirmation…</p>

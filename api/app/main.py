@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import admin, config, db, doc_routes, fapshi, forms_routes, guard, pricing, storage
+from . import accounts, admin, config, db, doc_routes, fapshi, forms_routes, guard, pricing, storage
 from .render import render_cover
 from .svg_safe import UnsafeSvg, sanitize_svg
 
@@ -49,11 +49,14 @@ guard.LIMITS[:] = [
     ("POST", r"/(orders|documents|forms)/[^/]+/pay", 20, 3600),
     ("POST", r"/forms", 40, 3600),
     ("POST", r"/admin/login|/orders/[^/]+/admin", 20, 3600),
+    ("POST", r"/account/google", 30, 3600),
+    ("POST", r"/account/pass|/orders/[^/]+/unlock", 30, 3600),
 ]
 app.middleware("http")(guard.middleware)  # before CORS: a refusal still carries the CORS headers
 app.include_router(doc_routes.router)
 app.include_router(doc_routes.scan_router)
 app.include_router(forms_routes.router)
+app.include_router(accounts.router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
@@ -156,6 +159,8 @@ def create_order(body: OrderIn) -> dict:
 @app.put("/orders/{order_id}")
 def update_order(order_id: str, body: CoverIn) -> dict:
     order = _order_or_404(order_id)
+    if "pass_for" in order["payload"]:
+        raise HTTPException(404, "Document introuvable")
     if "doc" in order["payload"]:
         raise HTTPException(400, "Utilise /documents pour modifier un document")
     if order["status"] == "PENDING":
@@ -281,6 +286,8 @@ def download(order_id: str, fmt: str) -> Response:
     if fmt not in MEDIA:
         raise HTTPException(404, "Format inconnu")
     order = _sync_with_fapshi(_order_or_404(order_id))
+    if "pass_for" in order["payload"]:
+        raise HTTPException(404, "Format inconnu")
     if order["status"] != "PAID":
         raise HTTPException(402, "Paiement requis pour télécharger sans filigrane")
     if not _still_editable(order):

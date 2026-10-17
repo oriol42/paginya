@@ -15,9 +15,10 @@ export default function Confidentialite() {
       <ul>
         <li><b>Tes documents</b> : textes, fichiers et photos que tu envoies, et les informations de ta page de garde (nom, matricule, établissement, encadreurs).</li>
         <li><b>Ton numéro de téléphone</b>, uniquement quand tu paies.</li>
+        <li><b>Ton adresse Gmail</b>, seulement si tu prends le pass 30 jours : il est gardé sur ton compte Google pour que tu le retrouves sur un autre téléphone.</li>
         <li><b>Des données techniques</b> (adresse IP, type d&apos;appareil) pour la sécurité et le bon fonctionnement.</li>
       </ul>
-      <p>Pas de compte, pas de mot de passe, pas de publicité ciblée. Nous ne vendons aucune donnée.</p>
+      <p>Pas de compte obligatoire, pas de mot de passe, pas de publicité ciblée. Nous ne vendons aucune donnée.</p>
 
       <h2>2. Pourquoi ?</h2>
       <ul>
@@ -31,6 +32,7 @@ export default function Confidentialite() {
         <li>Documents et pages de garde : <b>supprimés automatiquement 7 jours</b> après le paiement (ou après la création, sans paiement). Tu peux les supprimer immédiatement avec le bouton « Supprimer ».</li>
         <li>Photos envoyées pour lecture : supprimées après <b>24 heures</b>.</li>
         <li>Preuve de paiement (numéro, montant, date) : 12 mois.</li>
+        <li>Compte du pass (adresse Gmail, date de fin du pass) : tant que tu l&apos;utilises ; supprimé sur simple demande.</li>
       </ul>
 
       <h2>4. Qui y a accès ?</h2>
