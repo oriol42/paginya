@@ -192,7 +192,7 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
               <>
                 <p className="mt-5 flex items-center gap-2 border-t border-dashed border-ink/25 pt-4 text-[16px] font-bold text-board">
                   <Icon name="badge-check" size={20} />
-                  {account!.team ? "Compte de l'équipe : gratuit" : `Pass actif · encore ${account!.pass_days} jour${account!.pass_days > 1 ? "s" : ""}`}
+                  {account!.team ? "Accès illimité" : `Pass actif · encore ${account!.pass_days} jour${account!.pass_days > 1 ? "s" : ""}`}
                 </p>
                 {error && <p className="mt-2 flex gap-1.5 text-[14px] text-pin"><Icon name="triangle-alert" size={16} className="mt-0.5" />{error}</p>}
                 <PinLabel className="mt-4 w-full" disabled={busy} onClick={unlockWithAccount}>{busy ? "…" : "Télécharger sans payer"}</PinLabel>
