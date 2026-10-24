@@ -23,6 +23,7 @@ from .doc.render import DEFAULT_OPTIONS, KINDS, THEMES, build_docx, options_for
 from . import render as cover_render
 from .doc import analysis, keep
 from .doc.cover_info import split_header_lines
+from .forms.letter_parse import parse_letter
 from .doc.exam_scan import AUTO_PROMPT, EXAM_PROMPT, blocks_to_text, exam_signals, raws_to_text, split_type
 from .doc.exam_scan import finalize as finalize_exam
 from .doc.scan import ScanError, ocr_local, read_text, read_text_with_engine, straighten
@@ -388,6 +389,28 @@ def to_exam(order_id: str) -> dict:
     return {"fields": exam["fields"], "content": exam["content"]}
 
 
+@router.post("/{order_id}/letter")
+def to_letter(order_id: str) -> dict:
+    """The document as a letter (the user agreed it is one): the fields of /lettre, read from the original text."""
+    order = _load(order_id)
+    _ensure_inputs(order_id)
+    folder = doc_dir(order_id)
+    source = next((p for p in folder.glob("source.*")), None)
+    text = None
+    try:
+        if source is not None and source.suffix in (".txt", ".md", ".markdown"):
+            text = source.read_text(encoding="utf-8", errors="replace")
+        elif source is not None and source.suffix == ".docx":
+            text = "\n\n".join(r.text for r in from_docx(source, folder / "images") if r.text)
+        elif source is not None and source.suffix == ".pdf":
+            text = "\n\n".join(r.text for r in from_pdf(source) if r.text)
+    except ExtractError:
+        text = None
+    if not text or not text.strip():
+        text = "\n\n".join(str(b.get("text") or "") for b in order["payload"]["doc"]["blocks"] if b.get("text"))
+    return parse_letter(text[:MAX_TEXT])
+
+
 @router.post("/{order_id}/render")
 def render(order_id: str) -> dict:
     order = _load(order_id)
@@ -415,6 +438,7 @@ def render(order_id: str) -> dict:
     except office.OfficeError as exc:
         raise HTTPException(500, "La mise en page a échoué, réessaie") from exc
     pages = office.page_count(build / "final.pdf")
+    db.bump("rendu")
 
     tier = tier_for(pages)
     fresh = db.get_order(order_id)
@@ -605,7 +629,12 @@ def scan_page(body: ScanIn) -> dict:
         jpeg, found = straighten(raw)
         if body.handwriting:
             prompt = AUTO_PROMPT if auto else EXAM_PROMPT if exam_mode else None
-            text, engine = read_text_with_engine(jpeg, prompt)
+            try:
+                text, engine = read_text_with_engine(jpeg, prompt)
+            except ScanError:
+                db.bump("ia_echec")
+                raise
+            db.bump(f"ia:{engine}")
             confidence = 95.0 if engine == "mock" else 90.0
             if auto:
                 kind_found, text = split_type(text)
@@ -614,6 +643,7 @@ def scan_page(body: ScanIn) -> dict:
         else:
             text, confidence = ocr_local(jpeg)
             engine = "tesseract"
+            db.bump("ocr")
     except ScanError as exc:
         raise HTTPException(422, str(exc)) from exc
     scan_id = uuid.uuid4().hex

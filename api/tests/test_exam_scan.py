@@ -218,3 +218,11 @@ def test_document_can_become_an_exam(client):
     assert body["fields"]["school"] == "LYCÉE DE NKOLBISSON" and body["fields"]["class"] == "Première D"
     assert body["content"].split("\n")[-1] == "2) Calculer la résistance. (3 pts)"  # numbering kept as typed
     assert client.post("/documents/inconnu/exam").status_code == 404
+
+
+def test_english_exam_papers_are_recognised():
+    from app.doc.exam_scan import exam_signals
+    text = ("BILINGUAL HIGH SCHOOL · ENGLISH LANGUAGE · FIRST EVALUATION TEST · DURATION : 2hrs / COEF : 4\nCLASS : TERMINALES\n"
+            "PART 1 : EVALUATION OF RESOURCES (20 MARKS)\nSECTION A : GRAMMAR : 10 Marks\nTASK 1: Complete the following (5 marks)")
+    assert exam_signals(text)["likely"]
+    assert not exam_signals("Chapter 1: Introduction\nThe marketing department of the company sells to 20 markets.")["likely"]

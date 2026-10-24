@@ -12,6 +12,8 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from .extract import junk_rate
+
 # ----------------------------------------------------------------- accents lost in capitals
 
 _ACCENTED = """
@@ -152,23 +154,49 @@ def fix_caps(text: str) -> tuple[str, int]:
 
 # ----------------------------------------------------------------- structure fixes
 
+_LETTERED = re.compile(r"^[a-z]{1,4}\s?[)\-.°/]\s")  # "a) ", "b- ", "iv. ": a real lettered heading
+
+
+def _tail(b: dict) -> bool:
+    """A paragraph's last words left alone by a page break of the PDF ("en entreprise", "manières :") and taken
+    for a heading: it starts in lower case and is no lettered heading."""
+    return (b.get("type") == "heading" and not b.get("_explicit") and b.get("kind") not in ("special", "partie", "chapitre")
+            and not str(b.get("kind", "")).startswith(("letter", "style")) and b["text"][:1].islower() and not _LETTERED.match(b["text"]))
+
+
 def merge_broken(items: list[dict]) -> int:
     """"… une institution de" ¶ "microfinance créée en 2007." → one paragraph."""
     n = 0
     i = 0
     while i + 1 < len(items):
         a, b = items[i], items[i + 1]
+        if a.get("type") == "paragraph" and a["text"].strip() in ("-", "–", "•", "*", "o") and b.get("type") in ("paragraph", "heading") and not b.get("_explicit"):
+            # a bullet left alone on its line by the PDF: it belongs to the next line
+            b.update({"type": "list", "ordered": False, "level": 0})
+            b.pop("kind", None)
+            del items[i]
+            n += 1
+            continue
         if (
-            a.get("type") == "paragraph" and b.get("type") == "paragraph" and not b.get("_explicit")
-            and not END.search(a["text"]) and len(a["text"]) > 30
+            a.get("type") == "paragraph" and (b.get("type") == "paragraph" or _tail(b)) and not b.get("_explicit")
+            and not (STRONG_END if _tail(b) else END).search(a["text"]) and (len(a["text"]) > 30 or _tail(b))
             and b["text"][:1].islower()
         ):
             a["text"] = a["text"].rstrip() + " " + b["text"].lstrip()
             del items[i + 1]
             n += 1
             continue
+        if _tail(b) or (b.get("type") == "heading" and not b.get("_explicit") and b.get("kind") != "special" and junk_rate(b["text"]) > 0.5):
+            # a title never starts in lower case, and unreadable text (a PDF font read wrongly) is no title
+            b["type"] = "paragraph"
+            b.pop("level", None)
+            b.pop("kind", None)
+            n += 1
         i += 1
     return n
+
+
+STRONG_END = re.compile(r"[.!?:;»]$")  # "(02)" does not end a sentence
 
 
 def unmarked_lists(items: list[dict]) -> int:
@@ -188,8 +216,8 @@ def unmarked_lists(items: list[dict]) -> int:
             run = []
             while j < len(items) and not items[j].get("_explicit") and items[j].get("type") in ("paragraph", "heading") and items[j].get("kind") not in ("special", "partie", "chapitre"):
                 t = items[j]["text"].strip()
-                if len(t) > 110 or len(t.split()) > 14 or t.endswith(":") or items[j].get("kind", "").startswith(("style", "dec", "roman", "letter", "section")):
-                    break  # a real sentence, a new intro or a numbered/styled heading ends the enumeration
+                if len(t) > 110 or len(t.split()) > 14 or t.endswith(":") or "⟦eq" in t or items[j].get("kind", "").startswith(("style", "dec", "roman", "letter", "section")):
+                    break  # a real sentence, a new intro, an equation or a numbered/styled heading ends the enumeration
                 run.append(j)
                 j += 1
             if len(run) >= 2:

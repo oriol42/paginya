@@ -81,10 +81,11 @@ _SIGNALS = [
     (r"\b[ée]preuve\b", 2, "le mot « épreuve »"),
     (r"\bexercice\s*(n°\s*)?\d+", 2, "des exercices numérotés"),
     (r"\bbar[èe]me\b", 2, "un barème"),
-    (r"\(\s*\d+([.,]\d+)?\s*(pts?|points?)\s*\)|/\s*\d+\s*(pts?|points?)?\s*$|\b\d+([.,]\d+)?\s*(pts|points)\b", 2, "des points par question"),
+    (r"\(\s*\d+([.,]\d+)?\s*(pts?|points?|marks?)\s*\)|/\s*\d+\s*(pts?|points?)?\s*$|\b\d+([.,]\d+)?\s*(pts|points|marks)\b", 2, "des points par question"),
     (r"\b(dur[ée]e|duration)\s*:", 1, "une durée"),
     (r"\bcoef(?:ficient)?\b", 1, "un coefficient"),
-    (r"\b(probatoire|baccalaur[ée]at|bepc|brevet|cap\b|s[ée]quence|[ée]valuation|composition|devoir surveill)", 1, "un nom d'examen ou d'évaluation"),
+    (r"\b(probatoire|baccalaur[ée]at|bepc|brevet|cap\b|s[ée]quence|[ée]valuation|composition|devoir surveill|gce|evaluation test|mock exam|terminal exam)", 1, "un nom d'examen ou d'évaluation"),
+    (r"\b(section|part|task)\s+[a-z0-9]+\s*:", 1, "des parties d'épreuve (Section A, Task 1)"),
     (r"\b(classe|class)\s*:", 1, "une classe"),
     (r"\b(calculatrice|t[ée]l[ée]phone)s?\b.{0,30}\b(autoris|interdit|permis)", 1, "des consignes d'examen"),
 ]

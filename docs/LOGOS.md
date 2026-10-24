@@ -36,6 +36,7 @@ les retire sur simple demande (contact dans les mentions légales). L'utilisateu
 | iutd.png | IUT de Douala | Wikimedia Commons « Logo IUT Douala.png » (CC BY-SA 4.0) |
 | un.png | Université de Ngaoundéré | site officiel de l'Université d'Ebolowa (unv-ebolowa.cm) |
 | ueb.png | Université d'Ebolowa | site officiel unv-ebolowa.cm |
+| enset-ebolowa.png | ENSET Ebolowa | page de garde d'un mémoire de l'ENSET publié sur DICAMES (dicames.online, 2022) |
 | supptic.png | SUP'PTIC | site officiel e-supptic.cm |
 | essec.png | ESSEC Douala | site officiel essec-dla.com |
 | iuc.png | IUC Douala | site officiel myiuc.com (rogné : sans les mentions d'accréditation) |

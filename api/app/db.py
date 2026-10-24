@@ -52,6 +52,12 @@ CREATE TABLE IF NOT EXISTS ticket_messages (
     ts REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ticket_messages_ticket ON ticket_messages(ticket_id);
+CREATE TABLE IF NOT EXISTS usage (    -- what the server did per day (AI calls, OCR, renders): when to pay for more
+    day TEXT NOT NULL,
+    what TEXT NOT NULL,                -- "ia:gemini", "ia_echec:groq", "ocr", "rendu"…
+    n INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, what)
+);
 """
 
 
@@ -202,6 +208,26 @@ def add_event(sid: str, step: str, src: str) -> None:
             "INSERT INTO events (sid, step, src, day, ts) VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING",
             (sid, step, src, time.strftime("%Y-%m-%d", time.gmtime(now + 3600)), now),  # Cameroon day (UTC+1)
         )
+
+
+def _today(now: float | None = None) -> str:
+    return time.strftime("%Y-%m-%d", time.gmtime((now or time.time()) + 3600))  # Cameroon day (UTC+1)
+
+
+def bump(what: str) -> None:
+    """Counts one use; never breaks the action it counts."""
+    try:
+        with connect() as c:
+            c.execute("INSERT INTO usage (day, what, n) VALUES (?, ?, 1) ON CONFLICT (day, what) DO UPDATE SET n = usage.n + 1",
+                      (_today(), what[:40]))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def usage(since_day: str) -> list[dict]:
+    with connect() as c:
+        rows = c.execute("SELECT day, what, n FROM usage WHERE day >= ? ORDER BY day", (since_day,)).fetchall()
+    return [dict(r) for r in rows]
 
 
 def funnel(since_day: str) -> list[dict]:

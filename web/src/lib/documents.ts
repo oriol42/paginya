@@ -76,6 +76,8 @@ export type DocAnalysis = {
   detected_kind: string;
   why: string[];
   exam: boolean;
+  /** A letter or request typed by hand: /lettre lays it out the Cameroonian way. */
+  letter?: boolean;
   docx: boolean;
   existing: DocExisting | null;
   /** A Word file formatted by hand (bold titles, no styles): rebuilt by default, the user may keep it instead. */
@@ -168,6 +170,7 @@ export const docs = {
   beforeUrl: (id: string, n: number) => `${API_URL}/documents/${id}/before/${n}.webp`,
   remove: (id: string) => call<{ deleted: boolean }>(`/documents/${id}`, { method: "DELETE" }),
   /** The document as an exam paper: header fields + exercises, for the exam form (/epreuve). */
+  toLetter: (id: string) => call<Partial<import("@/components/forms/LetterForm").Letter>>(`/documents/${id}/letter`, { method: "POST" }),
   toExam: (id: string) => call<{ fields: Record<string, string>; content: string }>(`/documents/${id}/exam`, { method: "POST" }),
 };
 

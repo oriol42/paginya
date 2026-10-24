@@ -342,3 +342,37 @@ def test_shift_enter_lines_become_their_own_paragraphs(tmp_path):
     doc.save(path)
     texts = [r.text for r in from_docx(path, tmp_path / "img")]
     assert texts == ["- Absence de tableaux de bord", "2.2 Limites de l'existant", "Cette situation générait plusieurs problèmes pour les équipes du terrain chaque fin de mois."]
+
+
+def test_control_characters_from_a_pdf_never_break_the_word_file(tmp_path):
+    from app.doc.render import build_docx
+    doc = {"blocks": [{"type": "heading", "level": 1, "text": "Chapitre\x01 un"}, {"type": "paragraph", "text": "Texte\x0b avec\x00 des codes\x1f."}], "meta": {}}
+    data = build_docx(doc, tmp_path)
+    assert data[:2] == b"PK"
+
+
+def test_junk_rate_spots_a_bad_ocr_layer():
+    from app.doc.extract import junk_rate
+    assert junk_rate("Analysez ce sujet en faisant ressortir la thèse de l'auteur (2 pts) ; 1) Le domaine.") < 0.05
+    assert junk_rate("~,,~ __ ~~ Comtnente~~ ut dtJ cOlTespond faisantres50rtir ~.~ .,-':;~--") > 0.5
+
+
+def test_word_equations_survive_the_rebuild(tmp_path):
+    from docx import Document
+    from docx.oxml import parse_xml
+    from app.doc.extract import from_docx
+    from app.doc.render import build_docx
+    import io, zipfile
+    m = 'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"'
+    d = Document()
+    d.add_paragraph("On considère l'équation suivante :")
+    p = d.add_paragraph(); p._p.append(parse_xml(f'<m:oMathPara {m}><m:oMath><m:r><m:t>ax²+bx+c=0</m:t></m:r></m:oMath></m:oMathPara>'))
+    p = d.add_paragraph("Le discriminant vaut "); p._p.append(parse_xml(f'<m:oMath {m}><m:r><m:t>Δ=b²−4ac</m:t></m:r></m:oMath>')); p.add_run(" ici.")
+    d.save(tmp_path / "maths.docx")
+    raws = from_docx(tmp_path / "maths.docx", tmp_path / "images")
+    texts = [r.text for r in raws]
+    assert texts[1].startswith("⟦eq") and texts[2].startswith("Le discriminant vaut ⟦eq") and texts[2].endswith(" ici.")
+    blocks = [{"type": "paragraph", "text": t} for t in texts] + [{"type": "heading", "level": 1, "text": "Titre " + texts[1]}]
+    data = build_docx({"blocks": blocks, "meta": {}}, tmp_path / "images")
+    xml = zipfile.ZipFile(io.BytesIO(data)).read("word/document.xml").decode()
+    assert xml.count("<m:oMath") >= 2 and "Δ=b²−4ac" in xml and "⟦" not in xml  # real equations; the title gets plain text

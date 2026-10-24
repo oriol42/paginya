@@ -317,3 +317,21 @@ Reste, par ordre d'intérêt :
 - **Support** (`api/app/support.py`, tables `tickets`, `ticket_messages`) : page `/aide` (message + WhatsApp/e-mail, commande jointe depuis la fenêtre de paiement), réponses visibles sur `/aide` et `/compte`. Boîte commune sur `/coulisses` : statut À traiter / Répondu / Résolu, qui a répondu, commande et pass du client, « Débloquer ce document », « Offrir des jours », lien WhatsApp/e-mail prérempli. Notification sur les téléphones via l'appli **ntfy** (sujet secret `SUPPORT_NTFY_TOPIC`). Messages gardés 12 mois.
 - Pages : `/tarifs` (3 offres), `/compte` (pass, compteur du jour, achat), accueil, CGU, confidentialité.
 - Tests : `tests/test_plans_support.py` (101 au vert).
+
+## 24-25/10/2026 — Tests sur de vrais documents camerounais + corrections
+- **Corpus de test** (dans le dossier temporaire de la session, à re-télécharger avec les mêmes outils si besoin) : 60 mémoires/rapports DICAMES (UY1, UY2, ENS, ENSET, FALSH, FSE, FMSB, ESSTIC, Dschang, UCAC…), 30 épreuves (séquences, probatoire, épreuves zéro, sujetexa.com), 12 Word d'étudiants (GitHub), 3 lettres administratives tapées. Banc : `api/ml/study/bench/bench.py`.
+- Corrigé :
+  - **Équations Word** (OMML) : elles disparaissaient. Maintenant gardées (fichier `images/<id>.omml`, repère `⟦eq…⟧` dans le texte) et remises en vraies équations dans le Word refait (`render.add_text`) ; texte simple dans les titres et cellules.
+  - Caractères de contrôle dans un PDF → plantage du Word (`render.xml_safe`).
+  - Image avec 0 dpi → plantage (réenregistrée proprement) ; Word récent avec alignement « start » → import impossible.
+  - PDF scanné à mauvaise couche de texte (« Comtnente~~ ») : relu par Tesseract si ≤ 8 pages et si c'est mieux (`extract.junk_rate`).
+  - Garde scannée avec cadre décoratif : Tesseract voyait une page vide → 2e lecture en `--psm 4`.
+  - Épreuves en anglais (marks, Section A, Task 1) reconnues.
+  - Titres faux : fins de paragraphe coupées par un saut de page, titres en minuscule, charabia de police → paragraphes ; références « E. Tawil, …, 2013, p. 5 » ne sont plus des titres ; tiret seul sur sa ligne recollé.
+  - Gemini 2.5 n'existe plus : secours `gemini-3.8-flash`, `gemini-3.5-flash-lite`.
+- Ajouté :
+  - **Lettres** tapées librement : reconnues (`forms/letter_parse.py`), « Oui, présenter ma lettre » ouvre /lettre déjà rempli (expéditeur, date, destinataire, objet, P.J., corps).
+  - **Départements** proposés par établissement dans le studio (`web/src/lib/departments.ts`, sources : gardes DICAMES, listes publiées).
+  - **Galerie de logos** (« Choisir ») partout où on met un logo ; logo **ENSET Ebolowa**.
+  - **Compteur d'usage** (`usage` : IA, OCR, rendus) visible dans /coulisses → Visiteurs → Machine.
+- Mesures : documents « faits à la main » avec plan connu : rappel 0,939, précision 0,925 (pas de régression). 59/60 PDF DICAMES sans erreur (le 60e est un scan, lu maintenant).

@@ -403,13 +403,41 @@ def from_pdf(path: Path) -> list[Raw]:
     text = pdf_cleanup(text)
     if len(text.strip()) < 20:
         text = _ocr_pdf(path)  # a scanned document: read its pages like photos
+    elif junk_rate(text) >= 0.12 and _page_count(path) <= REOCR_MAX_PAGES:
+        # A scan whose text layer was read badly by someone else's software ("Comtnente~~"):
+        # our own reading is usually cleaner. Kept only if it really is.
+        try:
+            ocr = _ocr_pdf(path, REOCR_MAX_PAGES)
+            if junk_rate(ocr) < junk_rate(text) - 0.03:
+                text = ocr
+        except ExtractError:
+            pass
     return from_text(text, source="pdf")
 
 
 OCR_MAX_PAGES = 25  # the free server reads ~1 page every few seconds
+REOCR_MAX_PAGES = 8  # reading a scan again is only worth the wait on short documents (exam papers…)
+_WORD = re.compile(r"^[(«\"'“]*([A-Za-zÀ-ÖØ-öø-ÿŒœ'’\-]+|\d+([.,:/h]\d+)*%?|[A-Za-zÀ-ÿ]\)|\d+[°)]?|[-–•*:;!?=+/])[)»\"'”.,;:!?]*$")
 
 
-def _ocr_pdf(path: Path) -> str:
+def junk_rate(text: str) -> float:
+    """Share of tokens that are not words, numbers or punctuation ("~,,~", "dtJ", "cOlTespond"): a bad OCR layer."""
+    toks = text.split()
+    if not toks:
+        return 1.0
+    bad = sum(1 for t in toks if not _WORD.match(t) or re.search(r"[a-zà-ÿ][A-Z][a-z]|[a-zA-Z]\d[a-zA-Z]", t))
+    return bad / len(toks)
+
+
+def _page_count(path: Path) -> int:
+    try:
+        info = subprocess.run(["pdfinfo", str(path)], capture_output=True, text=True, timeout=30).stdout
+        return int(re.search(r"^Pages:\s+(\d+)", info, re.M).group(1))
+    except (subprocess.SubprocessError, FileNotFoundError, AttributeError, ValueError):
+        return 999
+
+
+def _ocr_pdf(path: Path, max_pages: int = OCR_MAX_PAGES) -> str:
     """Scanned PDF (only pictures of pages): each page rasterised then read by Tesseract, pages kept apart."""
     import tempfile
 
@@ -417,7 +445,7 @@ def _ocr_pdf(path: Path) -> str:
 
     with tempfile.TemporaryDirectory() as tmp:
         try:
-            subprocess.run(["pdftoppm", "-r", "200", "-gray", "-jpeg", "-l", str(OCR_MAX_PAGES), str(path), f"{tmp}/p"],
+            subprocess.run(["pdftoppm", "-r", "200", "-gray", "-jpeg", "-l", str(max_pages), str(path), f"{tmp}/p"],
                            capture_output=True, timeout=300, check=True)
         except (subprocess.SubprocessError, FileNotFoundError) as exc:
             raise ExtractError("Impossible de lire ce PDF : il est peut-être abîmé. Réessaie avec le fichier Word.") from exc
@@ -474,16 +502,61 @@ def _style_size(style) -> float:
     return 0.0
 
 
+# Word equations (OMML) are kept as they are: saved next to the images, a marker stands at their place in the
+# text, and the rebuilt Word file puts the real equation back (render.add_text). Elsewhere the marker reads as
+# the equation's plain text.
+MATH_TAGS = (qn("m:oMathPara"), qn("m:oMath"))
+MATH_MARK = re.compile(r"⟦eq(\d+)⟧", re.I)
+
+
+def math_plain(element) -> str:
+    """An equation as plain text (x²+1=0): what is shown when the real equation cannot be."""
+    return "".join(t.text or "" for t in element.iter(qn("m:t")))
+
+
+def _save_math(element, images_dir: Path) -> str:
+    """Saves one equation; returns its marker."""
+    from lxml import etree
+
+    eid = str(uuid.uuid4().int % 10**12)
+    (images_dir / f"{eid}.omml").write_bytes(etree.tostring(element))
+    return f"⟦eq{eid}⟧"
+
+
+def _text_with_math(p_el, images_dir: Path) -> str:
+    """The paragraph's text in reading order, each equation replaced by its marker."""
+    out: list[str] = []
+
+    def walk(el) -> None:
+        for child in el:
+            if child.tag in MATH_TAGS:
+                out.append(_save_math(child, images_dir))
+            elif child.tag == qn("w:t"):
+                out.append(child.text or "")
+            elif child.tag == qn("w:tab"):
+                out.append("\t")
+            elif child.tag in (qn("w:br"), qn("w:cr")):
+                out.append("\n")
+            elif child.tag not in (qn("w:pPr"), qn("w:rPr"), qn("w:txbxContent"), qn("w:del"), qn("w:instrText")):
+                walk(child)
+
+    walk(p_el)
+    return "".join(out)
+
+
 def _paragraph(p: Paragraph, fmts: dict, images_dir: Path, doc) -> Raw:
     style = p.style
-    raw = Raw(text=p.text.strip(), style=(style.name or "").lower() if style is not None else "", source="docx")
+    has_math = next(p._p.iter(*MATH_TAGS), None) is not None
+    text = _text_with_math(p._p, images_dir) if has_math else p.text
+    raw = Raw(text=text.strip(), style=(style.name or "").lower() if style is not None else "", source="docx")
     runs = [r for r in p.runs if r.text.strip()]
     style_bold = _style_chain_bold(style)
     if runs:
         raw.bold = all((r.bold if r.bold is not None else style_bold) for r in runs)
         sizes = [r.font.size.pt for r in runs if r.font.size is not None]
         raw.size = max(sizes) if sizes else _style_size(style)
-    raw.centered = p.alignment is not None and int(p.alignment) == 1  # CENTER
+    jc = p._p.find(f"{qn('w:pPr')}/{qn('w:jc')}")  # read directly: recent Word writes values python-docx rejects ("start")
+    raw.centered = jc is not None and jc.get(qn("w:val")) == "center"
 
     ppr = p._p.pPr
     num_pr = ppr.numPr if ppr is not None else None
@@ -590,7 +663,7 @@ def from_docx(path: Path, images_dir: Path) -> list[Raw]:
             for row in table.rows:
                 cells = []
                 for cell in row.cells:
-                    cells.append(" ".join(par.text.strip() for par in cell.paragraphs).strip())
+                    cells.append(" ".join((par.text + "".join(math_plain(m) for m in par._p.iter(qn("m:oMath")))).strip() for par in cell.paragraphs).strip())
                 # merged cells repeat: collapse consecutive duplicates
                 dedup = [c for i, c in enumerate(cells) if i == 0 or c != cells[i - 1] or not c]
                 rows.append(dedup)

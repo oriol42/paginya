@@ -106,6 +106,11 @@ def _is_title_like(text: str, limit: int = 120) -> bool:
     return 2 <= len(text) <= limit and not ENDS_SENTENCE.search(text.strip())
 
 
+# A reference typed in a footnote or the bibliography starts like a lettered heading: initial(s), surname, comma.
+REFERENCE = re.compile(r"^(?:[A-Z]\.\s?-?){1,3}\s*[A-ZÀ-Ý][\w'’\-]+(?:\s[A-ZÀ-Ý][\w'’\-]+)?\s?,\s")
+REF_DETAIL = re.compile(r"\b(1[5-9]|20)\d\d\b|\bpp?\.\s?\d|\b(op\.\s?cit|ibid|[ée]d\.|[ée]dition|vol\.)", re.I)
+
+
 def _numbered_title_like(text: str, limit: int, body: str) -> bool:
     """A numbered line is a title even when its author ended it with ":" or "." ("2- Les missions :"),
     as long as what follows the number is one short phrase (no other sentence inside)."""
@@ -389,6 +394,8 @@ def _classify_text(r: Raw, nxt: Raw | None, base: float) -> dict:
         m = SINGLE_NUM.match(text) or DECIMAL.match(text)
         if m:
             return {"type": "list", "ordered": True, "level": min(r.indent, 2), "text": m.group(2), "_typed": True}
+    if REFERENCE.match(text) and REF_DETAIL.search(text):
+        return {"type": "paragraph", "text": text}  # "E. Tawil, Les relations…, 2013, p. 5.": a footnote, not heading E.
     m = DECIMAL.match(text)
     if m and _numbered_title_like(text, 140, m.group(2)):
         depth = min(m.group(1).count(".") + 1, 4)

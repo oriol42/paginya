@@ -6,6 +6,7 @@ LibreOffice turns them into real indexes with page numbers (office.py).
 from __future__ import annotations
 
 import base64
+import contextvars
 import io
 import re
 from pathlib import Path
@@ -14,11 +15,12 @@ from docx import Document
 from docx.enum.section import WD_SECTION
 from docx.enum.table import WD_ALIGN_VERTICAL, WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
-from docx.oxml import OxmlElement
+from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import qn
 from docx.shared import Cm, Emu, Mm, Pt, RGBColor
 
 from .clean import typo_fr
+from .extract import MATH_MARK
 from PIL import Image
 
 from .. import render as cover_render
@@ -289,8 +291,45 @@ def inline_spans(text: str) -> list[tuple[str, str]]:
     return out
 
 
+_math_dir: contextvars.ContextVar[Path | None] = contextvars.ContextVar("math_dir", default=None)
+
+
+def _math_element(eid: str):
+    """The saved Word equation behind a marker (None when it is missing)."""
+    folder = _math_dir.get()
+    path = folder / f"{eid}.omml" if folder else None
+    if path is None or not path.is_file():
+        return None
+    try:
+        return parse_xml(path.read_bytes())
+    except Exception:  # noqa: BLE001  (a damaged equation never breaks the document)
+        return None
+
+
+def plain_math(text: str) -> str:
+    """Markers replaced by the equation's plain text (titles, cells: places that hold plain runs)."""
+    if "⟦" not in text:
+        return text
+    def one(m):
+        el = _math_element(m.group(1))
+        return "".join(t.text or "" for t in el.iter(qn("m:t"))) if el is not None else ""
+    return MATH_MARK.sub(one, text)
+
+
 def add_text(paragraph, text: str, color: str) -> None:
-    """Adds text with its **bold**, *italic* and `code` spans, and clickable links."""
+    """Adds text with its **bold**, *italic* and `code` spans, clickable links, and the real Word equations."""
+    if "⟦" in text:
+        pos = 0
+        for m in MATH_MARK.finditer(text):
+            if m.start() > pos:
+                add_text(paragraph, text[pos:m.start()], color)
+            el = _math_element(m.group(1))
+            if el is not None:
+                paragraph._p.append(el)
+            pos = m.end()
+        if pos < len(text):
+            add_text(paragraph, text[pos:], color)
+        return
     for part, flags in inline_spans(text):
         start = len(paragraph.runs)
         if "c" in flags:
@@ -635,7 +674,19 @@ class Builder:
         p = self.doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p.paragraph_format.keep_with_next = True
-        p.add_run().add_picture(str(path), width=width)
+        try:
+            p.add_run().add_picture(str(path), width=width)
+        except Exception:  # noqa: BLE001  (a picture whose header says 0 dpi, an odd format…): saved again cleanly
+            p._p.remove(p.runs[-1]._r) if p.runs else None
+            try:
+                with Image.open(path) as img:
+                    buf = io.BytesIO()
+                    img.convert("RGBA" if img.mode in ("RGBA", "LA", "P") else "RGB").save(buf, "PNG", dpi=(96, 96))
+                buf.seek(0)
+                p.add_run().add_picture(buf, width=width)
+            except Exception:  # noqa: BLE001  (unreadable picture: the document goes on without it)
+                p._p.getparent().remove(p._p)
+                return
         self.first_in_section = False
         self._last_list_key = None
 
@@ -781,7 +832,28 @@ class Builder:
 
 # --- orchestration -------------------------------------------------------------
 
+# Characters Word refuses (control codes left by some PDFs, e.g. scanned books): removed before writing.
+_NOT_XML = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]")
+
+
+def xml_safe(value, keep_math: bool = False):
+    """The same structure with every string cleaned of characters Word cannot store. Equation markers stay only
+    in paragraph and list text (written by add_text); everywhere else they become the equation's plain text."""
+    if isinstance(value, str):
+        value = _NOT_XML.sub("", value)
+        return value if keep_math else plain_math(value)
+    if isinstance(value, dict) and value.get("type") in ("paragraph", "list"):
+        return {k: xml_safe(v, k in ("text", "items")) for k, v in value.items()}
+    if isinstance(value, list):
+        return [xml_safe(v, keep_math) for v in value]
+    if isinstance(value, dict):
+        return {k: xml_safe(v, keep_math) for k, v in value.items()}
+    return value
+
+
 def build_docx(document: dict, images_dir: Path) -> bytes:
+    _math_dir.set(images_dir)
+    document = xml_safe(document)
     st = resolved_style(document.get("style"))
     opts = {**DEFAULT_OPTIONS, **(document.get("options") or {})}
     if "chapter_pages" not in (document.get("options") or {}):  # documents saved before this option existed

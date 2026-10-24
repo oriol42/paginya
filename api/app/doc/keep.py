@@ -276,7 +276,8 @@ def find_titles(doc, after: int = 0) -> list[tuple[object, int]]:
             continue
         words = len(text.split())
         bold = _runs_bold(p)
-        centered = p.alignment == WD_ALIGN_PARAGRAPH.CENTER
+        jc = p._p.find(f"{qn('w:pPr')}/{qn('w:jc')}")  # not p.alignment: recent Word writes "start", which it rejects
+        centered = jc is not None and jc.get(qn("w:val")) == "center"
         big = _runs_size(p) >= 13
         caps = text.upper() == text and sum(c.isalpha() for c in text) >= 4
         num = _num_of(p)

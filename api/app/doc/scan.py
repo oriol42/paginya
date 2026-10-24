@@ -145,7 +145,7 @@ def _check_response(resp: httpx.Response, model: str = "") -> None:
 
 def _read_gemini(jpeg: bytes, key: str, prompt: str = PROMPT) -> str:
     """Tries the configured model, then the usual names if Google says the model does not exist."""
-    models = [os.getenv("GEMINI_MODEL", ""), "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
+    models = [os.getenv("GEMINI_MODEL", ""), "gemini-flash-latest", "gemini-3.8-flash", "gemini-3.5-flash-lite"]  # Google retires names: 2.5 is gone since 2026
     return _try_models(models, lambda model: _gemini_call(jpeg, key, prompt, model))
 
 
@@ -265,15 +265,26 @@ def ocr_local(jpeg: bytes) -> tuple[str, float]:
         img = cv2.resize(img, None, fx=f, fy=f, interpolation=cv2.INTER_CUBIC)
     with tempfile.NamedTemporaryFile(suffix=".png") as tmp:
         cv2.imwrite(tmp.name, img)
-        try:
-            out = subprocess.run(
-                ["tesseract", tmp.name, "-", "-l", "fra+eng", "--psm", "3", "tsv"],
-                capture_output=True, timeout=120, check=True,
-            ).stdout.decode("utf-8", "replace")
-        except FileNotFoundError as exc:
-            raise OcrUnavailable("Tesseract n'est pas installé sur le serveur") from exc
-        except subprocess.SubprocessError as exc:
-            raise ScanError("Lecture impossible, réessaie avec une photo plus nette") from exc
+        text, conf = _tesseract(tmp.name, "3")
+        if len(text.split()) < 15:
+            # A decorated frame (covers of mémoires) makes the automatic layout see an "empty page":
+            # reading the page as one column of text finds the words.
+            again = _tesseract(tmp.name, "4")
+            if len(again[0].split()) > len(text.split()):
+                text, conf = again
+    return text, conf
+
+
+def _tesseract(path: str, psm: str) -> tuple[str, float]:
+    try:
+        out = subprocess.run(
+            ["tesseract", path, "-", "-l", "fra+eng", "--psm", psm, "tsv"],
+            capture_output=True, timeout=120, check=True,
+        ).stdout.decode("utf-8", "replace")
+    except FileNotFoundError as exc:
+        raise OcrUnavailable("Tesseract n'est pas installé sur le serveur") from exc
+    except subprocess.SubprocessError as exc:
+        raise ScanError("Lecture impossible, réessaie avec une photo plus nette") from exc
     return _tsv_to_text(out)
 
 

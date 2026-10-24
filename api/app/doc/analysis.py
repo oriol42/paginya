@@ -7,6 +7,7 @@ proposed plan, element by element: cover / toc / numbers each "keep", "add", "re
 from __future__ import annotations
 
 from .exam_scan import exam_signals
+from ..forms.letter_parse import letter_signals
 from .render import options_for
 
 KIND_LABELS = {
@@ -81,12 +82,16 @@ def numbers_hint(kind: str, existing: dict | None) -> str:
 def analyze(kind: str, meta: dict, blocks: list[dict], options: dict, existing: dict | None, is_docx: bool) -> dict:
     exam = exam_signals(blocks_text(blocks))
     shown = "epreuve" if exam["likely"] else kind
+    letter = not exam["likely"] and letter_signals(blocks_text(blocks))
+    reasons = exam["reasons"][:4] if exam["likely"] else ["un objet", "« Monsieur le… » ou « Madame la… »", "une formule de politesse"] if letter else why(kind, meta)
     return {
         "kind": shown,
         "kind_label": KIND_LABELS.get(shown, "un document"),
         "detected_kind": kind,
-        "why": exam["reasons"][:4] if exam["likely"] else why(kind, meta),
+        "why": reasons,
         "exam": exam["likely"],
+        # a request or letter typed by hand: /lettre lays it out the Cameroonian way (date right, recipient, subject…)
+        "letter": letter,
         "docx": is_docx,
         "existing": existing,
         # titles made by hand (bold, capitals) instead of Word styles: the file is rebuilt unless the user says otherwise

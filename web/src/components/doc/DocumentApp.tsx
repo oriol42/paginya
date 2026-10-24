@@ -7,6 +7,7 @@ import type { OrderStatus } from "@/lib/api";
 import { forget, remember } from "@/lib/recents";
 import { KIND_LABEL, docs, type Block, type DocMode, type DocOptions, type DocPlan, type DocStyle, type DocView, type Letterhead } from "@/lib/documents";
 import { saveExamDraft } from "@/lib/examDraft";
+import { saveLetterDraft } from "@/lib/letterDraft";
 import { Icon, type IconName } from "../Icon";
 import { Logo } from "../Logo";
 import { PaySheet } from "../PaySheet";
@@ -202,6 +203,18 @@ export function DocumentApp() {
     }
   }
 
+  /** A letter typed by hand: /lettre puts the date, the recipient, the subject and the signature where they belong. */
+  async function openAsLetter() {
+    if (!doc) return;
+    setError("");
+    try {
+      if (saveLetterDraft(await docs.toLetter(doc.id))) router.push("/lettre");
+      else setError("Impossible d'ouvrir la lettre : ton navigateur bloque le stockage local (navigation privée ?).");
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   async function showView(v: View) {
     setView(v);
     if (v !== "after" && beforePages === null && doc) {
@@ -244,7 +257,7 @@ export function DocumentApp() {
     return (
       <Shell>
         <div className="board flex-1">
-          <AnalysisScreen key={`${doc.id}-${doc.meta.kind}`} doc={doc} busy={busy} error={error} onKind={changeKind} onExam={openAsExam} onApply={applyAnalysis} />
+          <AnalysisScreen key={`${doc.id}-${doc.meta.kind}`} doc={doc} busy={busy} error={error} onKind={changeKind} onExam={openAsExam} onLetter={openAsLetter} onApply={applyAnalysis} />
         </div>
       </Shell>
     );

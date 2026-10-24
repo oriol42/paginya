@@ -138,3 +138,11 @@ def test_old_5000_pass_counts_as_pro(client, signed):  # noqa: F811
     me = client.post("/account/me", json={"token": token}).json()
     assert me["plan"] == "pro" and me["per_day"] == 0
     assert accounts.account_of(token)["plan"] == ""
+
+
+def test_usage_is_counted_per_day_and_only_the_team_reads_it(client, signed):  # noqa: F811
+    db.bump("ia:gemini"); db.bump("ia:gemini"); db.bump("ocr")
+    chef = client.post("/admin/login", json={"credential": "t-chef"}).json()["token"]
+    rows = client.post("/admin/usage", json={"token": chef}).json()["rows"]
+    assert {r["what"]: r["n"] for r in rows} == {"ia:gemini": 2, "ocr": 1}
+    assert client.post("/admin/usage", json={"token": "faux"}).status_code == 403

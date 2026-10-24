@@ -79,6 +79,7 @@ export const INSTITUTIONS: Institution[] = [
   school("ug", "Université de Garoua", null, "UNIVERSITÉ DE GAROUA", "THE UNIVERSITY OF GAROUA", "ug"),
   school("ubt", "Université de Bertoua", null, "UNIVERSITÉ DE BERTOUA", "THE UNIVERSITY OF BERTOUA", "ubt"),
   school("ueb", "Université d'Ebolowa", null, "UNIVERSITÉ D'EBOLOWA", "THE UNIVERSITY OF EBOLOWA", "ueb"),
+  school("ueb-enset", "ENSET Ebolowa", ["UNIVERSITÉ D'EBOLOWA", "THE UNIVERSITY OF EBOLOWA", "ueb"], "ÉCOLE NORMALE SUPÉRIEURE D'ENSEIGNEMENT TECHNIQUE D'EBOLOWA", "HIGHER TECHNICAL TEACHER TRAINING COLLEGE OF EBOLOWA", "enset-ebolowa"),
   // --- Grandes écoles
   school("enam", "ENAM", null, "ÉCOLE NATIONALE D'ADMINISTRATION ET DE MAGISTRATURE", "NATIONAL SCHOOL OF ADMINISTRATION AND MAGISTRACY", "enam"),
   school("enstp", "ENSTP Yaoundé (Travaux Publics)", null, "ÉCOLE NATIONALE SUPÉRIEURE DES TRAVAUX PUBLICS", "NATIONAL ADVANCED SCHOOL OF PUBLIC WORKS", "enstp"),

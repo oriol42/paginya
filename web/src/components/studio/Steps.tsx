@@ -4,6 +4,7 @@ import { useState } from "react";
 import { DEFAULT_LABELS, KINDS, type FieldKey } from "@/lib/cover/kinds";
 import type { CoverForm, Person } from "@/lib/cover/types";
 import { INSTITUTIONS, institution, logoData } from "@/lib/institutions";
+import { DEPARTMENTS } from "@/lib/departments";
 import { Field, Input, Select, TextArea, Toggle } from "../ui";
 import { Icon } from "@/components/Icon";
 
@@ -24,6 +25,46 @@ export async function readLogo(file: File): Promise<string> {
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+
+/** The department under the faculty: picked in the list of this school, or typed. Rewrites the header's last line. */
+function DepartmentPicker({ form, onChange }: StepProps) {
+  const inst = institution(form.institutionId);
+  const list = DEPARTMENTS[inst.id] ?? [];
+  const lines = form.headerFr.split("\n");
+  const extra = lines.length > inst.fr.length ? lines[lines.length - 1] : "";
+  const known = list.findIndex(([fr]) => fr === extra);
+  const [typing, setTyping] = useState(!!extra && known < 0);
+  const set = (fr: string, en: string) =>
+    onChange({ headerFr: [...inst.fr, ...(fr ? [fr] : [])].join("\n"), headerEn: [...inst.en, ...(en ? [en] : [])].join("\n") });
+
+  return (
+    <div className="mt-3 grid gap-2">
+      <span className="text-[13px] font-bold tracking-wide text-ink/80">Département ou filière (facultatif)</span>
+      <Select
+        aria-label="Département ou filière"
+        value={typing ? "autre" : known >= 0 ? String(known) : ""}
+        onChange={(e) => {
+          const v = e.target.value;
+          setTyping(v === "autre");
+          if (v === "" || v === "autre") set("", "");
+          else set(...list[Number(v)]);
+        }}
+      >
+        <option value="">Aucun (seulement la faculté ou l&apos;école)</option>
+        {list.map(([fr], i) => <option key={fr} value={i}>{fr.replace(/^(DÉPARTEMENT (DE LA |DES |DE L'|DE |D')|FILIÈRE : )/, "").toLowerCase().replace(/^./, (c) => c.toUpperCase())}</option>)}
+        <option value="autre">Autre : je l&apos;écris</option>
+      </Select>
+      {typing && (
+        <Input
+          value={extra}
+          placeholder="Ex. : DÉPARTEMENT DE GÉOGRAPHIE"
+          onChange={(e) => set(e.target.value.toUpperCase(), e.target.value.toUpperCase())}
+        />
+      )}
+    </div>
+  );
 }
 
 
@@ -58,6 +99,7 @@ export function EssentialsStep({ form, onChange }: StepProps) {
               <p className="text-xs text-ink/60">Une ligne par niveau : français en haut, anglais en bas.</p>
             </div>
           )}
+          {!custom && DEPARTMENTS[form.institutionId] && <DepartmentPicker form={form} onChange={onChange} />}
           <div className="mt-3 flex items-center gap-2 text-[14px]">
             <span className="text-ink/70">Langue de la page :</span>
             {(["fr", "en"] as const).map((l) => (
@@ -186,24 +228,63 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
+/** Every logo we have, once, named after the school that uses it (the faculty's own logo first). */
+function logoChoices(): { file: string; name: string }[] {
+  const seen = new Map<string, string>([["armoiries", "Armoiries du Cameroun"]]);
+  for (const i of INSTITUTIONS) {
+    if (i.logo2 && !seen.has(i.logo2)) seen.set(i.logo2, i.short);
+    if (i.logo && !seen.has(i.logo)) seen.set(i.logo, i.logo2 ? i.short.split(" · ")[0] : i.short);
+  }
+  return [...seen].map(([file, name]) => ({ file, name }));
+}
+
 export function LogoPicker({ logo, onChange, label = "Logo de l'école" }: { logo?: string; onChange: (l?: string) => void; label?: string }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const plain = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const choices = open ? logoChoices().filter((c) => plain(`${c.name} ${c.file}`).includes(plain(q))) : [];
   return (
-    <div className="flex flex-wrap items-center gap-3 border-t border-ink/10 pt-3">
-      {logo ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={logo} alt="Logo" className="h-14 w-14 rounded-md object-contain" />
-      ) : (
-        <span className="grid h-14 w-14 place-items-center rounded-md bg-ink/5 text-board"><Icon name="landmark" size={26} /></span>
-      )}
-      <div className="min-w-[9rem] flex-1">
-        <p className="text-sm font-semibold text-ink">{label}</p>
-        <p className="text-xs text-ink/60">{logo ? "Ajouté" : "Photo ou image, fond blanc de préférence"}</p>
+    <div className="border-t border-ink/10 pt-3">
+      <div className="flex flex-wrap items-center gap-3">
+        {logo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={logo} alt="Logo" className="h-14 w-14 rounded-md object-contain" />
+        ) : (
+          <span className="grid h-14 w-14 place-items-center rounded-md bg-ink/5 text-board"><Icon name="landmark" size={26} /></span>
+        )}
+        <div className="min-w-[9rem] flex-1">
+          <p className="text-sm font-semibold text-ink">{label}</p>
+          <p className="text-xs text-ink/60">{logo ? "Ajouté" : "Dans notre liste, ou ta propre image"}</p>
+        </div>
+        <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="press rounded-md bg-board px-3.5 py-2.5 text-sm font-bold text-white">
+          {open ? "Fermer" : "Choisir"}
+        </button>
+        <label className="press cursor-pointer rounded-md px-3 py-2.5 text-sm font-bold text-ink ring-1 ring-black/15">
+          Mon image
+          <input type="file" accept="image/*" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (f) onChange(await readLogo(f)); }} />
+        </label>
+        {logo && <button type="button" onClick={() => onChange(undefined)} className="text-ink/45" aria-label="Retirer le logo"><Icon name="x" size={16} /></button>}
       </div>
-      <label className="cursor-pointer press rounded-md bg-board px-3.5 py-2.5 text-sm font-bold text-white">
-        {logo ? "Changer" : "Ajouter"}
-        <input type="file" accept="image/*" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (f) onChange(await readLogo(f)); }} />
-      </label>
-      {logo && <button type="button" onClick={() => onChange(undefined)} className="text-ink/45" aria-label="Retirer le logo"><Icon name="x" size={16} /></button>}
+      {open && (
+        <div className="mt-3 rounded-md bg-ink/[0.04] p-3">
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cherche ton école : ENS, Dschang, FSEG…" aria-label="Chercher un logo" />
+          <div className="mt-3 grid max-h-64 grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-4">
+            {choices.map((c) => (
+              <button
+                key={c.file}
+                type="button"
+                onClick={async () => { onChange(await logoData(c.file)); setOpen(false); }}
+                className="press flex flex-col items-center gap-1 rounded-md bg-paper p-2 text-center ring-1 ring-black/10 hover:ring-ink/40"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={`/logos/${c.file}.png`} alt="" loading="lazy" className="h-12 w-12 object-contain" />
+                <span className="line-clamp-2 text-[11px] leading-tight text-ink/75">{c.name}</span>
+              </button>
+            ))}
+            {choices.length === 0 && <p className="col-span-full text-[13px] text-ink/60">Pas trouvé : ajoute ta propre image avec « Mon image ».</p>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

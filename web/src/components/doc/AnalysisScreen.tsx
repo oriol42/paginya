@@ -14,15 +14,18 @@ type Props = {
   onKind: (kind: string) => Promise<void>;
   /** "Oui, c'est une épreuve": the text goes to the exam form. */
   onExam: () => void;
+  /** "Oui, c'est une lettre": the text goes to the letter form, already split into its fields. */
+  onLetter: () => void;
   /** Apply the plan: nothing was changed or laid out before this. */
   onApply: (mode: DocMode, plan: DocPlan) => void;
 };
 
 /** "J'ai analysé ton document": what Paginya understood, and one choice per element before anything changes. */
-export function AnalysisScreen({ doc, busy, error, onKind, onExam, onApply }: Props) {
+export function AnalysisScreen({ doc, busy, error, onKind, onExam, onLetter, onApply }: Props) {
   const report = doc.analysis;
   const [plan, setPlan] = useState<DocPlan>(doc.plan);
   const [notExam, setNotExam] = useState(false);
+  const [notLetter, setNotLetter] = useState(false);
   const mode: DocMode = doc.mode === "keep" ? "keep" : "rebuild";
   if (!report) return null;
 
@@ -46,7 +49,7 @@ export function AnalysisScreen({ doc, busy, error, onKind, onExam, onApply }: Pr
       <section className="paper pin-in relative mt-6 rounded-[2px] p-5 pt-8 text-ink" aria-label="Type de document">
         <span className="pin top-3 left-1/2 -translate-x-1/2" aria-hidden />
         <p className="font-display text-[26px] leading-none font-black uppercase">
-          {isExam ? "J'ai reconnu une épreuve d'examen" : `J'ai reconnu ${report.kind_label}`}
+          {isExam ? "J'ai reconnu une épreuve d'examen" : report.letter && !notLetter ? "J'ai reconnu une lettre" : `J'ai reconnu ${report.kind_label}`}
         </p>
         {report.why.length > 0 && <p className="mt-2 text-[14px] text-ink/65">Parce que : {report.why.join(" · ")}.</p>}
 
@@ -56,6 +59,16 @@ export function AnalysisScreen({ doc, busy, error, onKind, onExam, onApply }: Pr
             <div className="flex flex-wrap gap-2">
               <PinLabel type="button" className="!px-5 !py-3 !text-[18px]" onClick={onExam}>Oui, créer l&apos;épreuve</PinLabel>
               <button type="button" onClick={() => setNotExam(true)} className="press rounded-md px-4 py-3 text-[15px] font-bold ring-1 ring-black/15 hover:bg-ink/5">
+                Non, c&apos;est un autre document
+              </button>
+            </div>
+          </div>
+        ) : report.letter && !notLetter ? (
+          <div className="mt-4 space-y-2">
+            <p className="text-[15px]">C&apos;est une lettre ou une demande : je la présente comme au Cameroun (date à droite, destinataire, objet, signature).</p>
+            <div className="flex flex-wrap gap-2">
+              <PinLabel type="button" className="!px-5 !py-3 !text-[18px]" onClick={onLetter}>Oui, présenter ma lettre</PinLabel>
+              <button type="button" onClick={() => setNotLetter(true)} className="press rounded-md px-4 py-3 text-[15px] font-bold ring-1 ring-black/15 hover:bg-ink/5">
                 Non, c&apos;est un autre document
               </button>
             </div>

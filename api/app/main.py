@@ -272,6 +272,15 @@ def admin_funnel(body: AdminIn, days: int = 14) -> dict:
     return {"steps": sorted(FUNNEL_STEPS), "rows": db.funnel(since)}
 
 
+@app.post("/admin/usage")
+def admin_usage(body: AdminIn, days: int = 14) -> dict:
+    """What the server did per day: AI calls (free quotas), photo reading, renders."""
+    if admin.email_of(body.token) is None:
+        raise HTTPException(403, "Connexion équipe expirée : reconnecte-toi")
+    since = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 3600 - max(1, min(days, 90)) * 86400))
+    return {"rows": db.usage(since)}
+
+
 def _sync_with_fapshi(order: dict) -> dict:
     """Poll Fapshi for a pending order (the webhook is only sent once)."""
     if order["status"] != "PENDING" or not order["trans_id"]:

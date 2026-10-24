@@ -65,6 +65,8 @@ export const api = {
     call<{ token: string; email: string; account?: Account }>("/admin/login", { method: "POST", body: JSON.stringify({ credential }) }),
   adminFunnel: (token: string, days: number) =>
     call<{ rows: { day: string; src: string; step: string; n: number }[] }>(`/admin/funnel?days=${days}`, { method: "POST", body: JSON.stringify({ token }) }),
+  adminUsage: (token: string, days: number) =>
+    call<{ rows: { day: string; what: string; n: number }[] }>(`/admin/usage?days=${days}`, { method: "POST", body: JSON.stringify({ token }) }),
   adminUnlock: (id: string, token: string) => call<Order>(`/orders/${id}/admin`, { method: "POST", body: JSON.stringify({ token }) }),
   /** Customer accounts (Google): the 30-day pass, and the team's free documents. */
   accountConfig: () => call<{ client_id: string }>("/account/config"),

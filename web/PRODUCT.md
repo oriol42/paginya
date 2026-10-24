@@ -25,9 +25,9 @@ Users are mostly on Android phones (entry to mid range), on slow and unstable 3G
 ## Capabilities and Constraints
 
 - Flows: import (file, photos, paste) → automatic analysis → editor with Style (document type, what Paginya adds, official header, theme), Cover page (Garde) and Plan panels → before/after/side-by-side preview → pay → download Word + PDF; modifications free for 7 days. Also standalone cover page studio (/garde), letters (/lettre), exam papers (/epreuve), pricing, legal pages.
-- Prices (FCFA): cover page and letter 350, CV and exam paper 550, document ≤ 15 pages 1 000, report 16–40 pages 2 000, thesis > 40 pages 3 000. Fapshi takes 3 %.
+- Prices (FCFA): any single document 550 (no account); Essentiel pass 3 000 / 30 days (10 documents a day, the offer pushed first); Pro pass 5 000 / 30 days (unlimited, printers and companies). Passes live on a Google account and never renew by themselves. Fapshi takes 3 %.
 - Static Next.js export on Cloudflare Pages (paginya.pages.dev); API on Render.
-- No accounts or passwords; documents deleted after 7 days.
+- No passwords: an optional Google account holds the pass; documents deleted after 7 days.
 
 ## Brand Commitments
 
