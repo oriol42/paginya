@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { LegalPage } from "@/components/Footer";
-import { DOC_PRICE, PLANS } from "@/lib/plans";
+import { DOC_PRICE, perDayText, PLANS } from "@/lib/plans";
 
-export const metadata: Metadata = { title: "Tarifs", description: "Aperçu gratuit. Un document 550 F, ou un pass 30 jours dès 3 000 F, par Mobile Money." };
+export const metadata: Metadata = { title: "Tarifs", description: "Aperçu gratuit. Un document 550 F, ou un pass 30 jours dès 3 000 F (illimité à 5 000 F), par Mobile Money." };
 
 const F = (n: number) => `${n.toLocaleString("fr-FR").replace(/ | /g, " ")} F`;
 
@@ -14,11 +14,11 @@ const OFFERS = [
   },
   {
     name: `Pass ${PLANS.essentiel.name}`, price: F(PLANS.essentiel.price), per: "30 jours", href: "/compte/?formule=essentiel", cta: "Prendre le pass", best: true,
-    points: [`${PLANS.essentiel.perDay} documents par jour`, "Moins de 100 F par jour", PLANS.essentiel.who],
+    points: [perDayText(PLANS.essentiel.perDay), "Moins de 100 F par jour", PLANS.essentiel.who],
   },
   {
     name: `Pass ${PLANS.pro.name}`, price: F(PLANS.pro.price), per: "30 jours", href: "/compte/?formule=pro", cta: "Prendre le pass",
-    points: [`${PLANS.pro.perDay} documents par jour`, PLANS.pro.who, "Pour traiter les documents de tes clients"],
+    points: [perDayText(PLANS.pro.perDay), PLANS.pro.who, "Pour traiter les documents de tes clients"],
   },
 ];
 

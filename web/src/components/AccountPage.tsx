@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api, formatXaf, operatorOf, type TicketStatus } from "@/lib/api";
 import { hasPass, keepAccount, refreshAccount, savedAccount, type Account } from "@/lib/account";
-import { PLANS, type Plan } from "@/lib/plans";
+import { perDayText, PLANS, type Plan } from "@/lib/plans";
 import { GoogleButton } from "./GoogleButton";
 import { Icon } from "./Icon";
 import { PHONE_KEY } from "./PaySheet";
@@ -115,7 +115,7 @@ export function AccountPage() {
         ) : active && current ? (
           <>
             <p className="mt-2 flex items-center gap-2 text-[18px] font-bold text-board"><Icon name="badge-check" size={22} /> Pass {current.name} · encore {account.pass_days} jour{account.pass_days > 1 ? "s" : ""}</p>
-            <p className="mt-1 text-[15px]">Aujourd&apos;hui : <b>{account.used_today} / {account.per_day}</b> documents. Le compteur repart à minuit.</p>
+            <p className="mt-1 text-[15px]">{account.per_day ? <>Aujourd&apos;hui : <b>{account.used_today} / {account.per_day}</b> documents. Le compteur repart à minuit.</> : <>Documents illimités ({account.used_today} aujourd&apos;hui).</>}</p>
             <p className="mt-1 text-[14px] text-ink/60">Fin du pass le {new Date(account.pass_until * 1000).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}. Rien n&apos;est prélevé automatiquement.</p>
           </>
         ) : (
@@ -133,7 +133,7 @@ export function AccountPage() {
                 {id === "essentiel" && <span className="absolute -top-2.5 right-3 rounded bg-board px-2 py-0.5 text-[11px] font-bold tracking-wide text-white uppercase">Conseillé</span>}
                 <span className="block text-[17px] font-bold text-ink">{PLANS[id].name}</span>
                 <span className="block font-display text-[28px] leading-tight font-black text-ink">{formatXaf(PLANS[id].price)}<span className="text-[15px] font-semibold text-ink/60"> / 30 jours</span></span>
-                <span className="block text-[14px]">{PLANS[id].perDay} documents par jour</span>
+                <span className="block text-[14px]">{perDayText(PLANS[id].perDay)}</span>
                 <span className="block text-[13px] text-ink/60">{PLANS[id].who}</span>
               </button>
             ))}

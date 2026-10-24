@@ -34,7 +34,7 @@ export default function Cgu() {
       </p>
       <p>
         Un document seul coûte 550 F, quel que soit son type ou son nombre de pages. Les <b>pass 30 jours</b> (Essentiel, Pro) sont liés à un compte Google et permettent
-        de télécharger un nombre limité de documents par jour, affiché avant le paiement. Ils <b>ne se renouvellent jamais automatiquement</b> : à la fin des 30 jours,
+        de télécharger des documents chaque jour (10 par jour pour Essentiel, sans limite pour Pro), comme affiché avant le paiement. Ils <b>ne se renouvellent jamais automatiquement</b> : à la fin des 30 jours,
         l&apos;utilisateur repaie seulement s&apos;il veut continuer. Les jours restants sont gardés lors d&apos;un changement de formule, convertis à leur valeur.
       </p>
 

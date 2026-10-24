@@ -35,8 +35,8 @@ const CONTENTS: [string, string][] = [
 
 const PRICES: [string, string, string][] = [
   ["Un document", "n'importe lequel, toutes les pages", "550"],
-  ["Pass Essentiel · 30 jours", "5 documents par jour", "3 000"],
-  ["Pass Pro · 30 jours", "imprimeries, entreprises", "5 000"],
+  ["Pass Essentiel · 30 jours", "10 documents par jour", "3 000"],
+  ["Pass Pro · 30 jours", "illimité · imprimeries, entreprises", "5 000"],
 ];
 
 const FAQ: [string, string][] = [

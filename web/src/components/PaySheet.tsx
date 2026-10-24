@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ADMIN_KEY, api, formatXaf, operatorOf, type OrderStatus } from "@/lib/api";
 import { track } from "@/lib/track";
 import { canUnlock, hasPass, keepAccount, refreshAccount, savedAccount, type Account } from "@/lib/account";
-import { PLANS, type Plan } from "@/lib/plans";
+import { perDayText, PLANS, type Plan } from "@/lib/plans";
 import { GoogleButton } from "./GoogleButton";
 import { Icon } from "./Icon";
 import { PinLabel } from "./ui";
@@ -125,8 +125,8 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
 
   const operator = operatorOf(phone);
   const options: [Plan | "doc", string, number, string][] = [
-    ["essentiel", `Pass ${PLANS.essentiel.name} · 30 jours`, PLANS.essentiel.price, `${PLANS.essentiel.perDay} documents par jour · moins de 100 F par jour`],
-    ["pro", `Pass ${PLANS.pro.name} · 30 jours`, PLANS.pro.price, `${PLANS.pro.perDay} documents par jour · ${PLANS.pro.who.toLowerCase()}`],
+    ["essentiel", `Pass ${PLANS.essentiel.name} · 30 jours`, PLANS.essentiel.price, `${perDayText(PLANS.essentiel.perDay)} · moins de 100 F par jour`],
+    ["pro", `Pass ${PLANS.pro.name} · 30 jours`, PLANS.pro.price, `${perDayText(PLANS.pro.perDay)} · ${PLANS.pro.who.toLowerCase()}`],
     ["doc", "Ce document seulement", amount, "Sans compte, n'importe quel document"],
   ].filter(([id]) => !(hasPass(account) && id === account!.plan)) as [Plan | "doc", string, number, string][]; // the current pass: renewed from the account page
 
@@ -214,7 +214,7 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
                   <Icon name="badge-check" size={20} />
                   {account!.team ? "Accès illimité" : `Pass ${PLANS[account!.plan as Plan]?.name ?? ""} · encore ${account!.pass_days} jour${account!.pass_days > 1 ? "s" : ""}`}
                 </p>
-                {!account!.team && (
+                {!account!.team && account!.per_day > 0 && (
                   <p className="mt-1 text-[14px] text-ink/65">{account!.used_today} / {account!.per_day} documents utilisés aujourd&apos;hui</p>
                 )}
                 {error && <p className="mt-2 flex gap-1.5 text-[14px] text-pin"><Icon name="triangle-alert" size={16} className="mt-0.5" />{error}</p>}

@@ -17,10 +17,10 @@ DOCUMENTS = {
     "memoire": "Mémoire",
 }
 
-# plan -> price, documents per day, label. "pass_30j" is the 5 000 F pass sold before the plans: it is Pro.
+# plan -> price, documents per day (0 = unlimited), label. "pass_30j" is the 5 000 F pass sold before the plans: it is Pro.
 PLANS = {
-    "essentiel": {"amount": 3000, "per_day": 5, "label": "Pass Essentiel 30 jours"},
-    "pro": {"amount": 5000, "per_day": 40, "label": "Pass Pro 30 jours"},
+    "essentiel": {"amount": 3000, "per_day": 10, "label": "Pass Essentiel 30 jours"},
+    "pro": {"amount": 5000, "per_day": 0, "label": "Pass Pro 30 jours"},
 }
 PASS_DAYS = 30
 

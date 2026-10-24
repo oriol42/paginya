@@ -309,7 +309,7 @@ Reste, par ordre d'intérêt :
 - Reste : créer le Pixel dans le Gestionnaire d'événements (compte pub 1542366527937017), mettre son ID dans `.github/workflows/site.yml` (`NEXT_PUBLIC_META_PIXEL_ID`), publier (`serveur/publier.sh paginya "suivi visiteurs + pixel"`), puis pub 1 000 F/jour × 8 jours objectif Ventes après le 24/10.
 
 ## 24/10/2026 — Nouveaux prix, pass Essentiel/Pro, support
-- **Prix** (`api/app/pricing.py`, `web/src/lib/plans.ts`) : un document = **550 F**, quel que soit le type ou le nombre de pages, sans compte. **Pass Essentiel 3 000 F / 30 j** (5 documents/jour, mis en avant « Conseillé »), **Pass Pro 5 000 F / 30 j** (40/jour, imprimeries, entreprises). Les anciens pass 5 000 F (`plan` vide) comptent comme Pro.
+- **Prix** (`api/app/pricing.py`, `web/src/lib/plans.ts`) : un document = **550 F**, quel que soit le type ou le nombre de pages, sans compte. **Pass Essentiel 3 000 F / 30 j** (10 documents/jour, mis en avant « Conseillé »), **Pass Pro 5 000 F / 30 j** (illimité, `per_day = 0`, imprimeries, entreprises). Les anciens pass 5 000 F (`plan` vide) comptent comme Pro.
 - Pas de renouvellement automatique. Même formule rachetée = +30 j ; changement de formule = jours restants convertis à leur valeur (`db._extend_pass`).
 - Limite du jour : compte des commandes débloquées par le pass depuis minuit heure du Cameroun (`trans_id = pass:<sub>`). Un retéléchargement ne compte pas.
 - Garde-fou : un document payé qui grossit de plus de 2× (et +15 pages) doit être traité comme un nouveau.

@@ -90,7 +90,7 @@ export function SupportInbox() {
         {thread.account && (
           <div className="rounded-md bg-ink/[0.04] p-3 text-[14px]">
             <p><b>Compte</b> {thread.account.email}</p>
-            <p>{thread.account.team ? "Équipe" : thread.account.plan ? `Pass ${PLANS[thread.account.plan].name} · ${thread.account.pass_days} j · ${thread.account.used_today}/${thread.account.per_day} aujourd'hui` : "Pas de pass"}</p>
+            <p>{thread.account.team ? "Équipe" : thread.account.plan ? `Pass ${PLANS[thread.account.plan].name} · ${thread.account.pass_days} j · ${thread.account.used_today}/${thread.account.per_day || "∞"} aujourd'hui` : "Pas de pass"}</p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <Select value={gift.plan} onChange={(e) => setGift({ ...gift, plan: e.target.value as Plan })} className="w-36">
                 {(Object.keys(PLANS) as Plan[]).map((p) => <option key={p} value={p}>{PLANS[p].name}</option>)}

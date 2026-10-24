@@ -140,7 +140,7 @@ def unlock(order_id: str, body: TokenIn) -> dict:
         db.grant(order_id, f"team:{account['email']}")
     elif has_pass(account):
         plan = pricing.PLANS[pricing.plan_of(account)]
-        if db.unlocked_today(account["sub"]) >= plan["per_day"]:
+        if plan["per_day"] and db.unlocked_today(account["sub"]) >= plan["per_day"]:
             raise HTTPException(429, f"Tu as utilisé tes {plan['per_day']} documents du jour. Ça repart à minuit, ou paie celui-ci à part.")
         db.grant(order_id, f"pass:{account['sub']}")
     else:
