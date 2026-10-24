@@ -22,8 +22,13 @@ function loadGsi(): Promise<Gsi | null> {
   return gsi;
 }
 
-/** "Continuer avec Google" for customer accounts: hidden while the server has accounts off. */
-export function GoogleButton({ onCredential }: { onCredential: (credential: string) => void }) {
+/** "Continuer avec Google" (Google's own button, the only one it allows): hidden while the server has accounts off. */
+export function GoogleButton({ onCredential, text = "continue_with", width = 280, theme = "outline" }: {
+  onCredential: (credential: string) => void;
+  text?: "continue_with" | "signin_with";
+  width?: number;
+  theme?: "outline" | "filled_black";
+}) {
   const box = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
   const cb = useRef(onCredential);
@@ -35,10 +40,10 @@ export function GoogleButton({ onCredential }: { onCredential: (credential: stri
       const g = await loadGsi();
       if (!g || !alive || !box.current) return;
       g.accounts.id.initialize({ client_id, callback: (r) => cb.current(r.credential) });
-      g.accounts.id.renderButton(box.current, { theme: "outline", size: "large", text: "continue_with", locale: "fr", width: 280 });
+      g.accounts.id.renderButton(box.current, { theme, size: "large", shape: "rectangular", text, locale: "fr", width, logo_alignment: "center" });
       setReady(true);
     }).catch(() => {});
     return () => { alive = false; };
-  }, []);
+  }, [text, width, theme]);
   return <div ref={box} className={ready ? "min-h-11" : "hidden"} />;
 }
