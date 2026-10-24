@@ -57,6 +57,7 @@ guard.LIMITS[:] = [
     ("POST", r"/events", 300, 3600),
     ("POST", r"/account/pass|/orders/[^/]+/unlock", 60, 3600),
     ("POST", r"/support", 10, 3600),  # new support conversations
+    ("POST", r"/documents/[^/]+/spelling", 8, 3600),  # AI spelling: free quotas
     ("POST", r"/support/[^/]+/messages", 40, 3600),
 ]
 app.middleware("http")(guard.middleware)  # before CORS: a refusal still carries the CORS headers

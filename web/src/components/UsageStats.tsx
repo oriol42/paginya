@@ -5,7 +5,8 @@ import { ADMIN_KEY, api } from "@/lib/api";
 
 /** What the server did (AI calls, photos, renders), against the free quotas: tells the team when to pay for more. */
 const LINES: [string, (w: string) => boolean, string][] = [
-  ["Pages manuscrites lues par l'IA", (w) => w.startsWith("ia:"), "Gratuit : Gemini puis Groq en secours (Groq : 1 000 / jour)"],
+  ["Pages manuscrites lues par l'IA", (w) => w.startsWith("ia:") && !w.startsWith("ia:orthographe"), "Gratuit : Gemini puis Groq en secours (Groq : 1 000 / jour)"],
+  ["Appels de correction des fautes", (w) => w.startsWith("ia:orthographe"), "Un appel par tranche d'environ 1 000 mots"],
   ["Lectures IA ratées", (w) => w === "ia_echec", "Si ça monte : quota atteint, il faut une clé payante"],
   ["Photos imprimées lues", (w) => w === "ocr", "Sur notre serveur (Tesseract), sans limite"],
   ["Mises en page", (w) => w === "rendu", "Sur notre serveur (LibreOffice), environ 40 s chacune"],

@@ -25,6 +25,7 @@ from . import render as cover_render
 from .doc import analysis, keep
 from .doc.cover_info import split_header_lines
 from .forms.letter_parse import parse_letter
+from .doc import spelling as spell
 from .doc.exam_scan import AUTO_PROMPT, EXAM_PROMPT, blocks_to_text, exam_signals, raws_to_text, split_type
 from .doc.exam_scan import finalize as finalize_exam
 from .doc.scan import ScanError, ocr_local, read_text, read_text_with_engine, straighten
@@ -402,6 +403,24 @@ def to_exam(order_id: str) -> dict:
         text = blocks_to_text(order["payload"]["doc"]["blocks"])
     exam = finalize_exam(text[:MAX_TEXT])
     return {"fields": exam["fields"], "content": exam["content"]}
+
+
+class SpellIn(BaseModel):
+    consent: bool = False  # the text is sent to an AI service: the user agreed
+
+
+@router.post("/{order_id}/spelling")
+def spelling(order_id: str, body: SpellIn) -> dict:
+    """Spelling fixes proposed by the AI; nothing changes until the user applies the ones they keep (PUT blocks)."""
+    if not body.consent:
+        raise HTTPException(400, "Accepte l'envoi du texte au service de correction")
+    order = _load(order_id)
+    try:
+        fixes = spell.propose(order["payload"]["doc"].get("blocks", []), on_call=lambda provider: db.bump(f"ia:orthographe-{provider}"))
+    except spell.SpellError as exc:
+        db.bump("ia_echec")
+        raise HTTPException(503, str(exc)) from exc
+    return {"fixes": fixes}
 
 
 @router.post("/{order_id}/letter")

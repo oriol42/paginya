@@ -337,3 +337,9 @@ Reste, par ordre d'intérêt :
 - Mesures : documents « faits à la main » avec plan connu : rappel 0,939, précision 0,925 (pas de régression). 59/60 PDF DICAMES sans erreur (le 60e est un scan, lu maintenant).
 - **Envoi des fichiers sans base64** (`POST /documents/upload?filename=…`, corps = le fichier) : 33 % de données en moins. Mesuré : sur la connexion du fondateur (≈ 19 Ko/s), un mémoire PDF de 1,2 Mo prenait 80 s à l'envoi, le serveur 0,5 s.
 - **Charge (serveur en ligne, 25/10/2026)** : 1 personne = 24 s (import + mise en page d'un court rapport) ; 5 en même temps = 31 s pour la dernière ; 10 en même temps = 55 s, aucune erreur. Mémoire de 82 pages : mise en page 21 s. LibreOffice traite un document à la fois : au-delà de ~15 mises en page simultanées, l'attente dépasse 1 min 30 → passer sur un serveur payant (Render Starter) quand ça arrive.
+
+## 25/10/2026 — Correction des fautes (option) + pubs
+- Outil **« Fautes »** dans l'éditeur (pas en mode « garder mon fichier ») : l'IA propose, l'utilisateur coche et applique (`api/app/doc/spelling.py`, `POST /documents/{id}/spelling`, `web/src/components/doc/SpellPanel.tsx`). Accord demandé avant l'envoi. Français et anglais, sans reformuler ni traduire.
+- Garde-fous : correction refusée si elle change un nombre, une équation, plus de ~15 % du texte ou trop de mots.
+- IA : `gemini-3.5-flash-lite` (≈ 3 s par tranche de ~1 000 mots), puis Groq `gpt-oss-120b`, puis `gemini-flash-latest` (≈ 1 min par tranche : dernier recours). 3 appels en parallèle, 8 corrections/heure par IP. Compté dans Coulisses → Machine (« Appels de correction des fautes »).
+- Pubs : scripts publiés (5 pubs + version anglaise, consignes de voix, captures à filmer) ; essais de voix gratuites (Edge TTS) dans `~/Documents/pubs/paginya-2026-10/essais-voix/`.

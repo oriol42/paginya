@@ -8,6 +8,7 @@ import { forget, remember } from "@/lib/recents";
 import { KIND_LABEL, docs, type Block, type DocMode, type DocOptions, type DocPlan, type DocStyle, type DocView, type Letterhead } from "@/lib/documents";
 import { saveExamDraft } from "@/lib/examDraft";
 import { saveLetterDraft } from "@/lib/letterDraft";
+import { SpellPanel } from "./SpellPanel";
 import { Icon, type IconName } from "../Icon";
 import { Logo } from "../Logo";
 import { PaySheet } from "../PaySheet";
@@ -22,7 +23,7 @@ import { PlanChoices } from "./PlanChoices";
 import { PlanPanel } from "./PlanPanel";
 import { Working } from "./Working";
 
-type Panel = "style" | "cover" | "plan";
+type Panel = "style" | "cover" | "plan" | "spell";
 type View = "after" | "before" | "side";
 type Patch = Partial<{ blocks: Block[]; style: DocStyle; options: DocOptions; kind: string; letterhead: Letterhead; cover_svg: string; remove_cover: boolean; mode: DocMode; plan: Partial<DocPlan>; confirm: boolean }>;
 
@@ -30,6 +31,7 @@ const PANELS: { id: Panel; icon: IconName; label: string; title: string }[] = [
   { id: "style", icon: "palette", label: "Style", title: "Style et type" },
   { id: "cover", icon: "landmark", label: "Garde", title: "Page de garde" },
   { id: "plan", icon: "list-tree", label: "Plan", title: "Plan du document" },
+  { id: "spell", icon: "pen-line", label: "Fautes", title: "Corriger les fautes" },
 ];
 
 export function DocumentApp() {
@@ -268,6 +270,8 @@ export function DocumentApp() {
   const missing = doc.has_cover && cover ? coverIncomplete(cover) : [];
 
   const keeping = doc.mode === "keep";
+  // the user's own file is kept as it is: spelling fixes apply only to a document Paginya rebuilds
+  const panels = keeping ? PANELS.filter((p) => p.id !== "spell") : PANELS;
   const converting = !!doc.convert;
   const target = doc.convert === "pdf" ? "PDF" : "Word";
   const panelBody = converting ? (
@@ -323,6 +327,7 @@ export function DocumentApp() {
         />
       )}
       {panel === "plan" && <PlanPanel docId={doc.id} blocks={doc.blocks} onChange={(blocks) => change({ blocks })} />}
+      {panel === "spell" && <SpellPanel docId={doc.id} blocks={doc.blocks} onChange={(blocks) => change({ blocks })} />}
     </>
   );
 
@@ -369,7 +374,7 @@ export function DocumentApp() {
       <div className="flex min-h-0 flex-1">
         {/* Desktop: tool rail + its panel, on a sheet of paper */}
         <nav className="hidden w-[78px] shrink-0 flex-col items-center gap-1 border-r border-black/10 bg-paper py-3 text-ink lg:flex">
-          {!converting && PANELS.map((p) => (
+          {!converting && panels.map((p) => (
             <button
               key={p.id}
               type="button"
@@ -411,7 +416,7 @@ export function DocumentApp() {
           <div className="sheet-in paper relative flex h-[48dvh] flex-col rounded-t-xl">
             <span className="pin top-2 left-1/2 -translate-x-1/2" aria-hidden />
             <div className="flex items-center justify-between px-4 pt-6 pb-2">
-              {converting ? <span className="font-display text-[22px] font-black uppercase">Conversion</span> : <Tabs panel={panel} onPanel={setPanel} compact />}
+              {converting ? <span className="font-display text-[22px] font-black uppercase">Conversion</span> : <Tabs panel={panel} panels={panels} onPanel={setPanel} compact />}
               <button type="button" onClick={() => setDrawer(false)} className="press ml-2 grid h-10 w-10 shrink-0 place-items-center rounded-md text-ink/60 ring-1 ring-black/10" aria-label="Fermer">
                 <Icon name="x" size={18} />
               </button>
@@ -420,12 +425,12 @@ export function DocumentApp() {
           </div>
         )}
         <div className="flex items-center gap-1.5 border-t border-black/10 bg-paper px-2 pt-2 text-ink pb-[max(.6rem,env(safe-area-inset-bottom))]">
-          {(converting ? PANELS.slice(0, 1) : PANELS).map((p) => (
+          {(converting ? PANELS.slice(0, 1) : panels).map((p) => (
             <button
               key={p.id}
               type="button"
               onClick={() => { setPanel(p.id); setDrawer(!(drawer && panel === p.id)); }}
-              className={`press flex w-[62px] shrink-0 flex-col items-center gap-0.5 rounded-md py-1.5 text-[12px] font-bold ${drawer && panel === p.id ? "bg-board text-white" : "text-ink/70"}`}
+              className={`press flex w-[54px] shrink-0 flex-col items-center gap-0.5 rounded-md py-1.5 text-[12px] font-bold ${drawer && panel === p.id ? "bg-board text-white" : "text-ink/70"}`}
             >
               <Icon name={p.icon} size={20} />
               {p.label}
@@ -478,10 +483,10 @@ function BoardSegmented<T extends string>({ value, options, onChange }: { value:
   );
 }
 
-function Tabs({ panel, onPanel, compact = false }: { panel: Panel; onPanel: (p: Panel) => void; compact?: boolean }) {
+function Tabs({ panel, panels, onPanel, compact = false }: { panel: Panel; panels: typeof PANELS; onPanel: (p: Panel) => void; compact?: boolean }) {
   return (
     <div className={compact ? "flex-1" : "w-full"}>
-      <Segmented value={panel} onChange={onPanel} options={PANELS.map((p) => ({ value: p.id, label: compact ? p.label : p.title }))} />
+      <Segmented value={panel} onChange={onPanel} options={panels.map((p) => ({ value: p.id, label: compact ? p.label : p.title }))} />
     </div>
   );
 }

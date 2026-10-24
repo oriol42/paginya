@@ -3,6 +3,8 @@ import { track } from "./track";
 
 export type BlockType = "heading" | "paragraph" | "list" | "table" | "figure" | "caption" | "source" | "quote" | "code" | "title";
 
+export type SpellFix = { block: number; before: string; after: string };
+
 export type Block = {
   id: number;
   type: BlockType;
@@ -162,6 +164,8 @@ export const docs = {
   beforeUrl: (id: string, n: number) => `${API_URL}/documents/${id}/before/${n}.webp`,
   remove: (id: string) => call<{ deleted: boolean }>(`/documents/${id}`, { method: "DELETE" }),
   /** The document as an exam paper: header fields + exercises, for the exam form (/epreuve). */
+  /** AI spelling fixes, applied only by the user (the text leaves our server: asked first). */
+  spelling: (id: string) => call<{ fixes: SpellFix[] }>(`/documents/${id}/spelling`, { method: "POST", body: JSON.stringify({ consent: true }) }),
   toLetter: (id: string) => call<Partial<import("@/components/forms/LetterForm").Letter>>(`/documents/${id}/letter`, { method: "POST" }),
   toExam: (id: string) => call<{ fields: Record<string, string>; content: string }>(`/documents/${id}/exam`, { method: "POST" }),
 };
