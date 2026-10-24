@@ -32,6 +32,11 @@ export default function Cgu() {
         (voir aussi la page <Link href="/tarifs" className="text-brand-700 underline">Tarifs</Link>). Le paiement se fait par Mobile Money (MTN MoMo, Orange Money) via notre prestataire de paiement Fapshi.
         La commande est conclue quand l&apos;utilisateur confirme le paiement sur son téléphone.
       </p>
+      <p>
+        Un document seul coûte 550 F, quel que soit son type ou son nombre de pages. Les <b>pass 30 jours</b> (Essentiel, Pro) sont liés à un compte Google et permettent
+        de télécharger un nombre limité de documents par jour, affiché avant le paiement. Ils <b>ne se renouvellent jamais automatiquement</b> : à la fin des 30 jours,
+        l&apos;utilisateur repaie seulement s&apos;il veut continuer. Les jours restants sont gardés lors d&apos;un changement de formule, convertis à leur valeur.
+      </p>
 
       <h2>4. Livraison, modifications et remboursement</h2>
       <ul>

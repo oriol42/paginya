@@ -4,7 +4,7 @@ import time
 import uuid
 from contextlib import contextmanager
 
-from . import sqlcompat
+from . import pricing, sqlcompat
 from .config import DATA_DIR, DB_PATH  # noqa: F401  (DATA_DIR: patched by tests)
 
 SCHEMA = """
@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     sub TEXT PRIMARY KEY,              -- Google's stable account id
     email TEXT NOT NULL,
     pass_until REAL NOT NULL DEFAULT 0,
+    plan TEXT NOT NULL DEFAULT '',     -- essentiel or pro ('' = the first passes, sold at the Pro price)
     created_at REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS events (    -- visitor funnel: one row per visitor (sid) and step
@@ -34,6 +35,23 @@ CREATE TABLE IF NOT EXISTS events (    -- visitor funnel: one row per visitor (s
     ts REAL NOT NULL,
     PRIMARY KEY (sid, step)
 );
+CREATE TABLE IF NOT EXISTS tickets (   -- support: a customer writes, both team members see and answer
+    id TEXT PRIMARY KEY,               -- also the customer's secret link to the conversation
+    sub TEXT,                          -- the customer's account, when signed in
+    name TEXT NOT NULL,
+    contact TEXT NOT NULL,             -- WhatsApp number or e-mail, to answer outside the site too
+    order_id TEXT,
+    status TEXT NOT NULL,              -- NEW (our turn), ANSWERED (the customer's turn), CLOSED
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ticket_messages (
+    ticket_id TEXT NOT NULL,
+    author TEXT NOT NULL,              -- "client", or the team member's e-mail
+    body TEXT NOT NULL,
+    ts REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ticket_messages_ticket ON ticket_messages(ticket_id);
 """
 
 
@@ -46,6 +64,8 @@ def connect():
 def init() -> None:
     with connect() as c:
         c.executescript(SCHEMA)
+        if "plan" not in c.columns("accounts"):  # databases made before the plans
+            c.execute("ALTER TABLE accounts ADD COLUMN plan TEXT NOT NULL DEFAULT ''")
 
 
 def create_order(product: str, amount: int, payload: dict) -> str:
@@ -97,16 +117,42 @@ def settle(order_id: str, status: str) -> bool:
             return False
         if status == "PAID":
             row = c.execute("SELECT payload FROM orders WHERE id = ?", (order_id,)).fetchone()
-            sub = json.loads(row["payload"]).get("pass_for")
-            if sub:
-                c.execute(
-                    "UPDATE accounts SET pass_until = (CASE WHEN pass_until > ? THEN pass_until ELSE ? END) + ? WHERE sub = ?",
-                    (now, now, PASS_DAYS * 86400, sub),
-                )
+            payload = json.loads(row["payload"])
+            if payload.get("pass_for"):
+                _extend_pass(c, payload["pass_for"], payload.get("plan") or "pro", now)
         return True
 
 
-PASS_DAYS = 30
+def _extend_pass(c, sub: str, plan: str, now: float, days: int = pricing.PASS_DAYS) -> None:
+    """Adds days to an account's pass. Days left on another plan are kept, converted at their value
+    (10 Essentiel days left become 6 Pro days): changing plan never loses nor gains money."""
+    acc = c.execute("SELECT pass_until, plan FROM accounts WHERE sub = ?", (sub,)).fetchone()
+    if acc is None:
+        return
+    left = max(0.0, acc["pass_until"] - now)
+    old = acc["plan"] or "pro"
+    if left and old != plan:
+        left = left * pricing.PLANS[old]["amount"] / pricing.PLANS[plan]["amount"]
+    c.execute("UPDATE accounts SET pass_until = ?, plan = ? WHERE sub = ?", (now + left + days * 86400, plan, sub))
+
+
+def give_pass(sub: str, plan: str, days: int) -> None:
+    """The team offers days (a payment that went wrong, a partner…)."""
+    with connect() as c:
+        _extend_pass(c, sub, plan, time.time(), days)
+
+
+def day_start(now: float | None = None) -> float:
+    """Midnight in Cameroon (UTC+1): the daily limits start again."""
+    now = now or time.time()
+    return (now + 3600) // 86400 * 86400 - 3600
+
+
+def unlocked_today(sub: str, now: float | None = None) -> int:
+    """Documents this account's pass unlocked since midnight (see grant: trans_id "pass:<sub>")."""
+    with connect() as c:
+        row = c.execute("SELECT COUNT(*) AS n FROM orders WHERE trans_id = ? AND paid_at >= ?", (f"pass:{sub}", day_start(now))).fetchone()
+    return int(row["n"])
 
 
 def grant(order_id: str, note: str = "") -> None:
@@ -130,6 +176,12 @@ def save_account(sub: str, email: str) -> dict:
 def get_account(sub: str) -> dict | None:
     with connect() as c:
         row = c.execute("SELECT * FROM accounts WHERE sub = ?", (sub,)).fetchone()
+    return dict(row) if row else None
+
+
+def account_by_email(email: str) -> dict | None:
+    with connect() as c:
+        row = c.execute("SELECT * FROM accounts WHERE email = ?", (email.lower(),)).fetchone()
     return dict(row) if row else None
 
 
@@ -166,3 +218,60 @@ def purge_events(now: float | None = None) -> None:
     """Visit statistics are kept 12 months (privacy policy)."""
     with connect() as c:
         c.execute("DELETE FROM events WHERE ts < ?", ((now or time.time()) - 365 * 86400,))
+
+
+# ------------------------------------------------------------------ support
+
+def create_ticket(sub: str | None, name: str, contact: str, order_id: str | None, body: str) -> str:
+    ticket_id = uuid.uuid4().hex
+    now = time.time()
+    with connect() as c:
+        c.execute(
+            "INSERT INTO tickets (id, sub, name, contact, order_id, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+            (ticket_id, sub, name, contact, order_id, "NEW", now, now),
+        )
+        c.execute("INSERT INTO ticket_messages (ticket_id, author, body, ts) VALUES (?,?,?,?)", (ticket_id, "client", body, now))
+    return ticket_id
+
+
+def get_ticket(ticket_id: str) -> dict | None:
+    with connect() as c:
+        row = c.execute("SELECT * FROM tickets WHERE id = ?", (ticket_id,)).fetchone()
+        if row is None:
+            return None
+        msgs = c.execute("SELECT author, body, ts FROM ticket_messages WHERE ticket_id = ? ORDER BY ts", (ticket_id,)).fetchall()
+    return {**dict(row), "messages": [dict(m) for m in msgs]}
+
+
+def add_message(ticket_id: str, author: str, body: str) -> None:
+    """A customer's message puts the ticket back on the team's side; a team answer on the customer's."""
+    now = time.time()
+    with connect() as c:
+        c.execute("INSERT INTO ticket_messages (ticket_id, author, body, ts) VALUES (?,?,?,?)", (ticket_id, author, body, now))
+        c.execute("UPDATE tickets SET status = ?, updated_at = ? WHERE id = ?", ("NEW" if author == "client" else "ANSWERED", now, ticket_id))
+
+
+def set_ticket_status(ticket_id: str, status: str) -> None:
+    with connect() as c:
+        c.execute("UPDATE tickets SET status = ?, updated_at = ? WHERE id = ?", (status, time.time(), ticket_id))
+
+
+def list_tickets(sub: str | None = None, limit: int = 200) -> list[dict]:
+    """Newest activity first, with the last message (all tickets for the team, or one customer's)."""
+    where, params = ("WHERE t.sub = ?", (sub,)) if sub else ("", ())
+    with connect() as c:
+        rows = c.execute(
+            "SELECT t.*, (SELECT body FROM ticket_messages m WHERE m.ticket_id = t.id ORDER BY ts DESC LIMIT 1) AS last, "
+            "(SELECT author FROM ticket_messages m WHERE m.ticket_id = t.id ORDER BY ts DESC LIMIT 1) AS last_author "
+            f"FROM tickets t {where} ORDER BY t.updated_at DESC LIMIT {int(limit)}",
+            params,
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def purge_tickets(now: float | None = None) -> None:
+    """Support conversations are kept 12 months after their last message (privacy policy)."""
+    limit = (now or time.time()) - 365 * 86400
+    with connect() as c:
+        c.execute("DELETE FROM ticket_messages WHERE ticket_id IN (SELECT id FROM tickets WHERE updated_at < ?)", (limit,))
+        c.execute("DELETE FROM tickets WHERE updated_at < ?", (limit,))

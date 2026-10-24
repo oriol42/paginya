@@ -1,7 +1,7 @@
 /** Customer account (Google sign-in): holds the 30-day pass, or the team's free access. The token stays in this browser. */
-import { api } from "./api";
+import { api, type Account } from "./api";
 
-export type Account = { token: string; email: string; team: boolean; pass_until: number; pass_days: number };
+export type { Account };
 
 const KEY = "propre:account";
 
@@ -30,5 +30,7 @@ export async function refreshAccount(): Promise<Account | null> {
   }
 }
 
-/** Downloads are free with an active pass or a team account. */
-export const canUnlock = (a: Account | null) => !!a && (a.team || a.pass_until * 1000 > Date.now());
+export const hasPass = (a: Account | null) => !!a && a.pass_until * 1000 > Date.now();
+
+/** Downloads are free for a team account, or with an active pass while today's documents are not used up. */
+export const canUnlock = (a: Account | null) => !!a && (a.team || (hasPass(a) && (a.used_today ?? 0) < (a.per_day || Infinity)));

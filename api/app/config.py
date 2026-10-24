@@ -27,6 +27,10 @@ FAPSHI_PREFIX = os.getenv("FAPSHI_PREFIX", "PG")
 FAPSHI_FORWARD = dict(x.split("=", 1) for x in os.getenv("FAPSHI_FORWARD", "").split(",") if "=" in x)
 
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+WEB_URL = os.getenv("WEB_URL", CORS_ORIGINS[0]).rstrip("/")  # the site, for links sent outside it
+
+# Support: each new customer message rings the team's phones (ntfy app, subscribed to this secret topic). Empty = off.
+SUPPORT_NTFY_TOPIC = os.getenv("SUPPORT_NTFY_TOPIC", "")
 
 # The team's own documents are free (see admin.py): Google sign-in, limited to these addresses. Any one empty = off.
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")

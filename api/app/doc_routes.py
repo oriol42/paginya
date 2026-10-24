@@ -419,8 +419,11 @@ def render(order_id: str) -> dict:
     tier = tier_for(pages)
     fresh = db.get_order(order_id)
     if fresh["status"] == "PAID":
-        if TIERS.index(tier) > TIERS.index(fresh["product"]):
+        # same price whatever the length, but a paid document is not a blank page for other documents
+        base = doc.get("paid_pages") or (doc.get("render") or {}).get("pages") or pages
+        if pages > max(2 * base, base + 15):
             raise HTTPException(402, "Ton document a beaucoup grossi : il faut le traiter comme un nouveau document.")
+        doc["paid_pages"] = base
     elif fresh["status"] != "PENDING":
         db.set_product(order_id, tier, pricing.price_for(tier))
 

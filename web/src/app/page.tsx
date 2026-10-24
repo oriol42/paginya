@@ -33,13 +33,10 @@ const CONTENTS: [string, string][] = [
   ["Typographie française", "espaces, « guillemets »"],
 ];
 
-const PRICES: [string, string][] = [
-  ["Page de garde", "350"],
-  ["Lettre / demande", "350"],
-  ["CV · Épreuve", "550"],
-  ["Document ≤ 15 pages", "1 000"],
-  ["Rapport 16 – 40 pages", "2 000"],
-  ["Mémoire + de 40 pages", "3 000"],
+const PRICES: [string, string, string][] = [
+  ["Un document", "n'importe lequel, toutes les pages", "550"],
+  ["Pass Essentiel · 30 jours", "5 documents par jour", "3 000"],
+  ["Pass Pro · 30 jours", "imprimeries, entreprises", "5 000"],
 ];
 
 const FAQ: [string, string][] = [
@@ -47,6 +44,8 @@ const FAQ: [string, string][] = [
   ["Comment je paie ?", "Par MTN Mobile Money ou Orange Money. Tu vois tout ton document gratuitement avant, tu paies seulement pour le télécharger."],
   ["Et si mon encadreur demande des corrections ?", "Tu modifies et tu retélécharges gratuitement pendant 7 jours avec le même lien."],
   ["Mon école n'est pas dans la liste ?", "Choisis « Autre » et tape ton en-tête : Paginya le met en forme comme les autres."],
+  ["Le pass se renouvelle tout seul ?", "Non. Le pass dure 30 jours et rien n'est prélevé automatiquement : tu repaies seulement si tu veux continuer."],
+  ["J'ai un problème avec un paiement ?", "Écris-nous depuis la page Aide : toute l'équipe reçoit ton message et on règle ça vite."],
 ];
 
 export default function Home() {
@@ -58,6 +57,7 @@ export default function Home() {
           <Logo tone="board" />
           <nav className="flex items-center gap-1 text-[15px] font-semibold">
             <Link href="/tarifs" className="hidden rounded-md px-3 py-2 text-white/75 hover:text-white sm:block">Tarifs</Link>
+            <Link href="/compte" className="hidden rounded-md px-3 py-2 text-white/75 hover:text-white sm:block">Mon compte</Link>
             <Link href="/garde" className="hidden rounded-md px-3 py-2 text-white/75 hover:text-white sm:block">Page de garde</Link>
             <Link href="/document" className="press rounded-md bg-white/10 px-3.5 py-2 text-white ring-1 ring-white/20 hover:bg-white/15">Commencer</Link>
           </nav>
@@ -82,7 +82,7 @@ export default function Home() {
                 Mettre mon document au propre
                 <Icon name="arrow-right" size={22} stroke={2.6} />
               </Link>
-              <p className="text-[14px] font-semibold text-white/70">Aperçu gratuit · dès 350 F · MTN MoMo et Orange Money</p>
+              <p className="text-[14px] font-semibold text-white/70">Aperçu gratuit · 550 F le document · MTN MoMo et Orange Money</p>
             </div>
           </div>
 
@@ -214,7 +214,7 @@ export default function Home() {
           <div className="lg:order-2">
             <h2 className="font-display text-[2.6rem] leading-[0.95] font-black uppercase sm:text-[3.4rem]">Tu paies seulement si ça te plaît.</h2>
             <p className="mt-4 max-w-md text-[17px] leading-relaxed text-white/75">
-              Importe, regarde toutes tes pages, change le style autant que tu veux : c&apos;est gratuit. Tu paies une seule fois, par Mobile Money, quand tu télécharges.
+              Importe, regarde toutes tes pages, change le style autant que tu veux : c&apos;est gratuit. Tu paies par Mobile Money quand tu télécharges : 550 F le document, ou un pass 30 jours si tu en as plusieurs.
             </p>
           </div>
           <div className="relative pb-24 lg:order-1 lg:pr-10">
@@ -223,15 +223,15 @@ export default function Home() {
             <p className="text-center font-display text-[26px] font-black tracking-[0.2em] uppercase">Tarifs</p>
             <table className="mt-4 w-full text-[16px]">
               <tbody>
-                {PRICES.map(([label, price]) => (
+                {PRICES.map(([label, note, price]) => (
                   <tr key={label} className="border-b border-ink/10 last:border-0">
-                    <td className="py-2.5 font-semibold">{label}</td>
+                    <td className="py-2.5 font-semibold">{label}<span className="block text-[13px] font-normal text-ink/60">{note}</span></td>
                     <td className="py-2.5 text-right font-display text-[24px] font-black tabular">{price}&nbsp;F</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            <p className="mt-4 text-[13px] text-ink/60">Word + PDF · MTN MoMo et Orange Money</p>
+            <p className="mt-4 text-[13px] text-ink/60">Word + PDF · MTN MoMo et Orange Money · sans renouvellement automatique</p>
           </div>
           <div className="paper absolute right-0 bottom-0 w-56 rotate-3 rounded-[2px] px-5 pt-7 pb-4" style={{ background: "#fff8c9" }}>
             <span className="pin top-2 left-1/2 -translate-x-1/2" aria-hidden />

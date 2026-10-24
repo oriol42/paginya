@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ADMIN_KEY, api, formatXaf, operatorOf, type OrderStatus } from "@/lib/api";
 import { track } from "@/lib/track";
-import { canUnlock, keepAccount, refreshAccount, savedAccount, type Account } from "@/lib/account";
+import { canUnlock, hasPass, keepAccount, refreshAccount, savedAccount, type Account } from "@/lib/account";
+import { PLANS, type Plan } from "@/lib/plans";
 import { GoogleButton } from "./GoogleButton";
 import { Icon } from "./Icon";
 import { PinLabel } from "./ui";
@@ -43,8 +44,8 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
   // The 30-day pass lives on a Google account (never lost with the phone); a team account never pays.
   const [account, setAccount] = useState<Account | null>(() => savedAccount());
   const [accountsOn, setAccountsOn] = useState(false);
-  const [passPrice, setPassPrice] = useState(0);
-  const [choice, setChoice] = useState<"doc" | "pass">("doc");
+  // The Essentiel pass is offered first: most customers come back for another document.
+  const [choice, setChoice] = useState<Plan | "doc">(() => (hasPass(savedAccount()) ? "doc" : "essentiel"));
   const [showSignIn, setShowSignIn] = useState(false);
   // What is being paid right now: this document, or a pass order (the document is unlocked right after).
   const [paying, setPaying] = useState<{ id: string; amount: number }>({ id: orderId, amount });
@@ -64,7 +65,6 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
   useEffect(() => {
     refreshAccount().then(setAccount);
     api.accountConfig().then(({ client_id }) => setAccountsOn(!!client_id)).catch(() => {});
-    api.prices().then((p) => setPassPrice(p.pass_30j?.amount ?? 0)).catch(() => {});
   }, []);
 
   async function signIn(credential: string) {
@@ -73,7 +73,7 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
       const a = await api.accountGoogle(credential);
       keepAccount(a);
       setAccount(a);
-      if (choice === "doc" && !canUnlock(a)) setError("Pas de pass actif sur ce compte. Prends-en un ou paie ce document.");
+      if (choice === "doc" && !canUnlock(a) && !hasPass(a)) setError("Pas de pass actif sur ce compte. Prends-en un ou paie ce document.");
     } catch (e) {
       setError((e as Error).message);
     }
@@ -124,6 +124,11 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
   }, [phase, orderId, paying.id, onStatus]);
 
   const operator = operatorOf(phone);
+  const options: [Plan | "doc", string, number, string][] = [
+    ["essentiel", `Pass ${PLANS.essentiel.name} · 30 jours`, PLANS.essentiel.price, `${PLANS.essentiel.perDay} documents par jour · moins de 100 F par jour`],
+    ["pro", `Pass ${PLANS.pro.name} · 30 jours`, PLANS.pro.price, `${PLANS.pro.perDay} documents par jour · ${PLANS.pro.who.toLowerCase()}`],
+    ["doc", "Ce document seulement", amount, "Sans compte, n'importe quel document"],
+  ].filter(([id]) => !(hasPass(account) && id === account!.plan)) as [Plan | "doc", string, number, string][]; // the current pass: renewed from the account page
 
   async function pay() {
     setError("");
@@ -131,8 +136,8 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
     try {
       try { localStorage.setItem(PHONE_KEY, phone); } catch { /* ignore */ }
       let target = { id: orderId, amount };
-      if (choice === "pass" && account) {
-        const p = await api.buyPass(account.token);
+      if (choice !== "doc" && account) {
+        const p = await api.buyPass(account.token, choice);
         target = { id: p.id, amount: p.amount };
       }
       setPaying(target);
@@ -207,22 +212,32 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
               <>
                 <p className="mt-5 flex items-center gap-2 border-t border-dashed border-ink/25 pt-4 text-[16px] font-bold text-board">
                   <Icon name="badge-check" size={20} />
-                  {account!.team ? "Accès illimité" : `Pass actif · encore ${account!.pass_days} jour${account!.pass_days > 1 ? "s" : ""}`}
+                  {account!.team ? "Accès illimité" : `Pass ${PLANS[account!.plan as Plan]?.name ?? ""} · encore ${account!.pass_days} jour${account!.pass_days > 1 ? "s" : ""}`}
                 </p>
+                {!account!.team && (
+                  <p className="mt-1 text-[14px] text-ink/65">{account!.used_today} / {account!.per_day} documents utilisés aujourd&apos;hui</p>
+                )}
                 {error && <p className="mt-2 flex gap-1.5 text-[14px] text-pin"><Icon name="triangle-alert" size={16} className="mt-0.5" />{error}</p>}
                 <PinLabel className="mt-4 w-full" disabled={busy} onClick={unlockWithAccount}>{busy ? "…" : "Télécharger sans payer"}</PinLabel>
               </>
             ) : (
             <>
-            {accountsOn && passPrice > 0 ? (
+            {hasPass(account) && (
+              <p className="mt-4 flex gap-2 rounded-md bg-hi/40 px-3.5 py-3 text-[14px]">
+                <Icon name="info" size={18} className="mt-0.5" />
+                Tu as utilisé tes {account!.per_day} documents du jour. Ça repart à minuit, ou paie celui-ci à part.
+              </p>
+            )}
+            {accountsOn ? (
               <div className="mt-5 space-y-2 border-t border-dashed border-ink/25 pt-4">
-                {([["doc", "Ce document", amount, ""], ["pass", "Pass 30 jours", passPrice, "Tous tes documents pendant 30 jours"]] as const).map(([id, label, price, note]) => (
-                  <button key={id} type="button" onClick={() => setChoice(id)} className={`flex w-full items-center justify-between rounded-md px-3.5 py-3 text-left ring-1 ${choice === id ? "bg-hi/30 ring-2 ring-ink" : "ring-black/10"}`}>
+                {options.map(([id, label, price, note]) => (
+                  <button key={id} type="button" onClick={() => setChoice(id)} className={`relative flex w-full items-center justify-between gap-3 rounded-md px-3.5 py-3 text-left ring-1 ${choice === id ? "bg-hi/30 ring-2 ring-ink" : "ring-black/10"}`}>
+                    {id === "essentiel" && <span className="absolute -top-2.5 right-3 rounded bg-board px-2 py-0.5 text-[11px] font-bold tracking-wide text-white uppercase">Conseillé</span>}
                     <span>
                       <span className="block text-[16px] font-bold">{label}</span>
-                      {note && <span className="text-[13px] text-ink/65">{note}</span>}
+                      <span className="text-[13px] text-ink/65">{note}</span>
                     </span>
-                    <span className="font-display text-[26px] leading-none font-black tabular">{formatXaf(price)}</span>
+                    <span className="shrink-0 font-display text-[26px] leading-none font-black tabular">{formatXaf(price)}</span>
                   </button>
                 ))}
               </div>
@@ -233,10 +248,10 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
               </div>
             )}
 
-            {accountsOn && !account && (choice === "pass" || showSignIn) ? (
+            {accountsOn && !account && (choice !== "doc" || showSignIn) ? (
               <div className="mt-4 rounded-md bg-hi/25 p-3.5">
                 <p className="text-[14px] font-semibold">
-                  {choice === "pass" ? "Ton pass est gardé sur ton compte Google : tu le retrouves même si tu changes de téléphone." : "Connecte le compte Google de ton pass."}
+                  {choice !== "doc" ? "Ton pass est gardé sur ton compte Google : tu le retrouves même si tu changes de téléphone." : "Connecte le compte Google de ton pass."}
                 </p>
                 <div className="mt-3"><GoogleButton onCredential={signIn} /></div>
                 {error && <p className="mt-2 flex gap-1.5 text-[14px] text-pin"><Icon name="triangle-alert" size={16} className="mt-0.5" />{error}</p>}
@@ -266,7 +281,7 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
             {error && <p className="mt-2 flex gap-1.5 text-[14px] text-pin"><Icon name="triangle-alert" size={16} className="mt-0.5" />{error}</p>}
 
             <PinLabel className="mt-5 w-full" disabled={busy || phone.replace(/\D/g, "").length < 9} onClick={pay}>
-              {busy ? "Envoi…" : `Payer ${formatXaf(choice === "pass" ? passPrice : amount)}`}
+              {busy ? "Envoi…" : `Payer ${formatXaf(choice === "doc" ? amount : PLANS[choice].price)}`}
             </PinLabel>
             <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[13px] text-ink/55">
               <Icon name="shield-check" size={15} /> MTN MoMo ou Orange Money · paiement sécurisé Fapshi
@@ -276,8 +291,12 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
             {accountsOn && !account && choice === "doc" && !showSignIn && (
               <button type="button" onClick={() => setShowSignIn(true)} className="mt-2 w-full text-[14px] font-semibold text-ink/65 underline">J&apos;ai déjà un pass</button>
             )}
+            {choice !== "doc" && (
+              <p className="mt-2 text-center text-[12px] text-ink/55">Pas de renouvellement automatique : tu repaies seulement si tu veux continuer.</p>
+            )}
             </>
             )}
+            <a href={`/aide/?commande=${orderId}`} className="mt-3 block text-center text-[13px] font-semibold text-ink/55 underline">Un souci ? Écris-nous</a>
             {adminPass && !canUnlock(account) && (
               <button type="button" disabled={busy} onClick={unlock} className="mt-3 w-full text-[15px] font-bold text-board underline">
                 Équipe Paginya : débloquer sans payer
@@ -340,6 +359,7 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
             <p className="mt-2 text-[16px] text-ink/70">Rien n&apos;a été débité. Vérifie ton solde ou essaie un autre numéro.</p>
             <PinLabel className="mt-5 w-full" onClick={retry}>Réessayer</PinLabel>
             <button type="button" onClick={onClose} className="mt-3 text-[15px] font-semibold text-ink/60 underline">Plus tard</button>
+            <a href={`/aide/?commande=${paying.id}`} className="mt-3 block text-[14px] font-semibold text-ink/60 underline">On t&apos;a débité ? Écris-nous, on règle ça</a>
           </div>
         )}
       </div>

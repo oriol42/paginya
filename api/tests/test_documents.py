@@ -109,7 +109,7 @@ def test_full_flow_text_to_paid_download(client):
     assert r.status_code == 200, r.text
     info = r.json()
     assert info["render"]["pages"] >= 10
-    assert info["product"] == "document_court" and info["amount"] == 1000
+    assert info["product"] == "document_court" and info["amount"] == 550
     assert client.get(f"/documents/{doc['id']}/pages/1.webp").content[8:12] == b"WEBP"
     assert client.get(f"/orders/{doc['id']}/file.pdf").status_code == 402
 

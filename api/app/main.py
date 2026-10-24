@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import accounts, admin, config, db, doc_routes, fapshi, forms_routes, guard, pricing, storage
+from . import accounts, admin, config, db, doc_routes, fapshi, forms_routes, guard, pricing, storage, support
 from .render import render_cover
 from .svg_safe import UnsafeSvg, sanitize_svg
 
@@ -33,6 +33,7 @@ async def lifespan(_app: FastAPI):
                 doc_routes.cleanup()
                 doc_routes.cleanup_scans()
                 db.purge_events()
+                db.purge_tickets()
             except Exception:  # never crash the API because of cleanup
                 log.exception("cleanup failed")
 
@@ -54,13 +55,16 @@ guard.LIMITS[:] = [
     ("POST", r"/admin/login|/orders/[^/]+/admin", 20, 3600),
     ("POST", r"/account/google", 30, 3600),
     ("POST", r"/events", 300, 3600),
-    ("POST", r"/account/pass|/orders/[^/]+/unlock", 30, 3600),
+    ("POST", r"/account/pass|/orders/[^/]+/unlock", 60, 3600),
+    ("POST", r"/support", 10, 3600),  # new support conversations
+    ("POST", r"/support/[^/]+/messages", 40, 3600),
 ]
 app.middleware("http")(guard.middleware)  # before CORS: a refusal still carries the CORS headers
 app.include_router(doc_routes.router)
 app.include_router(doc_routes.scan_router)
 app.include_router(forms_routes.router)
 app.include_router(accounts.router)
+app.include_router(support.router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
@@ -140,7 +144,11 @@ def health() -> dict:
 
 @app.get("/prices")
 def prices() -> dict:
-    return {k: {"label": pricing.LABELS[k], "amount": v} for k, v in pricing.PRICES_XAF.items()}
+    """Every product with its price; the passes also say how many documents they unlock per day."""
+    out = {k: {"label": pricing.LABELS[k], "amount": v} for k, v in pricing.PRICES_XAF.items() if k != "pass_30j"}
+    for plan, p in pricing.PLANS.items():
+        out[f"pass_{plan}"]["per_day"] = p["per_day"]
+    return out
 
 
 FUNNEL_STEPS = {
@@ -171,10 +179,9 @@ def preview(body: CoverIn) -> Response:
 
 @app.post("/orders")
 def create_order(body: OrderIn) -> dict:
-    try:
-        amount = pricing.price_for(body.product)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
+    if body.product not in pricing.DOCUMENTS:  # passes are bought from an account (/account/pass)
+        raise HTTPException(400, f"Produit inconnu : {body.product}")
+    amount = pricing.price_for(body.product)
     order_id = db.create_order(body.product, amount, {"svg": _clean_svg(body.svg), "form": body.form})
     return _public(db.get_order(order_id))
 
@@ -234,11 +241,16 @@ def admin_config() -> dict:
 
 @app.post("/admin/login")
 def admin_login(body: AdminLoginIn) -> dict:
+    """The team page: also signs the team member's account in, so their documents unlock by themselves."""
     try:
-        email = admin.google_email(body.credential)
-        return {"token": admin.issue(email), "email": email}
+        sub, email = admin.google_identity(body.credential)
+        token = admin.issue(email)
     except admin.AdminError as exc:
         raise HTTPException(403, str(exc)) from exc
+    out = {"token": token, "email": email}
+    if accounts.enabled():
+        out["account"] = {**accounts.view(db.save_account(sub, email)), "token": accounts.issue(sub)}
+    return out
 
 
 @app.post("/orders/{order_id}/admin")

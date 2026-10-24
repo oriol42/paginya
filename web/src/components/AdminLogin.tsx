@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ADMIN_KEY, api } from "@/lib/api";
+import { keepAccount } from "@/lib/account";
 import { FunnelStats } from "./FunnelStats";
+import { SupportInbox } from "./SupportInbox";
 
 type GoogleId = {
   initialize: (o: { client_id: string; callback: (r: { credential: string }) => void }) => void;
@@ -41,8 +43,9 @@ export function AdminLogin() {
             client_id,
             callback: async ({ credential }) => {
               try {
-                const { token } = await api.adminLogin(credential);
+                const { token, account } = await api.adminLogin(credential);
                 localStorage.setItem(ADMIN_KEY, token);
+                if (account) keepAccount(account); // the same sign-in unlocks the team's documents by itself
                 window.dispatchEvent(new Event("storage"));
               } catch (e) {
                 setError((e as Error).message);
@@ -62,17 +65,19 @@ export function AdminLogin() {
 
   function signOut() {
     try { localStorage.removeItem(ADMIN_KEY); } catch { /* ignore */ }
+    keepAccount(null);
     window.dispatchEvent(new Event("storage"));
   }
 
   return (
-    <div className="w-full max-w-sm">
+    <div className="w-full max-w-lg py-10">
       <h1 className="font-display text-[34px] leading-[0.95] font-black uppercase">Équipe Paginya</h1>
       {signedIn ? (
         <>
           <p className="mt-3 text-[16px] text-ink/75">
-            Cet appareil est connecté pour 30 jours. Au moment de payer, choisis « Équipe Paginya : débloquer sans payer ».
+            Cet appareil est connecté pour 30 jours : tes documents se téléchargent sans payer, sans limite.
           </p>
+          <SupportInbox />
           <FunnelStats />
           <button type="button" onClick={signOut} className="mt-8 text-[15px] font-semibold text-ink/60 underline">Se déconnecter sur cet appareil</button>
         </>

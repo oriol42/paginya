@@ -26,14 +26,15 @@ export function Footer() {
           <Link href="/epreuve" className="hover:text-white">Épreuve (profs)</Link>
           <Link href="/convertir" className="hover:text-white">Convertir en PDF</Link>
           <Link href="/mentions-legales" className="hover:text-white">Mentions légales</Link>
-          <a href={`mailto:${CONTACT.email}`} className="hover:text-white">Contact</a>
+          <Link href="/aide" className="hover:text-white">Aide · nous écrire</Link>
+          <Link href="/compte" className="hover:text-white">Mon compte</Link>
         </nav>
       </div>
     </footer>
   );
 }
 
-export function LegalPage({ title, updated, children }: { title: string; updated: string; children: React.ReactNode }) {
+export function LegalPage({ title, updated, children }: { title: string; updated?: string; children: React.ReactNode }) {
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="mx-auto flex w-full max-w-3xl items-center justify-between px-6 pt-6 pb-2">
@@ -45,7 +46,7 @@ export function LegalPage({ title, updated, children }: { title: string; updated
       <main className="mx-auto w-full max-w-3xl px-6 pt-8 pb-16">
         <div className="paper rounded-[2px] px-6 py-8 sm:px-10">
           <h1 className="font-display text-[2.6rem] leading-[0.95] font-black uppercase">{title}</h1>
-          <p className="mt-2 text-[14px] text-ink/55">Dernière mise à jour : {updated}</p>
+          {updated && <p className="mt-2 text-[14px] text-ink/55">Dernière mise à jour : {updated}</p>}
           <div className="legal mt-8 max-w-prose space-y-6 text-[16px] leading-relaxed text-ink/80 [&_h2]:mt-9 [&_h2]:font-display [&_h2]:text-[24px] [&_h2]:leading-none [&_h2]:font-black [&_h2]:text-ink [&_h2]:uppercase [&_li]:ml-5 [&_li]:list-disc [&_ul]:space-y-1.5">
             {children}
           </div>

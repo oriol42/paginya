@@ -27,11 +27,6 @@ def enabled() -> bool:
     return bool(config.GOOGLE_CLIENT_ID and config.ADMIN_EMAILS and config.ADMIN_SECRET)
 
 
-def google_email(credential: str) -> str:
-    """The verified e-mail behind a Google ID token. Google checks the signature and the expiry."""
-    return google_identity(credential)[1]
-
-
 def google_identity(credential: str) -> tuple[str, str]:
     """(stable account id, verified e-mail) behind a Google ID token."""
     try:

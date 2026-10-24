@@ -48,7 +48,7 @@ def test_sanitizer_rejects_entities():
 def test_price_is_set_by_server(client):
     r = client.post("/orders", json={"product": "page_de_garde", "svg": SVG, "amount": 1})
     assert r.status_code == 200
-    assert r.json()["amount"] == 350
+    assert r.json()["amount"] == 550  # one price for any document
 
 
 def test_download_requires_payment(client):
@@ -116,7 +116,7 @@ def test_the_team_signs_in_with_google_and_unlocks_an_order_nobody_else_does(cli
     monkeypatch.setattr(config, "GOOGLE_CLIENT_ID", "abc.apps.googleusercontent.com")
     monkeypatch.setattr(config, "ADMIN_EMAILS", {"chef@gmail.com"})
     monkeypatch.setattr(config, "ADMIN_SECRET", "s3cret")
-    monkeypatch.setattr(admin, "google_email", lambda credential: credential)  # Google is not called in tests
+    monkeypatch.setattr(admin, "google_identity", lambda credential: ("g-" + credential, credential))  # Google is not called in tests
     assert client.post("/admin/login", json={"credential": "intrus@gmail.com"}).status_code == 403
     token = client.post("/admin/login", json={"credential": "chef@gmail.com"}).json()["token"]
     assert admin.email_of(token) == "chef@gmail.com"
@@ -144,7 +144,7 @@ def test_pass_account_and_team(client, monkeypatch):
     doc = client.post("/orders", json={"svg": SVG, "form": {}}).json()
     assert client.post(f"/orders/{doc['id']}/unlock", json={"token": token}).status_code == 402  # no pass yet
 
-    p = client.post("/account/pass", json={"token": token}).json()
+    p = client.post("/account/pass", json={"token": token, "plan": "pro"}).json()
     assert p["amount"] == 5000
     client.post(f"/orders/{p['id']}/pay", json={"phone": "670000000"})
     assert client.get(f"/orders/{p['id']}").json()["status"] == "PAID"

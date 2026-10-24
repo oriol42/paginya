@@ -307,3 +307,13 @@ Reste, par ordre d'intérêt :
 - Site : `lib/track.ts` (étapes visit, open_*, upload, pay_open, pay_start, paid + source facebook/tiktok/…), `components/Analytics.tsx` (Pixel si `NEXT_PUBLIC_META_PIXEL_ID`), stats visibles sur /coulisses (`FunnelStats.tsx`), CSP (connect.facebook.net), page confidentialité mise à jour.
 - Testé en local de bout en bout : les 6 étapes enregistrées avec la source.
 - Reste : créer le Pixel dans le Gestionnaire d'événements (compte pub 1542366527937017), mettre son ID dans `.github/workflows/site.yml` (`NEXT_PUBLIC_META_PIXEL_ID`), publier (`serveur/publier.sh paginya "suivi visiteurs + pixel"`), puis pub 1 000 F/jour × 8 jours objectif Ventes après le 24/10.
+
+## 24/10/2026 — Nouveaux prix, pass Essentiel/Pro, support
+- **Prix** (`api/app/pricing.py`, `web/src/lib/plans.ts`) : un document = **550 F**, quel que soit le type ou le nombre de pages, sans compte. **Pass Essentiel 3 000 F / 30 j** (5 documents/jour, mis en avant « Conseillé »), **Pass Pro 5 000 F / 30 j** (40/jour, imprimeries, entreprises). Les anciens pass 5 000 F (`plan` vide) comptent comme Pro.
+- Pas de renouvellement automatique. Même formule rachetée = +30 j ; changement de formule = jours restants convertis à leur valeur (`db._extend_pass`).
+- Limite du jour : compte des commandes débloquées par le pass depuis minuit heure du Cameroun (`trans_id = pass:<sub>`). Un retéléchargement ne compte pas.
+- Garde-fou : un document payé qui grossit de plus de 2× (et +15 pages) doit être traité comme un nouveau.
+- **Équipe** : `ADMIN_EMAILS` (sur Render) = les deux Gmail. Une seule connexion sur `/coulisses` connecte aussi le compte → tout se télécharge sans payer, sans limite.
+- **Support** (`api/app/support.py`, tables `tickets`, `ticket_messages`) : page `/aide` (message + WhatsApp/e-mail, commande jointe depuis la fenêtre de paiement), réponses visibles sur `/aide` et `/compte`. Boîte commune sur `/coulisses` : statut À traiter / Répondu / Résolu, qui a répondu, commande et pass du client, « Débloquer ce document », « Offrir des jours », lien WhatsApp/e-mail prérempli. Notification sur les téléphones via l'appli **ntfy** (sujet secret `SUPPORT_NTFY_TOPIC`). Messages gardés 12 mois.
+- Pages : `/tarifs` (3 offres), `/compte` (pass, compteur du jour, achat), accueil, CGU, confidentialité.
+- Tests : `tests/test_plans_support.py` (101 au vert).
