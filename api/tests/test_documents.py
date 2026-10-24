@@ -376,3 +376,15 @@ def test_word_equations_survive_the_rebuild(tmp_path):
     data = build_docx({"blocks": blocks, "meta": {}}, tmp_path / "images")
     xml = zipfile.ZipFile(io.BytesIO(data)).read("word/document.xml").decode()
     assert xml.count("<m:oMath") >= 2 and "Δ=b²−4ac" in xml and "⟦" not in xml  # real equations; the title gets plain text
+
+
+def test_a_file_sent_as_it_is_is_imported_like_a_base64_one(client):
+    from docx import Document
+    import io
+    d = Document()
+    d.add_heading("INTRODUCTION", 1)
+    d.add_paragraph("Le présent rapport décrit le stage effectué au sein de l'entreprise pendant trois mois. " * 5)
+    buf = io.BytesIO(); d.save(buf)
+    r = client.post("/documents/upload?filename=rapport.docx", content=buf.getvalue(), headers={"Content-Type": "application/octet-stream"})
+    assert r.status_code == 200 and any(b["text"] == "INTRODUCTION" for b in r.json()["blocks"])
+    assert client.post("/documents/upload?filename=vide.docx", content=b"").status_code == 400

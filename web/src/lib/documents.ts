@@ -138,15 +138,6 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-function toBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).split(",", 2)[1] ?? "");
-    reader.onerror = () => reject(new Error("Lecture du fichier impossible"));
-    reader.readAsDataURL(file);
-  });
-}
-
 /** A visitor who gets this far has a real document: the step that matters most in the funnel. */
 async function created(p: Promise<DocView>): Promise<DocView> {
   const doc = await p;
@@ -156,11 +147,12 @@ async function created(p: Promise<DocView>): Promise<DocView> {
 
 export const docs = {
   fromText: (text: string) => created(call<DocView>("/documents", { method: "POST", body: JSON.stringify({ text }) })),
-  fromFile: async (file: File) =>
-    created(call<DocView>("/documents", { method: "POST", body: JSON.stringify({ filename: file.name, data: await toBase64(file) }) })),
+  // The file goes as it is (not base64): a third less to send on a slow connection.
+  fromFile: (file: File) =>
+    created(call<DocView>(`/documents/upload?filename=${encodeURIComponent(file.name)}`, { method: "POST", body: file, headers: { "Content-Type": "application/octet-stream" } })),
   /** Word -> PDF or PDF -> Word, nothing added or restyled. */
-  convert: async (file: File) =>
-    created(call<DocView>("/documents", { method: "POST", body: JSON.stringify({ filename: file.name, data: await toBase64(file), convert: true }) })),
+  convert: (file: File) =>
+    created(call<DocView>(`/documents/upload?filename=${encodeURIComponent(file.name)}&convert=true`, { method: "POST", body: file, headers: { "Content-Type": "application/octet-stream" } })),
   get: (id: string) => call<DocView>(`/documents/${id}`),
   update: (id: string, patch: Partial<{ blocks: Block[]; style: DocStyle; options: DocOptions; kind: string; letterhead: Letterhead; cover_svg: string; remove_cover: boolean; mode: DocMode; plan: Partial<DocPlan>; confirm: boolean }>) =>
     call<DocView>(`/documents/${id}`, { method: "PUT", body: JSON.stringify(patch) }),

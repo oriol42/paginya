@@ -10,7 +10,8 @@ import time
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from docx import Document as DocxDocument
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -147,6 +148,20 @@ def plan_of(doc: dict) -> dict:
         return doc["plan"]
     legacy = doc.get("keep") or {}
     return {"cover": "keep", "toc": "add" if legacy.get("toc") else "keep", "numbers": "add" if legacy.get("page_numbers") else "keep"}
+
+
+@router.post("/upload")
+async def upload(request: Request, filename: str, convert: bool = False) -> dict:
+    """The file sent as it is (no base64): a third less to send on a slow 3G line than /documents."""
+    raw = b""
+    async for chunk in request.stream():
+        raw += chunk
+        if len(raw) > MAX_UPLOAD:
+            raise HTTPException(413, "Fichier trop lourd (15 Mo maximum)")
+    if not raw:
+        raise HTTPException(400, "Fichier vide")
+    body = DocIn(filename=filename[:200], data=base64.b64encode(raw).decode(), convert=convert)
+    return await run_in_threadpool(create, body)  # the heavy work stays off the event loop, like /documents
 
 
 @router.post("")

@@ -335,3 +335,5 @@ Reste, par ordre d'intérêt :
   - **Galerie de logos** (« Choisir ») partout où on met un logo ; logo **ENSET Ebolowa**.
   - **Compteur d'usage** (`usage` : IA, OCR, rendus) visible dans /coulisses → Visiteurs → Machine.
 - Mesures : documents « faits à la main » avec plan connu : rappel 0,939, précision 0,925 (pas de régression). 59/60 PDF DICAMES sans erreur (le 60e est un scan, lu maintenant).
+- **Envoi des fichiers sans base64** (`POST /documents/upload?filename=…`, corps = le fichier) : 33 % de données en moins. Mesuré : sur la connexion du fondateur (≈ 19 Ko/s), un mémoire PDF de 1,2 Mo prenait 80 s à l'envoi, le serveur 0,5 s.
+- **Charge (serveur en ligne, 25/10/2026)** : 1 personne = 24 s (import + mise en page d'un court rapport) ; 5 en même temps = 31 s pour la dernière ; 10 en même temps = 55 s, aucune erreur. Mémoire de 82 pages : mise en page 21 s. LibreOffice traite un document à la fois : au-delà de ~15 mises en page simultanées, l'attente dépasse 1 min 30 → passer sur un serveur payant (Render Starter) quand ça arrive.

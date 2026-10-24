@@ -45,7 +45,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="Paginya API", lifespan=lifespan)
 guard.LIMITS[:] = [
-    ("POST", r"/documents", 30, 3600),  # new documents
+    ("POST", r"/documents(/upload)?", 30, 3600),  # new documents
     ("POST", r"/documents/[^/]+/render", 150, 3600),
     ("POST", r"/documents/[^/]+/before", 30, 3600),
     ("POST", r"/scans", 80, 3600),  # OCR of photos
