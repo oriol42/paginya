@@ -5,7 +5,7 @@ export const metadata: Metadata = { title: "Confidentialité" };
 
 export default function Confidentialite() {
   return (
-    <LegalPage title="Politique de confidentialité" updated="23 septembre 2026">
+    <LegalPage title="Politique de confidentialité" updated="21 octobre 2026">
       <p>
         Cette politique explique quelles données Paginya traite, pourquoi, et quels sont tes droits, conformément à la loi n° 2024/017 du 23 décembre 2024
         relative à la protection des données à caractère personnel au Cameroun.
@@ -17,14 +17,16 @@ export default function Confidentialite() {
         <li><b>Ton numéro de téléphone</b>, uniquement quand tu paies.</li>
         <li><b>Ton adresse Gmail</b>, seulement si tu prends le pass 30 jours : il est gardé sur ton compte Google pour que tu le retrouves sur un autre téléphone.</li>
         <li><b>Des données techniques</b> (adresse IP, type d&apos;appareil) pour la sécurité et le bon fonctionnement.</li>
+        <li><b>Des statistiques de visite</b> : un identifiant au hasard gardé sur ton appareil, le site d&apos;où tu viens et les étapes franchies (ouverture d&apos;un outil, envoi d&apos;un document, paiement). Jamais le contenu de tes documents.</li>
       </ul>
-      <p>Pas de compte obligatoire, pas de mot de passe, pas de publicité ciblée. Nous ne vendons aucune donnée.</p>
+      <p>Pas de compte obligatoire, pas de mot de passe. Nous ne vendons aucune donnée.</p>
 
       <h2>2. Pourquoi ?</h2>
       <ul>
         <li>Mettre en forme ton document et te le livrer (exécution du service que tu demandes).</li>
         <li>Encaisser le paiement et en garder la preuve (obligation comptable).</li>
         <li>Sécuriser le service et corriger les erreurs.</li>
+        <li>Savoir quelles publicités amènent des visiteurs intéressés, et à quelle étape le site les perd, pour l&apos;améliorer.</li>
       </ul>
 
       <h2>3. Combien de temps ?</h2>
@@ -32,13 +34,15 @@ export default function Confidentialite() {
         <li>Documents et pages de garde : <b>supprimés automatiquement 7 jours</b> après le paiement (ou après la création, sans paiement). Tu peux les supprimer immédiatement avec le bouton « Supprimer ».</li>
         <li>Photos envoyées pour lecture : supprimées après <b>24 heures</b>.</li>
         <li>Preuve de paiement (numéro, montant, date) : 12 mois.</li>
+        <li>Statistiques de visite : 12 mois.</li>
         <li>Compte du pass (adresse Gmail, date de fin du pass) : tant que tu l&apos;utilises ; supprimé sur simple demande.</li>
       </ul>
 
       <h2>4. Qui y a accès ?</h2>
       <ul>
         <li><b>Fapshi</b> (Cameroun) : traitement du paiement Mobile Money.</li>
-        <li><b>Nos hébergeurs</b> Vercel, Render et Supabase : serveurs aux États-Unis (voir les mentions légales).</li>
+        <li><b>Meta</b> (Facebook, Instagram) : quand tu viens d&apos;une de nos publicités, le pixel Meta lui indique les étapes franchies (page vue, document envoyé, paiement et son montant), pour mesurer nos publicités. Meta peut relier ces informations à ton compte Facebook. Tu peux le bloquer avec un bloqueur de publicités ou dans les réglages « Activité hors Meta » de ton compte.</li>
+        <li><b>Nos hébergeurs</b> Cloudflare, Render et Supabase : serveurs aux États-Unis (voir les mentions légales).</li>
         <li><b>Google (Gemini)</b>, ou <b>Groq</b> / <b>OpenRouter</b> quand Gemini est indisponible : <u>seulement pour des pages écrites à la main</u>, si tu le choisis et après ton accord explicite. Le traitement a lieu hors du Cameroun. Les pages imprimées sont lues sur nos propres serveurs, sans les envoyer à personne.</li>
       </ul>
       <p>

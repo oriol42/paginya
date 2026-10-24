@@ -1,4 +1,5 @@
 import { API_URL } from "./api";
+import { track } from "./track";
 
 export type BlockType = "heading" | "paragraph" | "list" | "table" | "figure" | "caption" | "source" | "quote" | "code" | "title";
 
@@ -144,13 +145,20 @@ function toBase64(file: File): Promise<string> {
   });
 }
 
+/** A visitor who gets this far has a real document: the step that matters most in the funnel. */
+async function created(p: Promise<DocView>): Promise<DocView> {
+  const doc = await p;
+  track("upload");
+  return doc;
+}
+
 export const docs = {
-  fromText: (text: string) => call<DocView>("/documents", { method: "POST", body: JSON.stringify({ text }) }),
+  fromText: (text: string) => created(call<DocView>("/documents", { method: "POST", body: JSON.stringify({ text }) })),
   fromFile: async (file: File) =>
-    call<DocView>("/documents", { method: "POST", body: JSON.stringify({ filename: file.name, data: await toBase64(file) }) }),
+    created(call<DocView>("/documents", { method: "POST", body: JSON.stringify({ filename: file.name, data: await toBase64(file) }) })),
   /** Word -> PDF or PDF -> Word, nothing added or restyled. */
   convert: async (file: File) =>
-    call<DocView>("/documents", { method: "POST", body: JSON.stringify({ filename: file.name, data: await toBase64(file), convert: true }) }),
+    created(call<DocView>("/documents", { method: "POST", body: JSON.stringify({ filename: file.name, data: await toBase64(file), convert: true }) })),
   get: (id: string) => call<DocView>(`/documents/${id}`),
   update: (id: string, patch: Partial<{ blocks: Block[]; style: DocStyle; options: DocOptions; kind: string; letterhead: Letterhead; cover_svg: string; remove_cover: boolean; mode: DocMode; plan: Partial<DocPlan>; confirm: boolean }>) =>
     call<DocView>(`/documents/${id}`, { method: "PUT", body: JSON.stringify(patch) }),

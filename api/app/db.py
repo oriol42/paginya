@@ -26,6 +26,14 @@ CREATE TABLE IF NOT EXISTS accounts (
     pass_until REAL NOT NULL DEFAULT 0,
     created_at REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS events (    -- visitor funnel: one row per visitor (sid) and step
+    sid TEXT NOT NULL,                 -- random id kept by the browser, nothing personal
+    step TEXT NOT NULL,
+    src TEXT NOT NULL,                 -- where the visitor came from: facebook, tiktok, google, direct…
+    day TEXT NOT NULL,
+    ts REAL NOT NULL,
+    PRIMARY KEY (sid, step)
+);
 """
 
 
@@ -132,3 +140,29 @@ def set_product(order_id: str, product: str, amount: int) -> None:
             "UPDATE orders SET product = ?, amount = ? WHERE id = ? AND status NOT IN ('PAID', 'PENDING')",
             (product, amount, order_id),
         )
+
+
+def add_event(sid: str, step: str, src: str) -> None:
+    """Counts a visitor once per step (the browser may send the same step again)."""
+    now = time.time()
+    with connect() as c:
+        c.execute(
+            "INSERT INTO events (sid, step, src, day, ts) VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING",
+            (sid, step, src, time.strftime("%Y-%m-%d", time.gmtime(now + 3600)), now),  # Cameroon day (UTC+1)
+        )
+
+
+def funnel(since_day: str) -> list[dict]:
+    """Visitors per day, source and step, from since_day (YYYY-MM-DD) on."""
+    with connect() as c:
+        rows = c.execute(
+            "SELECT day, src, step, COUNT(*) AS n FROM events WHERE day >= ? GROUP BY day, src, step ORDER BY day",
+            (since_day,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def purge_events(now: float | None = None) -> None:
+    """Visit statistics are kept 12 months (privacy policy)."""
+    with connect() as c:
+        c.execute("DELETE FROM events WHERE ts < ?", ((now or time.time()) - 365 * 86400,))

@@ -161,3 +161,25 @@ def test_pass_account_and_team(client, monkeypatch):
     other = client.post("/orders", json={"svg": SVG, "form": {}}).json()
     assert client.post(f"/orders/{other['id']}/unlock", json={"token": chef["token"]}).json()["status"] == "PAID"
     assert client.post(f"/orders/{other['id']}/unlock", json={"token": "faux"}).status_code == 401
+
+
+def test_funnel_counts_each_visitor_once_per_step_and_only_the_team_reads_it(client, monkeypatch):
+    from app import admin
+
+    def send(sid, step, src="facebook"):
+        return client.post("/events", content=f'{{"sid":"{sid}","step":"{step}","src":"{src}"}}', headers={"Content-Type": "text/plain"})
+
+    assert send("abcdef12", "visit").status_code == 204
+    send("abcdef12", "visit")  # same visitor, same step: counted once
+    send("abcdef12", "upload")
+    send("zzzzzzzz9", "visit", "direct")
+    send("abcdef12", "hack")  # unknown step: ignored
+    send("<script>", "visit")  # bad id: ignored
+    assert client.post("/events", content="pas du json").status_code == 400
+    assert client.post("/admin/funnel", json={"token": "x"}).status_code == 403
+    monkeypatch.setattr(config, "ADMIN_SECRET", "s3cret")
+    monkeypatch.setattr(config, "ADMIN_EMAILS", {"chef@gmail.com"})
+    monkeypatch.setattr(config, "GOOGLE_CLIENT_ID", "abc.apps.googleusercontent.com")
+    rows = client.post("/admin/funnel", json={"token": admin.issue("chef@gmail.com")}).json()["rows"]
+    counts = {(r["src"], r["step"]): r["n"] for r in rows}
+    assert counts == {("facebook", "visit"): 1, ("facebook", "upload"): 1, ("direct", "visit"): 1}

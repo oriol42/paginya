@@ -300,3 +300,10 @@ Reste, par ordre d'intérêt :
 - Site : `PaySheet` propose « Ce document » ou « Pass 30 jours » ; le pass demande Google avant le numéro ; « J'ai déjà un pass » pour un autre téléphone ; pass actif / équipe → « Télécharger sans payer ». `lib/account.ts`, `components/GoogleButton.tsx`.
 - Confidentialité : adresse Gmail ajoutée (données + durée).
 - Test : `test_pass_account_and_team`. À faire : afficher le pass sur la page Tarifs.
+
+## 21/10/2026 — Suivi des visiteurs + Pixel Meta (local, PAS encore publié)
+- Constat : depuis le boost (19/10, 64 visites), 0 document déposé par un visiteur ; 1 seul paiement réel depuis le début (épreuve, 05/10).
+- API : table `events` (sid, step, src, day), `POST /events` (text/plain, sans preflight), `POST /admin/funnel` (équipe), purge à 12 mois. Test ajouté (93 au vert).
+- Site : `lib/track.ts` (étapes visit, open_*, upload, pay_open, pay_start, paid + source facebook/tiktok/…), `components/Analytics.tsx` (Pixel si `NEXT_PUBLIC_META_PIXEL_ID`), stats visibles sur /coulisses (`FunnelStats.tsx`), CSP (connect.facebook.net), page confidentialité mise à jour.
+- Testé en local de bout en bout : les 6 étapes enregistrées avec la source.
+- Reste : créer le Pixel dans le Gestionnaire d'événements (compte pub 1542366527937017), mettre son ID dans `.github/workflows/site.yml` (`NEXT_PUBLIC_META_PIXEL_ID`), publier (`serveur/publier.sh paginya "suivi visiteurs + pixel"`), puis pub 1 000 F/jour × 8 jours objectif Ventes après le 24/10.

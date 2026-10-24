@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ADMIN_KEY, api, formatXaf, operatorOf, type OrderStatus } from "@/lib/api";
+import { track } from "@/lib/track";
 import { canUnlock, keepAccount, refreshAccount, savedAccount, type Account } from "@/lib/account";
 import { GoogleButton } from "./GoogleButton";
 import { Icon } from "./Icon";
@@ -47,6 +48,18 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
   const [showSignIn, setShowSignIn] = useState(false);
   // What is being paid right now: this document, or a pass order (the document is unlocked right after).
   const [paying, setPaying] = useState<{ id: string; amount: number }>({ id: orderId, amount });
+  const paidByPhone = useRef(false); // a team or pass unlock is not a sale
+
+  useEffect(() => {
+    if (status !== "PAID") track("pay_open");
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- once, when the sheet opens
+
+  useEffect(() => {
+    if (phase === "paid" && paidByPhone.current) {
+      paidByPhone.current = false;
+      track("paid", paying.amount);
+    }
+  }, [phase, paying.amount]);
 
   useEffect(() => {
     refreshAccount().then(setAccount);
@@ -124,6 +137,8 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
       }
       setPaying(target);
       const o = await api.pay(target.id, phone);
+      paidByPhone.current = true;
+      track("pay_start");
       // Normally the customer confirms on their phone (direct pay). Fapshi's payment page is only a fallback.
       if (o.pay_link) setLink(o.pay_link);
       if (target.id === orderId) onStatus(o.status);

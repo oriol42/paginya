@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ADMIN_KEY, api } from "@/lib/api";
+import { FunnelStats } from "./FunnelStats";
 
 type GoogleId = {
   initialize: (o: { client_id: string; callback: (r: { credential: string }) => void }) => void;
@@ -72,7 +73,8 @@ export function AdminLogin() {
           <p className="mt-3 text-[16px] text-ink/75">
             Cet appareil est connecté pour 30 jours. Au moment de payer, choisis « Équipe Paginya : débloquer sans payer ».
           </p>
-          <button type="button" onClick={signOut} className="mt-5 text-[15px] font-semibold text-ink/60 underline">Se déconnecter sur cet appareil</button>
+          <FunnelStats />
+          <button type="button" onClick={signOut} className="mt-8 text-[15px] font-semibold text-ink/60 underline">Se déconnecter sur cet appareil</button>
         </>
       ) : (
         <>

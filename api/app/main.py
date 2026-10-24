@@ -1,7 +1,9 @@
 """Paginya API: orders, cover rendering and Fapshi direct-pay."""
 import hmac
+import json
 import logging
 import os
+import re
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -30,6 +32,7 @@ async def lifespan(_app: FastAPI):
             try:
                 doc_routes.cleanup()
                 doc_routes.cleanup_scans()
+                db.purge_events()
             except Exception:  # never crash the API because of cleanup
                 log.exception("cleanup failed")
 
@@ -50,6 +53,7 @@ guard.LIMITS[:] = [
     ("POST", r"/forms", 40, 3600),
     ("POST", r"/admin/login|/orders/[^/]+/admin", 20, 3600),
     ("POST", r"/account/google", 30, 3600),
+    ("POST", r"/events", 300, 3600),
     ("POST", r"/account/pass|/orders/[^/]+/unlock", 30, 3600),
 ]
 app.middleware("http")(guard.middleware)  # before CORS: a refusal still carries the CORS headers
@@ -139,6 +143,25 @@ def prices() -> dict:
     return {k: {"label": pricing.LABELS[k], "amount": v} for k, v in pricing.PRICES_XAF.items()}
 
 
+FUNNEL_STEPS = {
+    "visit", "open_document", "open_garde", "open_lettre", "open_epreuve", "open_convertir",
+    "upload", "pay_open", "pay_start", "paid",
+}
+
+
+@app.post("/events")
+async def event(request: Request) -> Response:
+    """Visitor funnel (where people stop). Sent with sendBeacon as text/plain, so no CORS preflight."""
+    try:
+        data = json.loads((await request.body())[:500])
+        sid, step, src = str(data["sid"]), str(data["step"]), str(data.get("src") or "direct")
+    except (ValueError, KeyError, TypeError):
+        raise HTTPException(400, "Événement invalide")
+    if step in FUNNEL_STEPS and re.fullmatch(r"[a-z0-9]{8,40}", sid):
+        db.add_event(sid, step, re.sub(r"[^a-z0-9_.-]", "", src.lower())[:30] or "direct")
+    return Response(status_code=204)
+
+
 @app.post("/preview")
 def preview(body: CoverIn) -> Response:
     """Server-side render of the watermarked cover (what the paid file will look like)."""
@@ -226,6 +249,15 @@ def admin_unlock(order_id: str, body: AdminIn) -> dict:
     _order_or_404(order_id)
     db.grant(order_id)
     return _public(db.get_order(order_id))
+
+
+@app.post("/admin/funnel")
+def admin_funnel(body: AdminIn, days: int = 14) -> dict:
+    """The team's view of the funnel, per day and source."""
+    if admin.email_of(body.token) is None:
+        raise HTTPException(403, "Connexion équipe expirée : reconnecte-toi")
+    since = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 3600 - max(1, min(days, 90)) * 86400))
+    return {"steps": sorted(FUNNEL_STEPS), "rows": db.funnel(since)}
 
 
 def _sync_with_fapshi(order: dict) -> dict:

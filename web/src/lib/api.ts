@@ -43,6 +43,8 @@ export const api = {
   /** The team's own documents: after a Google sign-in on the team page, the pass unlocks an order without a payment. */
   adminConfig: () => call<{ client_id: string }>("/admin/config"),
   adminLogin: (credential: string) => call<{ token: string; email: string }>("/admin/login", { method: "POST", body: JSON.stringify({ credential }) }),
+  adminFunnel: (token: string, days: number) =>
+    call<{ rows: { day: string; src: string; step: string; n: number }[] }>(`/admin/funnel?days=${days}`, { method: "POST", body: JSON.stringify({ token }) }),
   adminUnlock: (id: string, token: string) => call<Order>(`/orders/${id}/admin`, { method: "POST", body: JSON.stringify({ token }) }),
   /** Customer accounts (Google): the 30-day pass, and the team's free documents. */
   accountConfig: () => call<{ client_id: string }>("/account/config"),
