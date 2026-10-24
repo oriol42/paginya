@@ -319,7 +319,7 @@ Reste, par ordre d'intérêt :
 - Tests : `tests/test_plans_support.py` (101 au vert).
 
 ## 24-25/10/2026 — Tests sur de vrais documents camerounais + corrections
-- **Corpus de test** (dans le dossier temporaire de la session, à re-télécharger avec les mêmes outils si besoin) : 60 mémoires/rapports DICAMES (UY1, UY2, ENS, ENSET, FALSH, FSE, FMSB, ESSTIC, Dschang, UCAC…), 30 épreuves (séquences, probatoire, épreuves zéro, sujetexa.com), 12 Word d'étudiants (GitHub), 3 lettres administratives tapées. Banc : `api/ml/study/bench/bench.py`.
+- **Corpus de test** (`api/data/corpus2/`, non versionné : dicames, epreuves, word, lettres, fixtures) : 60 mémoires/rapports DICAMES (UY1, UY2, ENS, ENSET, FALSH, FSE, FMSB, ESSTIC, Dschang, UCAC…), 30 épreuves (séquences, probatoire, épreuves zéro, sujetexa.com), 12 Word d'étudiants (GitHub), 3 lettres administratives tapées. Banc : `api/ml/study/bench/bench.py`.
 - Corrigé :
   - **Équations Word** (OMML) : elles disparaissaient. Maintenant gardées (fichier `images/<id>.omml`, repère `⟦eq…⟧` dans le texte) et remises en vraies équations dans le Word refait (`render.add_text`) ; texte simple dans les titres et cellules.
   - Caractères de contrôle dans un PDF → plantage du Word (`render.xml_safe`).
