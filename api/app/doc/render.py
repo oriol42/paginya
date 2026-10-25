@@ -90,10 +90,12 @@ KINDS = {
 }
 
 
-def options_for(kind: str, words: int = 0) -> dict:
+def options_for(kind: str, words: int = 0, typed_plan: bool = False) -> dict:
     opts = dict(KINDS.get(kind, KINDS["document"]))
     if kind == "document" and words < 600:
         opts["page_numbers"] = False  # a one-page text needs no "1"
+    if typed_plan:
+        opts["toc"] = True  # the student's own plan typed at the start was taken out: a real sommaire stands in its place
     return opts
 
 
@@ -513,6 +515,13 @@ class Builder:
     # blocks
     def heading(self, b: dict) -> None:
         level = max(1, min(int(b.get("level", 1)), 4))
+        last = self.doc.element.body[-2] if len(self.doc.element.body) > 1 else None  # [-1] is the section properties
+        if last is not None and last.tag == qn("w:p") and next(last.iter(qn("w:drawing")), None) is not None:
+            # a picture is kept with its caption, never with the next title: a full-page picture would push the
+            # title alone to the bottom of the page and its text to the next one
+            keep = last.find(f"{qn('w:pPr')}/{qn('w:keepNext')}")
+            if keep is not None:
+                keep.getparent().remove(keep)
         breaks = self.chapter_pages and (level == 1 or (level == 2 and self.has_parts and not b.get("special")))
         if breaks:
             self.page_break()

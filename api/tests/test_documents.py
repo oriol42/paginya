@@ -290,13 +290,14 @@ def test_a_conversion_changes_the_format_and_nothing_else(client, tmp_path):
 
 
 def test_numbered_titles_keep_one_level_per_numbering():
-    """"I) / 1) / 2)": the items under a roman title all sit one level below it (the model must not move them)."""
+    """"I) / 1) / 2)": the items under a roman title all sit one level below it (the model must not move them).
+    Without chapters, "I)" is a sibling of the Introduction (level 1), as in an exposé."""
     long = "Cette structure occupe une place importante dans le tissu économique de la région du Centre. " * 3
     text = "\n\n".join(["Introduction", long, "I) Les causes lointaines", "1) Les rivalités coloniales", long, "2) La course aux armements", long,
                          "II) Les causes immédiates", "1) L'attentat de Sarajevo", long, "2) L'engrenage des alliances", long, "Conclusion", long])
     h = dict(headings(detect(from_text(text))["blocks"]))
-    assert h["I) Les causes lointaines"] == h["II) Les causes immédiates"] == 2
-    assert {h[k] for k in h if k[0].isdigit()} == {3}
+    assert h["I) Les causes lointaines"] == h["II) Les causes immédiates"] == h["Introduction"] == 1
+    assert {h[k] for k in h if k[0].isdigit()} == {2}
 
 
 def test_body_is_never_hidden_as_a_cover_page(tmp_path):
@@ -388,3 +389,14 @@ def test_a_file_sent_as_it_is_is_imported_like_a_base64_one(client):
     r = client.post("/documents/upload?filename=rapport.docx", content=buf.getvalue(), headers={"Content-Type": "application/octet-stream"})
     assert r.status_code == 200 and any(b["text"] == "INTRODUCTION" for b in r.json()["blocks"])
     assert client.post("/documents/upload?filename=vide.docx", content=b"").status_code == 400
+
+
+def test_typed_plan_without_page_numbers_is_dropped():
+    """A plan typed at the start ("I. Introduction", "II. …", "Conclusion") is the old sommaire, not a run of titles."""
+    long = "L'imagerie médicale regroupe les techniques qui permettent d'obtenir des images de l'intérieur du corps humain. " * 3
+    text = "\n\n".join(["PLAN", "Introduction", "I. Les différentes lois en imagerie médicale", "II. L'organisation en imagerie médicale",
+                         "Conclusion", "INTRODUCTION", long, "I. LES DIFFÉRENTES LOIS EN IMAGERIE MÉDICALE", long,
+                         "II. L'ORGANISATION EN IMAGERIE MÉDICALE", long, "CONCLUSION", long])
+    heads = headings(detect(from_text(text))["blocks"])
+    assert [t.upper()[:12] for t, _ in heads] == ["INTRODUCTION", "I. LES DIFFÉ", "II. L'ORGANI", "CONCLUSION"]
+    assert {lv for _, lv in heads} == {1}

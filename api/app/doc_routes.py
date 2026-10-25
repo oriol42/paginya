@@ -224,7 +224,7 @@ def create(body: DocIn) -> dict:
         "blocks": result["blocks"],
         "meta": result["meta"],
         "style": {"theme": theme, "color": "#0E9F6E"},
-        "options": options_for(result["meta"]["kind"], result["meta"]["words"]),
+        "options": options_for(result["meta"]["kind"], result["meta"]["words"], result["meta"].get("typed_plan", False)),
         "cover_svg": None,
         "render": None,
     }
@@ -345,7 +345,7 @@ def update(order_id: str, body: DocPatch) -> dict:
         doc["style"] = style
     if body.kind is not None and body.kind in KINDS:
         doc["meta"]["kind"] = body.kind
-        doc["options"] = {**options_for(body.kind, doc["meta"].get("words", 0)), "letterhead": doc["options"].get("letterhead", False)}
+        doc["options"] = {**options_for(body.kind, doc["meta"].get("words", 0), doc["meta"].get("typed_plan", False)), "letterhead": doc["options"].get("letterhead", False)}
         doc["plan"] = analysis.default_plan(body.kind, doc["meta"].get("existing"), doc["options"])
     if body.options is not None:
         doc["options"] = {k: bool(body.options.get(k, v)) for k, v in DEFAULT_OPTIONS.items()}

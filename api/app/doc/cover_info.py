@@ -25,7 +25,7 @@ DOC_LABEL = re.compile(
     re.I,
 )
 THEME = re.compile(r"^(th[èe]me|sujet|intitul[ée]|titre)\s*[:\-–]\s*(.*)$", re.I)
-AUTHORS = re.compile(r"^(pr[ée]sent[ée]e?s?|r[ée]dig[ée]e?s?|r[ée]alis[ée]e?s?|[ée]labor[ée]e?s?|soutenue?s?|fait)(\s+et\s+\w+)?\s+(par)\b\s*[:\-–]?\s*(.*)$|^(par|auteurs?|[ée]tudiants?|membres du groupe|groupe)\s*[:\-–]\s*(.*)$", re.I)
+AUTHORS = re.compile(r"^(pr[ée]sent[ée]e?s?|r[ée]dig[ée]e?s?|r[ée]alis[ée]e?s?|[ée]labor[ée]e?s?|soutenue?s?|fait)(\s+et\s+\w+)?\s+(par)\b\s*[:\-–]?\s*(.*)$|^(par|auteurs?|[ée]tudiants?|membres du groupe|groupe)\s*[:\-–]\s*(.*)$|^(membres du groupes?|liste des membres|les membres)\s*[:\-–]?\s*()$", re.I)
 SUPERVISORS = re.compile(
     r"^(co-?encadr\w*|sous l['’]encadrement( \w+)?( de)?|sous la (direction|supervision|co-?direction)( \w+)?( de)?|encadr(eur|ant|ement|[ée]e? par)[^:]*|superviseur|"
     r"directeur de (m[ée]moire|th[èe]se)|ma[îi]tre de stage|tuteur[^:]*|rapporteur|co-?directeur)\s*[:\-–]?\s*(?P<rest>.*)$",
@@ -139,11 +139,21 @@ def _join_wrapped(lines: list[tuple[int, str]]) -> list[tuple[int, str]]:
             # mixed case: "École Supérieure des Sciences" / "et Techniques de" / "l'Information et de la"
             lower_cont = HEADER.match(prev) and not HEADER.match(ln) and not ln.startswith(("(", "*")) and (
                 _CONNECTOR.search(prev) or ln[:1].islower() or (len(ln.split()) <= 2 and ln[:1].isalpha() and not re.search(r"[.:;]$", prev)))
-            if ((upper and cont) or lower_cont) and not re.match(r"^(\*|-){3,}$", ln) and len(prev) + len(ln) < 110:
+            label = AUTHORS.match(ln) or SUPERVISORS.match(ln) or YEAR.search(ln) or re.match(r"(?i)^ann[ée]e", ln)  # "ENCADREUR" opens a field of its own
+            if ((upper and cont) or lower_cont) and not label and not re.match(r"^(\*|-){3,}$", ln) and len(prev) + len(ln) < 110:
                 out[-1] = (pi, f"{prev} {ln}")
                 continue
         out.append((idx, ln))
     return out
+
+
+_ADDRESS = re.compile(r"(?i)(^|\s)(b\.?\s?p\b|p\.?\s?o\.?\s?box|t[ée]l\b|fax\b|e-?mail|site web|www\.)")
+
+
+def _readable(line: str) -> bool:
+    """False for a line printed with a font whose letters PDF extraction gets wrong ("QbiK EOPTF SVVTPMTUN")."""
+    letters = [c for c in line.lower() if c.isalpha()]
+    return not letters or sum(c in "aeiouyàâéèêëîïôûù" for c in letters) / len(letters) >= 0.25
 
 
 def _is_name(line: str) -> bool:
@@ -188,12 +198,16 @@ def extract(raws) -> tuple[dict, set[int]]:
             signals += 1
             continue
         if mode == "title_more":
-            if line.isupper() and not AUTHORS.match(line) and not SUPERVISORS.match(line) and not HEADER.match(line) and len(line) < 120:
+            # the subject goes on over a line or two in capitals; never over the names, the labels or the year
+            if line.isupper() and not AUTHORS.match(line) and not SUPERVISORS.match(line) and not HEADER.match(line) and len(line) < 120 \
+                    and not DOC_LABEL.match(line) and not YEAR.search(line) and not re.search(r"(?i)\b(expos|groupe|membres|propos[ée]|ann[ée]e)\b|\d{2}[a-z]{2}", line) \
+                    and len(f.get("title", "")) < 160:
                 f["title"] = f"{f['title']} {line.strip(' «»\"')}"
                 continue
             mode = None
         if DOC_LABEL.match(line) and len(line) < 90 and "doc_label" not in f:
-            f["doc_label"] = line.rstrip(" :")
+            # "EXPOSÉ D'ÉPISTÉMOLOGIE PROPOSÉ PAR LE GROUPE 1" → "EXPOSÉ D'ÉPISTÉMOLOGIE"
+            f["doc_label"] = re.split(r"(?i)\s+(propos[ée]e?s?|pr[ée]sent[ée]e?s?|r[ée]alis[ée]e?s?|r[ée]dig[ée]e?s?|par)\b", line)[0].rstrip(" :")
             label_at = idx
             signals += 1
             mode = None
@@ -266,7 +280,8 @@ def extract(raws) -> tuple[dict, set[int]]:
         loose.append((idx, line))
         # Title: a longish line in capitals or the region's explicit title, never a sentence.
         # (only a line in capitals: "Stage effectué à … du 04" is a mention, not a title; no title beats a wrong one)
-        if "title" not in f and 12 <= len(line) <= 200 and not line.endswith(".") and line.isupper() and not re.search(r"\d{4}", line) and not DOC_LABEL.match(line):
+        if "title" not in f and 12 <= len(line) <= 200 and not line.endswith(".") and line.isupper() and not re.search(r"\d{4}", line) and not DOC_LABEL.match(line) \
+                and not _ADDRESS.search(line) and _readable(line):
             f["title"] = line.strip(" «»\"")
 
     blob = " ".join(ln for _, ln in lines)
@@ -285,13 +300,17 @@ def extract(raws) -> tuple[dict, set[int]]:
     # A title page with only "RAPPORT DE STAGE" and the subject (no names): still a cover, as long as it is short
     # and the text clearly starts after it (a special page, a chapter, a new page).
     bare = bool(f.get("doc_label")) and len(lines) <= 14 and end < len(raws) and all(len(ln) < 160 for _, ln in lines)
-    if not complete and not bare:
+    # An official header (République, ministère, université, faculté) at the top is a cover even without names
+    # (a charter, a regulation, a course handout): its lines must never become titles of their own
+    official = len(set(f["header_fr"]) | set(f["header_en"])) >= 4 and len(lines) <= 30
+    if not complete and not bare and not official:
         return {}, set()
-    if "title" not in f and f.get("doc_label"):
+    if "title" not in f and (f.get("doc_label") or official):
         # The subject in normal case (under "RAPPORT DE STAGE", or under the names): the first line that is none
         # of the known fields, with the line that continues it
         cands = [(i, ln) for i, ln in loose if 12 <= len(ln) <= 200 and re.search(r"[A-Za-zÀ-ÿ]{3}", ln) and not re.search(r"[.;]$", ln) and not _is_name(ln)
-                 and not re.match(r"(?i)^(promotion|l[1-3]|m[12]|licence|master|niveau|classe)\b", ln) and not _PEOPLE.search(ln) and not re.search(r"(?i)\b(obtention|soutenu|pr[ée]sent[ée])", ln)]
+                 and not re.match(r"(?i)^(promotion|l[1-3]|m[12]|licence|master|niveau|classe)\b", ln) and not _PEOPLE.search(ln) and not re.search(r"(?i)\b(obtention|soutenu|pr[ée]sent[ée])", ln)
+                 and not _ADDRESS.search(ln) and _readable(ln)]
         after = [c for c in cands if c[0] > label_at]
         cands = after or cands  # the subject is written under "MÉMOIRE", "RAPPORT DE STAGE"
         if cands:
@@ -317,6 +336,11 @@ def extract(raws) -> tuple[dict, set[int]]:
                 out.append(x)
         return out
 
+    for a in f["authors"]:
+        # "EBOGO LIONEL 25SB027FS (CHEF)": the student number goes under the name
+        if (m := re.match(r"^(.*?)[\s:–-]+(\d{2}[A-Za-z]{1,4}[0-9Oo]{3,4}[A-Za-z]{0,3})\b\s*(.*)$", a["name"])) and m.group(1).strip():
+            a["name"] = (m.group(1) + (" " + m.group(3) if m.group(3) else "")).strip()
+            a.setdefault("info", m.group(2).upper())
     f["authors"] = unique(f["authors"])[:8]
     f["supervisors"] = unique(f["supervisors"])[:4]
     # The old cover's lines are hidden; a long paragraph before the body is real text and stays.

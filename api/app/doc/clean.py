@@ -161,7 +161,12 @@ def _tail(b: dict) -> bool:
     """A paragraph's last words left alone by a page break of the PDF ("en entreprise", "manières :") and taken
     for a heading: it starts in lower case and is no lettered heading."""
     return (b.get("type") == "heading" and not b.get("_explicit") and b.get("kind") not in ("special", "partie", "chapitre")
-            and not str(b.get("kind", "")).startswith(("letter", "style")) and b["text"][:1].islower() and not _LETTERED.match(b["text"]))
+            and not str(b.get("kind", "")).startswith(("letter", "style"))
+            and ((b["text"][:1].islower() and not _LETTERED.match(b["text"])) or _CLOSING.match(b["text"].strip())))
+
+
+# "PACS).", "(Bts, hnd).": the end of a sentence cut by the page, read as a short title
+_CLOSING = re.compile(r"^(\([^()]{1,40}\)|[^()]{1,30}\))[.;,]?$")
 
 
 def merge_broken(items: list[dict]) -> int:
@@ -269,9 +274,40 @@ def harmonise_lists(items: list[dict]) -> int:
     return changed
 
 
+_EMPTY_BULLET = re.compile(r"^[\s•◦▪●○■□➢►▸✓\-–—*·]*[.;,:]?\s*$")
+
+
+def orphan_bullets(items: list[dict]) -> int:
+    """A PDF whose bullets sit in their own column gives "•", "•", "•" then the texts as plain paragraphs:
+    the empty items are dropped and the lines that follow them become the list's items again."""
+    n = 0
+    i = 0
+    while i < len(items):
+        it = items[i]
+        if it.get("type") not in ("list", "paragraph") or it.get("hidden") or not _EMPTY_BULLET.match(it.get("text", "")) or not it.get("text", "").strip():
+            i += 1
+            continue
+        j = i
+        while j < len(items) and items[j].get("type") in ("list", "paragraph") and items[j].get("text", "").strip() and _EMPTY_BULLET.match(items[j]["text"]):
+            j += 1
+        empties = j - i
+        level = it.get("level", 0) if it.get("type") == "list" else 0
+        del items[i:j]
+        n += empties
+        # the texts of these bullets: the next lines (a list item, then plain paragraphs), up to a heading or a table
+        k, taken = i, 0
+        while k < len(items) and taken < empties + 1 and items[k].get("type") in ("list", "paragraph") and len(items[k].get("text", "")) < 600:
+            if items[k]["type"] == "paragraph":
+                items[k].update({"type": "list", "ordered": False, "level": level})
+            k += 1
+            taken += 1
+        i = k
+    return n
+
+
 def clean(items: list[dict]) -> dict:
     """Runs every fix on the detected items (in place). Returns counters for the "what changed" card."""
-    stats = {"merged": merge_broken(items)}  # unmarked_lists runs earlier, before the model (see detect)
+    stats = {"orphan_bullets": orphan_bullets(items), "merged": merge_broken(items)}  # unmarked_lists runs earlier, before the model (see detect)
     texts = [it.get("text", "") for it in items if it.get("type") in ("paragraph", "list")]
     acr, proper = vocabulary(texts)
     caps = 0
@@ -281,7 +317,8 @@ def clean(items: list[dict]) -> dict:
         if not text:
             continue
         if t == "heading" and it.get("level", 1) >= 2 and it.get("kind") not in ("partie", "chapitre", "special") and _upper_ratio(text) > 0.85 and len(text) > 6:
-            it["text"] = sentence_case(text, acr, proper)
+            # "I. LES LOIS" → "I. Les lois": the first word after the number keeps its capital
+            it["text"] = re.sub(r"^(\s*(?:[IVXLivxl]+|\d+(?:\.\d+)*|[A-Ha-h])\s*[.\-–)_/:]+\s*)([a-zà-ÿ])", lambda m: m.group(1) + m.group(2).upper(), sentence_case(text, acr, proper))
             caps += 1
         elif t in ("paragraph", "list", "quote") and it.get("role") not in ("sigle", "biblio"):
             if _upper_ratio(text) > 0.85 and len(text) > 30:
