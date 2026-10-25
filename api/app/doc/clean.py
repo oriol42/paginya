@@ -179,6 +179,7 @@ def merge_broken(items: list[dict]) -> int:
             continue
         if (
             a.get("type") == "paragraph" and (b.get("type") == "paragraph" or _tail(b)) and not b.get("_explicit")
+            and "sigle" not in (a.get("role"), b.get("role"))  # "z : Niveau de confiance" is a symbol of its own, not the end of a sentence
             and not (STRONG_END if _tail(b) else END).search(a["text"]) and (len(a["text"]) > 30 or _tail(b))
             and b["text"][:1].islower()
         ):

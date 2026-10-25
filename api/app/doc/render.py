@@ -556,9 +556,9 @@ class Builder:
         role = b.get("role")
         if role == "dedicace":
             p = self._para(b["text"])
-            p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER  # a dedication is centred on its page
             p.paragraph_format.first_line_indent = Cm(0)
-            p.paragraph_format.left_indent = Cm(6)
+            p.paragraph_format.left_indent = Cm(0)
             for r in p.runs:
                 r.italic = True
         elif role == "biblio":
@@ -577,18 +577,37 @@ class Builder:
         self._last_list_key = None
 
     def sigles(self, run: list[dict]) -> None:
-        table = self.doc.add_table(rows=len(run), cols=2)
-        _no_borders(table)
+        """Sigles, abbreviations or symbols in a ruled two-column table with a header row, as the norms ask."""
+        acronyms = sum(1 for b in run if sum(c.isupper() for c in b.get("term", "")) >= 2)
+        head = ("Sigle / Abréviation" if acronyms * 2 >= len(run) else "Symbole", "Signification")
+        table = self.doc.add_table(rows=len(run) + 1, cols=2)
+        table.style = self.doc.styles["Table Grid"]
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
         table.autofit = False
-        term_w = Cm(3.2)
+        term_w = Cm(4)
         table.columns[0].width, table.columns[1].width = term_w, self.text_width - term_w
-        for row, b in zip(table.rows, run):
+        size = Pt(max(self.st["size"] - 1, 9))
+        for i, row in enumerate(table.rows):
             row.cells[0].width, row.cells[1].width = term_w, self.text_width - term_w
-            t = row.cells[0].paragraphs[0].add_run(b.get("term", ""))
-            t.bold = True
-            row.cells[1].paragraphs[0].add_run(b.get("definition", ""))
-            for c in row.cells:
-                c.paragraphs[0].paragraph_format.space_after = Pt(2)
+            values = head if i == 0 else (run[i - 1].get("term", ""), run[i - 1].get("definition", ""))
+            for j, (cell, value) in enumerate(zip(row.cells, values)):
+                p = cell.paragraphs[0]
+                r = p.add_run(value)
+                r.font.size = size
+                p.paragraph_format.space_after = Pt(2)
+                p.paragraph_format.line_spacing = 1.0
+                p.paragraph_format.first_line_indent = Cm(0)
+                if i == 0:
+                    r.bold = True
+                    _set_color(r.font, self.st["table_head_text"])
+                    _shade(cell, self.st["table_head"])
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                elif j == 0:
+                    r.bold = True
+        trpr = table.rows[0]._tr.get_or_add_trPr()  # header row repeated on each page
+        header = OxmlElement("w:tblHeader")
+        header.set(qn("w:val"), "true")
+        trpr.append(header)
         self.first_in_section = False
         self._last_list_key = None
 
