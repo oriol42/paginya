@@ -143,7 +143,7 @@ export function FormShell<T extends object>({ kind, title, initial, missing, chi
         </div>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-black/10 bg-paper/95 px-4 pt-3 pb-[max(.75rem,env(safe-area-inset-bottom))] backdrop-blur">
+      <div data-bottom-bar className="fixed inset-x-0 bottom-0 z-40 border-t border-black/10 bg-paper/95 px-4 pt-3 pb-[max(.75rem,env(safe-area-inset-bottom))] backdrop-blur">
         <div className="mx-auto max-w-6xl lg:flex lg:justify-end">
           <button
             type="button"

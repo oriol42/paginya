@@ -426,7 +426,7 @@ export function DocumentApp() {
       </div>
 
       {/* Mobile: one bottom row (tools + download) and a half-height drawer that leaves the page visible */}
-      <div className="fixed inset-x-0 bottom-0 z-40 lg:hidden">
+      <div data-bottom-bar className="fixed inset-x-0 bottom-0 z-40 lg:hidden">
         {drawer && (
           <div className="sheet-in paper relative flex h-[48dvh] flex-col rounded-t-xl">
             <span className="pin top-2 left-1/2 -translate-x-1/2" aria-hidden />

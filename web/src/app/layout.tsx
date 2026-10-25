@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Analytics, PIXEL_SNIPPET } from "@/components/Analytics";
 import { WakeServer } from "@/components/WakeServer";
 import { SITE_URL } from "@/lib/site";
+import { HelpBubble } from "@/components/HelpBubble";
 import "./globals.css";
 
 const DESCRIPTION =
@@ -50,6 +51,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <WakeServer />
         <Analytics />
         {children}
+        <HelpBubble />
       </body>
     </html>
   );

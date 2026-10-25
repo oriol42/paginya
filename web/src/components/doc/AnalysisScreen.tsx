@@ -127,7 +127,7 @@ export function AnalysisScreen({ doc, busy, error, onKind, onExam, onLetter, onA
       {error && <p className="mt-4 flex gap-2 rounded-md bg-paper px-4 py-3 text-[15px] text-pin"><Icon name="triangle-alert" size={18} className="mt-0.5" />{error}</p>}
 
       {!isExam && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-black/10 bg-paper/95 px-4 pt-3 pb-[max(.75rem,env(safe-area-inset-bottom))] backdrop-blur">
+        <div data-bottom-bar className="fixed inset-x-0 bottom-0 z-40 border-t border-black/10 bg-paper/95 px-4 pt-3 pb-[max(.75rem,env(safe-area-inset-bottom))] backdrop-blur">
           <div className="mx-auto max-w-2xl">
             <PinLabel type="button" className="w-full" disabled={busy} onClick={() => onApply(mode, plan)}>
               {busy ? "Un instant…" : mode === "keep" ? "C'est bon, appliquer" : "C'est bon, mettre en forme"}

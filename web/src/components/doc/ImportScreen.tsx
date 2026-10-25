@@ -136,7 +136,7 @@ export function ImportScreen({ error, onText, onFile, onOpen }: Props) {
             </div>
           ))}
         </div>
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-black/10 bg-paper/95 px-4 pt-3 pb-[max(.75rem,env(safe-area-inset-bottom))] backdrop-blur">
+        <div data-bottom-bar className="fixed inset-x-0 bottom-0 z-40 border-t border-black/10 bg-paper/95 px-4 pt-3 pb-[max(.75rem,env(safe-area-inset-bottom))] backdrop-blur">
           <div className="mx-auto flex max-w-5xl gap-3">
             <button type="button" onClick={() => setReview(false)} className="press grid w-14 place-items-center rounded-md ring-1 ring-black/15" aria-label="Retour">
               <Icon name="arrow-left" />
@@ -329,7 +329,7 @@ function RecentList({ onOpen }: { onOpen: (id: string) => void }) {
       <h2 className="font-display text-[22px] leading-none font-black text-white uppercase">Reprendre un document</h2>
       <ul className="mt-3 grid gap-2 sm:grid-cols-2">
         {list.map((r) => (
-          <li key={r.id} className="paper flex items-center gap-3 rounded-[2px] py-2.5 pr-2 pl-4">
+          <li key={r.id} className="paper flex min-w-0 items-center gap-3 rounded-[2px] py-2.5 pr-2 pl-4">
             <button type="button" onClick={() => onOpen(r.id)} className="press flex min-w-0 flex-1 items-center gap-3 text-left">
               <Icon name="file-text" size={22} className="shrink-0 text-board" />
               <span className="min-w-0">

@@ -207,6 +207,22 @@ h1, h2, h3 {
 .pop {
   animation: stamp-in 180ms var(--ease-out-expo) both;
 }
+/* The help bubble settles in with a small bounce, and calls once with a soft halo (never again). */
+.help-bubble {
+  animation: help-in 560ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+@keyframes help-in {
+  from { transform: translateY(18px) scale(0.6); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.help-ping {
+  box-shadow: 0 0 0 0 rgba(244, 214, 58, 0.7);
+  animation: help-ping 1400ms 700ms var(--ease-out-expo) both;
+}
+@keyframes help-ping {
+  from { box-shadow: 0 0 0 0 rgba(244, 214, 58, 0.75); }
+  to { box-shadow: 0 0 0 16px rgba(244, 214, 58, 0); }
+}
 /* Canva-like transitions: a panel slides in, a page image fades and settles when it arrives. */
 .panel-in {
   animation: panel-in 260ms var(--ease-out-expo) both;

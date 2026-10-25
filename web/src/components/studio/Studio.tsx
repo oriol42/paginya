@@ -228,7 +228,7 @@ export function Studio() {
       </div>
 
       {/* Mobile action bar */}
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-black/10 bg-paper/95 px-4 pt-3 pb-[max(.75rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden">
+      <div data-bottom-bar className="fixed inset-x-0 bottom-0 z-40 border-t border-black/10 bg-paper/95 px-4 pt-3 pb-[max(.75rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden">
         {step === 2 && (
           <button type="button" onClick={() => setStep(3)} className="mb-2 w-full text-center text-sm font-semibold text-ink/60">Passer cette étape</button>
         )}
