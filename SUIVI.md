@@ -343,3 +343,19 @@ Reste, par ordre d'intérêt :
 - Garde-fous : correction refusée si elle change un nombre, une équation, plus de ~15 % du texte ou trop de mots.
 - IA : `gemini-3.5-flash-lite` (≈ 3 s par tranche de ~1 000 mots), puis Groq `gpt-oss-120b`, puis `gemini-flash-latest` (≈ 1 min par tranche : dernier recours). 3 appels en parallèle, 8 corrections/heure par IP. Compté dans Coulisses → Machine (« Appels de correction des fautes »).
 - Pubs : scripts publiés (5 pubs + version anglaise, consignes de voix, captures à filmer) ; essais de voix gratuites (Edge TTS) dans `~/Documents/pubs/paginya-2026-10/essais-voix/`.
+
+## 25/10/2026 — PDF trouvés sur le net : images, tableaux, titres ; chargement détaillé
+- **Constat** : un PDF ne donnait que son texte. Images, schémas, organigrammes et tableaux disparaissaient (le texte des schémas devenait du charabia « Hash · Block · Item ») ; titres sur plusieurs lignes coupés en 3 titres sur 3 pages ; sauts de page du PDF perdus ; listes « 1) 2) 3) » et tirets « - » séparés de leur texte.
+- **`api/app/doc/pdf_layout.py`** : la page est dessinée sans son texte (Ghostscript `-dFILTERTEXT`, 72 dpi, PGM brut) ; chaque tache de dessin devient
+  - une **image** découpée à 150 dpi au bon endroit (photos, cartes, schémas, organigrammes, formules), ses mots retirés du texte ;
+  - un **vrai tableau** (lignes fines + mots de chaque cellule) ;
+  - ou rien : cadre autour d'un titre, bandeau/parchemin de titre (« DÉDICACE »), fond coloré, filigrane, petite flèche, texte dessiné en formes (polices Type 3), page scannée (repérée par `pdfimages -list`, pas analysée).
+  - Le texte reste celui de pdftotext ; seules les lignes dans les images/tableaux sont retirées.
+- `extract.py` : sauts de page gardés (`\f`), phrase qui continue sur la page suivante recollée, titre en majuscules sur plusieurs lignes en haut de page = un titre, « 2. » en haut de page n'est plus un en-tête répété, colonnes de numéros/puces recollées à leurs éléments, « chapitres. » en début de ligne n'est plus un début de chapitre, PDF d'une seule ligne accepté.
+- `detect.py` : dernière vérification des titres (citation entre guillemets, référence bibliographique, plus de 160 caractères → paragraphe). `exam_scan.py` : « 2021/2022 », « sous-évaluation », « Section I : » ne font plus prendre un rapport pour une épreuve.
+- Sommaire (`uno_worker.tidy_index_styles`) : un titre long passe à la ligne en retrait sous son texte.
+- `render.add_text` : un « ⟦ » tapé dans le texte faisait planter la mise en page (récursion infinie).
+- **Mesures** (ancien → nouveau) : 60 mémoires DICAMES : 0 → 975 figures, 1 → 426 tableaux, alertes 131 → 121, aucune nouvelle erreur ; documents « tapés à la main » en Word/texte : identiques (rappel 0,939, précision 0,925) ; les mêmes en PDF : rappel 0,956 → 0,959, précision 0,93 → 0,94, 0 → 14 tableaux. Rapport ESSTIC 45 pages : 54 → 39 pages. Coût : ~1 à 3 s de plus par PDF de 100 pages (en local).
+- Corpus de test « net » : `api/data/corpus3/` (non versionné : arXiv, Bitcoin, IRS, ONU, polycopiés, rapports ESSTIC, Word d'exemple).
+- Web : onglet « Fautes » retiré de la barre du bas (Télécharger ne tenait plus sur téléphone) → section « Corriger les fautes » en bas de Style. **Chargement** : l'envoi passe par XMLHttpRequest pour suivre la progression ; cercle qui se remplit (« Envoi de ton fichier · 37 % · 460 Ko sur 1,3 Mo »), puis lecture, titres, tableaux/images, mise en page ; message « connexion lente » après 10 s.
+- Reste : 5 pubs vidéo avec voix ElevenLabs (le fondateur crée le compte et se connecte dans Chrome).

@@ -318,7 +318,7 @@ def plain_math(text: str) -> str:
 
 def add_text(paragraph, text: str, color: str) -> None:
     """Adds text with its **bold**, *italic* and `code` spans, clickable links, and the real Word equations."""
-    if "⟦" in text:
+    if "⟦" in text and MATH_MARK.search(text):  # a "⟦" typed in the text itself is only text
         pos = 0
         for m in MATH_MARK.finditer(text):
             if m.start() > pos:

@@ -232,6 +232,7 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
     from .clean import clean
 
     stats.update(clean(items))
+    stats["not_titles"] = _not_titles(items)
     stats["typed_lists"] = sum(1 for it in items if it.pop("_typed", False))
     stats["text_tables"] = sum(1 for it in items if it.pop("_from_text", False))
     blocks = []
@@ -255,6 +256,26 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
         it.pop("_nomark", None)
         it.pop("_explicit", None)
     return out
+
+
+BIBLIO = re.compile(r",\s*(?:\d{1,2}\s*(?:e|ème)?\s*éd\.?,\s*)?[^,]{0,40},\s*(?:19|20)\d{2}\b|\b(?:L['’]Harmattan|Éditions|Editions|Press|PUF|Karthala)\b.*\b(?:19|20)\d{2}\b")
+
+
+def _not_titles(items: list[dict]) -> int:
+    """Last look at the titles, whatever made them: a quotation from an interview, a reference of the
+    bibliography or a whole sentence is never a title (each would be a long, ugly line of the sommaire)."""
+    n = 0
+    for it in items:
+        if it.get("type") != "heading" or it.get("special") or it.get("_explicit"):
+            continue
+        text = it.get("text", "").strip()
+        if (text[:1] in "«“\"" and len(text) > 40) or REFERENCE.match(text) or BIBLIO.search(text) or len(text) > 160 \
+                or (len(text) > 100 and ENDS_SENTENCE.search(text)):
+            for k in ("level", "number", "part", "kind", "special", "numbered"):
+                it.pop(k, None)
+            it["type"] = "paragraph"
+            n += 1
+    return n
 
 
 def _label_family(text: str) -> str | None:

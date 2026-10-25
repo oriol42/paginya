@@ -140,6 +140,25 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
+/** The file goes as it is (not base64), with its progress: XMLHttpRequest is the only way to see an upload advance. */
+function upload(path: string, file: File, onProgress?: (sent: number) => void): Promise<DocView> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_URL}${path}`);
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total); };
+    xhr.upload.onload = () => onProgress?.(1);
+    xhr.onerror = () => reject(new Error("Connexion impossible. Vérifie ta connexion internet et réessaie."));
+    xhr.onload = () => {
+      let data: { detail?: string } = {};
+      try { data = JSON.parse(xhr.responseText); } catch { /* not JSON */ }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data as DocView);
+      else reject(new Error(data.detail ?? `Erreur ${xhr.status}`));
+    };
+    xhr.send(file);
+  });
+}
+
 /** A visitor who gets this far has a real document: the step that matters most in the funnel. */
 async function created(p: Promise<DocView>): Promise<DocView> {
   const doc = await p;
@@ -150,11 +169,11 @@ async function created(p: Promise<DocView>): Promise<DocView> {
 export const docs = {
   fromText: (text: string) => created(call<DocView>("/documents", { method: "POST", body: JSON.stringify({ text }) })),
   // The file goes as it is (not base64): a third less to send on a slow connection.
-  fromFile: (file: File) =>
-    created(call<DocView>(`/documents/upload?filename=${encodeURIComponent(file.name)}`, { method: "POST", body: file, headers: { "Content-Type": "application/octet-stream" } })),
+  fromFile: (file: File, onProgress?: (sent: number) => void) =>
+    created(upload(`/documents/upload?filename=${encodeURIComponent(file.name)}`, file, onProgress)),
   /** Word -> PDF or PDF -> Word, nothing added or restyled. */
-  convert: (file: File) =>
-    created(call<DocView>(`/documents/upload?filename=${encodeURIComponent(file.name)}&convert=true`, { method: "POST", body: file, headers: { "Content-Type": "application/octet-stream" } })),
+  convert: (file: File, onProgress?: (sent: number) => void) =>
+    created(upload(`/documents/upload?filename=${encodeURIComponent(file.name)}&convert=true`, file, onProgress)),
   get: (id: string) => call<DocView>(`/documents/${id}`),
   update: (id: string, patch: Partial<{ blocks: Block[]; style: DocStyle; options: DocOptions; kind: string; letterhead: Letterhead; cover_svg: string; remove_cover: boolean; mode: DocMode; plan: Partial<DocPlan>; confirm: boolean }>) =>
     call<DocView>(`/documents/${id}`, { method: "PUT", body: JSON.stringify(patch) }),

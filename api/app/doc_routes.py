@@ -195,7 +195,7 @@ def create(body: DocIn) -> dict:
             if ext == ".docx":
                 raws = from_docx(src, folder / "images")
             elif ext == ".pdf":
-                raws = from_pdf(src)
+                raws = from_pdf(src, folder / "images")
             elif ext in (".txt", ".md", ".markdown"):
                 content = raw_bytes.decode("utf-8", "replace")
                 raws = from_markdown(content) if ext != ".txt" or looks_like_markdown(content) else from_text(content)

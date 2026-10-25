@@ -23,9 +23,9 @@ export function ConvertScreen() {
       return;
     }
     setError("");
-    setBusy("Lecture du fichier Word…");
+    setBusy("Envoi du fichier… 0 %");
     try {
-      const view = await docs.convert(file);
+      const view = await docs.convert(file, (sent) => setBusy(sent < 1 ? `Envoi du fichier… ${Math.round(sent * 100)} %` : "Lecture du fichier Word…"));
       router.push(`/document?doc=${view.id}`);
     } catch (e) {
       setError((e as Error).message);

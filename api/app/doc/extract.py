@@ -18,6 +18,8 @@ from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 
+from . import pdf_layout
+
 
 @dataclass
 class Raw:
@@ -46,13 +48,13 @@ _END = re.compile(r"[.:;!?»\"')\]]$")
 
 
 _CONNECT = re.compile(r"(?:^|\s)(de|du|des|la|le|les|l['’]|d['’]|et|à|en|pour|par|au|aux|sur|dans|un|une|avec|qui|que|ou|son|sa|ses|leur|leurs|ce|cette|notre|nos|of|the|and)$", re.I)
-_STARTS_BLOCK = re.compile(r"^([-–—•*➢►▪❖◆■●○➤]|\d+(\.\d+)*[.)\-–]\s|[IVX]+[.)\-–]\s|[a-z][.)]\s|chapitre|partie|section)", re.I)
+_STARTS_BLOCK = re.compile(r"^([-–—•*➢►▪❖◆■●○➤]|\d+(\.\d+)*[.)\-–]\s|[IVX]+[.)\-–]\s|[a-z][.)]\s|(chapitre|partie|section)\s+([\divxl]+|premier|première|un|une|deux)\b|(?-i:Chapitre|Partie|Section|CHAPITRE|PARTIE|SECTION)\b)", re.I)
 
 
 def _cut(prev: str, nxt: str, strict: bool = False) -> bool:
     """PDF hard wrap: the sentence of `prev` goes on in `nxt`.
     strict (across an empty line): only when `prev` visibly stops mid-sentence."""
-    if not prev or not nxt or _END.search(prev) or _STARTS_BLOCK.match(nxt) or (nxt.isupper() and len(nxt) > 3):
+    if not prev or not nxt or pdf_layout.MARK.match(nxt) or _END.search(prev) or _STARTS_BLOCK.match(nxt) or (nxt.isupper() and len(nxt) > 3):
         return False
     if _CONNECT.search(prev):
         return True  # "… des Sciences et" / "Techniques …"
@@ -61,9 +63,13 @@ def _cut(prev: str, nxt: str, strict: bool = False) -> bool:
     return (len(prev) > 45 and (nxt[:1].islower() or nxt[:1].isdigit())) or len(prev) >= 78  # full justified line
 
 
+def _caps(line: str) -> bool:
+    return len(line) < 70 and line.upper() == line and any(c.isalpha() for c in line) and not re.search(r"[.;!?»]$", line)
+
+
 def from_text(text: str, source: str = "text") -> list[Raw]:
     text = text.replace("\r\n", "\n").replace("\r", "\n").replace(" ", " ")
-    lines = [ln.rstrip() for ln in text.split("\n")]
+    lines = [ln.rstrip(" \t") for ln in text.split("\n")]  # not "\f": the page changes count
     paras: list[Raw] = []
     buf: list[str] = []
     blank, page = 0, False  # empty lines / a page change (form feed) since the last paragraph
@@ -74,23 +80,35 @@ def from_text(text: str, source: str = "text") -> list[Raw]:
         blank, page = 0, False
         return raw
 
+    held: list[str] = []  # PDF pictures met in the middle of a sentence: they go after its paragraph
+
     def flush() -> None:
         if buf:
             joined = " ".join(s.strip() for s in buf)
             paras.append(mark(Raw(text=re.sub(r"[ \t]+", " ", joined).strip(), indent=_indent(buf[0]), source=source)))
             buf.clear()
+        for m in held:
+            paras.append(mark(Raw(text=m, source=source)))
+        held.clear()
 
     def next_text(i: int) -> str:
-        for ln in lines[i + 1:i + 4]:
-            if ln.strip():
+        for ln in lines[i + 1:i + 6]:
+            if ln.strip() and not pdf_layout.MARK.match(ln.strip()):
                 return ln.strip()
         return ""
 
     for i, line in enumerate(lines):
         if "\f" in line:
-            flush()
-            page = True
+            # a sentence going on over the page stays one paragraph
+            if not (source == "pdf" and buf and not line.replace("\f", "").strip() and _cut(buf[-1].strip(), next_text(i), strict=True)):
+                flush()
+                page = True
             line = line.replace("\f", "")
+        if pdf_layout.MARK.match(line.strip()):
+            held.append(line.strip())
+            if not buf or _END.search(buf[-1].strip()):
+                flush()
+            continue
         if not line.strip():
             if not buf:
                 blank += 1
@@ -107,7 +125,9 @@ def from_text(text: str, source: str = "text") -> list[Raw]:
         if buf:
             prev = buf[-1].strip()
             # PDF-style hard wraps: previous line long, unfinished, next starts lowercase.
-            wrapped = source == "pdf" and _cut(prev, line.strip())
+            # A title in capitals at the top of a page, typed on several lines, is one title.
+            wrapped = source == "pdf" and (_cut(prev, line.strip()) or page and len(buf) < 4 and _caps(prev) and _caps(line.strip()) and not _STARTS_BLOCK.match(line.strip())
+                                          and sum(len(x) for x in buf) + len(line) < 100)
             if wrapped:
                 buf.append(line)
                 continue
@@ -306,6 +326,36 @@ def fix_shifted_fonts(text: str) -> tuple[str, int]:
 _LEADERS = re.compile(r"(\.\s?){6,}\s*([0-9ivxlc]+)?\s*$|…{3,}\s*\d*\s*$", re.I)
 _LABEL = re.compile(r"^(\d+(\.\d+)*|[a-zA-Z]|[ivxlcIVXLC]{1,6})\s*[.)\-–]$")
 _PAGE_NO = re.compile(r"^(page\s*)?[-–]?\s*([0-9]{1,3}|[ivxlc]{1,6})\s*[-–]?$", re.I)
+_BULLET = re.compile(r"^[-–—•*➢►▪❖◆■●○➤✓✔]$")
+
+
+def _bare(line: str) -> bool:
+    """A list number or a bullet alone on its line: its text was put elsewhere by the PDF reader."""
+    return bool(_LABEL.match(line) or _BULLET.match(line))
+
+
+def _label_column(lines: list[str], i: int) -> tuple[list[str], int] | None:
+    """A numbered list whose numbers come out first, all together ("1)", "2)", "3)"), then its items:
+    each number put back in front of its item. Returns (lines, index after them) or None."""
+    labels = []
+    j = i
+    while j < len(lines) and _bare(lines[j].strip()):
+        labels.append(lines[j].strip())
+        j += 1
+    if len(labels) < 2:
+        return None
+    while j < len(lines) and not lines[j].strip():
+        j += 1
+    items: list[str] = []
+    while j < len(lines) and lines[j].strip() and len(items) <= len(labels) and not _bare(lines[j].strip()) and not pdf_layout.MARK.match(lines[j].strip()):
+        if items and not _END.search(items[-1]):
+            items[-1] += " " + lines[j].strip()  # the item wraps on the next line
+        else:
+            items.append(lines[j].strip())
+        j += 1
+    if len(items) != len(labels):
+        return None
+    return [f"{a} {b}" for a, b in zip(labels, items)], j
 
 
 def pdf_cleanup(text: str) -> str:
@@ -319,7 +369,8 @@ def pdf_cleanup(text: str) -> str:
         body = [ln for ln in lines if ln.strip()]
         for ln in {norm(x) for x in body[:3] + body[-3:]}:
             edges[ln] += 1
-    repeated = {ln for ln, n in edges.items() if n >= max(3, len(pages) * 0.3) and len(ln) < 160}
+    # a section number at the top of several pages ("#.") is not a running header
+    repeated = {ln for ln, n in edges.items() if n >= max(3, len(pages) * 0.3) and len(ln) < 160 and not re.fullmatch(r"(#\.)*#[.)]", ln)}
     out: list[str] = []
     for lines in pages:
         body_idx = [i for i, ln in enumerate(lines) if ln.strip()]
@@ -328,7 +379,7 @@ def pdf_cleanup(text: str) -> str:
             if i in edge and (norm(ln) in repeated or _PAGE_NO.match(ln.strip())):
                 continue
             out.append(ln)
-        out.append("")
+        out.append("\f")  # the page change stays known (a title at the top of a page); blank for the steps below
     # 2. the old table of contents: runs of dot-leader lines, with the pieces between them
     leader = [i for i, ln in enumerate(out) if _LEADERS.search(ln)]
     drop: set[int] = set()
@@ -343,16 +394,20 @@ def pdf_cleanup(text: str) -> str:
         if j >= 0 and j not in drop and len(out[j]) < 120 and not _LEADERS.search(out[j]) and (j - 1 in drop or _LABEL.match(out[j].strip()) or re.search(r"\b(sommaire|table des mati)", out[j], re.I)):
             drop.add(j)
     lines = [ln for i, ln in enumerate(out) if i not in drop]
-    # 3. "2." alone on its line, the title on the next one
+    # 3. "2." or "-" alone on its line, the title or the item on the next one
     merged: list[str] = []
     i = 0
     while i < len(lines):
         ln = lines[i]
-        if _LABEL.match(ln.strip()):
+        if (pairs := _label_column(lines, i)) is not None:
+            merged.extend(pairs[0])
+            i = pairs[1]
+            continue
+        if _bare(ln.strip()):
             j = i + 1
             while j < len(lines) and not lines[j].strip():
                 j += 1
-            if j < len(lines) and not _LABEL.match(lines[j].strip()) and len(lines[j].strip()) > 1:
+            if j < len(lines) and not _bare(lines[j].strip()) and not pdf_layout.MARK.match(lines[j].strip()) and len(lines[j].strip()) > 1:
                 merged.append(f"{ln.strip()} {lines[j].strip()}")
                 i = j + 1
                 continue
@@ -388,7 +443,8 @@ def _pdftotext(path: Path) -> str:
     return out.stdout.decode("utf-8", "replace")
 
 
-def from_pdf(path: Path) -> list[Raw]:
+def from_pdf(path: Path, images_dir: Path | None = None) -> list[Raw]:
+    """images_dir given: the pictures, diagrams and ruled tables of the PDF come back too (pdf_layout)."""
     try:
         raw = _pdftotext(path)
     except (subprocess.SubprocessError, FileNotFoundError) as exc:
@@ -397,12 +453,21 @@ def from_pdf(path: Path) -> list[Raw]:
         try:
             subprocess.run(["gs", "-q", "-o", str(repaired), "-sDEVICE=pdfwrite", str(path)], capture_output=True, timeout=120)
             raw = _pdftotext(repaired)
+            path = repaired
         except (subprocess.SubprocessError, FileNotFoundError):
             raise ExtractError("Impossible de lire ce PDF : il est peut-être abîmé. Réessaie avec le fichier Word.") from exc
+    tables: dict[str, list[list[str]]] = {}
+    if images_dir is not None and raw.strip():
+        pages, tables = pdf_layout.layout(path, raw.split("\f"), images_dir)
+        raw = "\f".join(pages)
     text, _ = fix_shifted_fonts(raw)
     text = pdf_cleanup(text)
     if len(text.strip()) < 20:
-        text = _ocr_pdf(path)  # a scanned document: read its pages like photos
+        try:
+            text = _ocr_pdf(path)  # a scanned document: read its pages like photos
+        except ExtractError:
+            if not text.strip():
+                raise  # a very short PDF ("Attestation") is still a PDF with text
     elif junk_rate(text) >= 0.12 and _page_count(path) <= REOCR_MAX_PAGES:
         # A scan whose text layer was read badly by someone else's software ("Comtnente~~"):
         # our own reading is usually cleaner. Kept only if it really is.
@@ -412,7 +477,14 @@ def from_pdf(path: Path) -> list[Raw]:
                 text = ocr
         except ExtractError:
             pass
-    return from_text(text, source="pdf")
+    out = []
+    for r in from_text(text, source="pdf"):
+        if r.text in tables:
+            m = pdf_layout.MARK.match(r.text)
+            out.append(Raw(image=m.group(2) if m.group(1) == "img" else "", rows=tables[r.text], source="pdf", new_page=r.new_page, gap=r.gap))
+        elif not pdf_layout.MARK.match(r.text):
+            out.append(r)
+    return out
 
 
 OCR_MAX_PAGES = 25  # the free server reads ~1 page every few seconds

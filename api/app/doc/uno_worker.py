@@ -65,6 +65,28 @@ def insert_index(doc, marker, service, setup):
         pass
 
 
+def tidy_index_styles(doc):
+    """A long title in the sommaire wraps under its own text, not under the chapter number: each level starts a
+    little further right and its next lines hang 7 mm in, with some air between entries (1/100 mm)."""
+    try:
+        styles = doc.getStyleFamilies().getByName("ParagraphStyles")
+        for level in range(1, 5):
+            name = f"Contents {level}"
+            if not styles.hasByName(name):
+                continue
+            st = styles.getByName(name)
+            st.ParaLeftMargin = 600 * (level - 1) + 700
+            st.ParaFirstLineIndent = -700
+            st.ParaTopMargin = 0
+            st.ParaBottomMargin = 140 if level == 1 else 80
+        for name in ("Figure Index 1", "Table index 1", "Illustration Index 1"):
+            if styles.hasByName(name):
+                st = styles.getByName(name)
+                st.ParaLeftMargin, st.ParaFirstLineIndent, st.ParaBottomMargin = 700, -700, 80
+    except Exception:  # noqa: BLE001 - only cosmetic
+        pass
+
+
 def layout_of(doc):
     """[[page, text]] for each top-level paragraph, in order; a table is [0, ""]."""
     cursor = doc.getCurrentController().getViewCursor()
@@ -108,6 +130,7 @@ def main():
             ("[[LOF]]", "com.sun.star.text.IllustrationsIndex", illus("Figure")),
         ):
             insert_index(doc, marker, service, setup)
+        tidy_index_styles(doc)
         indexes = doc.getDocumentIndexes()
         # Page numbers in the indexes settle after a second pass; without indexes one field refresh is enough.
         for _ in range(2 if indexes.getCount() else 1):

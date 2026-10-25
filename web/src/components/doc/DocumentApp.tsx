@@ -21,9 +21,9 @@ import { DocStylePanel } from "./DocStylePanel";
 import { ImportScreen } from "./ImportScreen";
 import { PlanChoices } from "./PlanChoices";
 import { PlanPanel } from "./PlanPanel";
-import { Working } from "./Working";
+import { Working, type Sending } from "./Working";
 
-type Panel = "style" | "cover" | "plan" | "spell";
+type Panel = "style" | "cover" | "plan";
 type View = "after" | "before" | "side";
 type Patch = Partial<{ blocks: Block[]; style: DocStyle; options: DocOptions; kind: string; letterhead: Letterhead; cover_svg: string; remove_cover: boolean; mode: DocMode; plan: Partial<DocPlan>; confirm: boolean }>;
 
@@ -31,7 +31,6 @@ const PANELS: { id: Panel; icon: IconName; label: string; title: string }[] = [
   { id: "style", icon: "palette", label: "Style", title: "Style et type" },
   { id: "cover", icon: "landmark", label: "Garde", title: "Page de garde" },
   { id: "plan", icon: "list-tree", label: "Plan", title: "Plan du document" },
-  { id: "spell", icon: "pen-line", label: "Fautes", title: "Corriger les fautes" },
 ];
 
 export function DocumentApp() {
@@ -50,6 +49,7 @@ export function DocumentApp() {
   const [cover, setCover] = useState<StudioState | null>(null);
   const [liveCover, setLiveCover] = useState(""); // page 1 drawn in the browser while the cover is edited
   const [zoom, setZoom] = useState(false);
+  const [sending, setSending] = useState<Sending | null>(null); // the file on its way to the server
   const pending = useRef<Patch>({});
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chain = useRef<Promise<unknown>>(Promise.resolve());
@@ -248,13 +248,21 @@ export function DocumentApp() {
   if (phase === "import" || !doc) {
     return (
       <Shell>
-        {phase === "working" ? <Working meta={null} rendering={false} /> : (
-          <ImportScreen error={error} onText={(t) => start(() => docs.fromText(t))} onFile={(f) => start(() => docs.fromFile(f))} onOpen={(id) => start(() => docs.get(id))} />
+        {phase === "working" ? <Working meta={null} rendering={false} sending={sending} /> : (
+          <ImportScreen
+            error={error}
+            onText={(t) => { setSending(null); start(() => docs.fromText(t)); }}
+            onFile={(f) => {
+              setSending({ name: f.name, size: f.size, sent: 0 });
+              start(() => docs.fromFile(f, (sent) => setSending((s) => (s ? { ...s, sent } : s))));
+            }}
+            onOpen={(id) => { setSending(null); start(() => docs.get(id)); }}
+          />
         )}
       </Shell>
     );
   }
-  if (phase === "working") return <Shell><Working meta={doc.meta} rendering={rendering} /></Shell>;
+  if (phase === "working") return <Shell><Working meta={doc.meta} rendering={rendering} sending={sending} /></Shell>;
   if (phase === "analysis") {
     return (
       <Shell>
@@ -270,8 +278,6 @@ export function DocumentApp() {
   const missing = doc.has_cover && cover ? coverIncomplete(cover) : [];
 
   const keeping = doc.mode === "keep";
-  // the user's own file is kept as it is: spelling fixes apply only to a document Paginya rebuilds
-  const panels = keeping ? PANELS.filter((p) => p.id !== "spell") : PANELS;
   const converting = !!doc.convert;
   const target = doc.convert === "pdf" ? "PDF" : "Word";
   const panelBody = converting ? (
@@ -306,6 +312,16 @@ export function DocumentApp() {
   ) : (
     <>
       {panel === "style" && <DocStylePanel style={doc.style} options={doc.options} kind={doc.meta.kind} onStyle={(style) => change({ style })} onOptions={(options) => change({ options })} onKind={(kind) => { if (kind === "epreuve") { openAsExam(); return; } setDoc((d) => (d ? { ...d, meta: { ...d.meta, kind } } : d)); change({ kind }); }} letterhead={doc.letterhead ?? null} hasCover={doc.has_cover} onLetterhead={(letterhead, options) => change({ letterhead, options })} />}
+      {panel === "style" && (
+        // spelling fixes live with the style: the bottom bar on a phone has no room for a fourth tool
+        <details className="group mt-4 border-b border-ink/10">
+          <summary className="flex cursor-pointer list-none items-center justify-between py-4 font-display text-sm font-bold text-ink">
+            <span className="flex items-center gap-2"><Icon name="pen-line" size={18} className="text-board" />Corriger les fautes</span>
+            <Icon name="plus" size={18} className="text-board transition group-open:rotate-45" />
+          </summary>
+          <div className="pb-4"><SpellPanel docId={doc.id} blocks={doc.blocks} onChange={(blocks) => change({ blocks })} /></div>
+        </details>
+      )}
       {panel === "cover" && (
         <CoverEditor
           docId={doc.id}
@@ -327,7 +343,6 @@ export function DocumentApp() {
         />
       )}
       {panel === "plan" && <PlanPanel docId={doc.id} blocks={doc.blocks} onChange={(blocks) => change({ blocks })} />}
-      {panel === "spell" && <SpellPanel docId={doc.id} blocks={doc.blocks} onChange={(blocks) => change({ blocks })} />}
     </>
   );
 
@@ -374,7 +389,7 @@ export function DocumentApp() {
       <div className="flex min-h-0 flex-1">
         {/* Desktop: tool rail + its panel, on a sheet of paper */}
         <nav className="hidden w-[78px] shrink-0 flex-col items-center gap-1 border-r border-black/10 bg-paper py-3 text-ink lg:flex">
-          {!converting && panels.map((p) => (
+          {!converting && PANELS.map((p) => (
             <button
               key={p.id}
               type="button"
@@ -416,7 +431,7 @@ export function DocumentApp() {
           <div className="sheet-in paper relative flex h-[48dvh] flex-col rounded-t-xl">
             <span className="pin top-2 left-1/2 -translate-x-1/2" aria-hidden />
             <div className="flex items-center justify-between px-4 pt-6 pb-2">
-              {converting ? <span className="font-display text-[22px] font-black uppercase">Conversion</span> : <Tabs panel={panel} panels={panels} onPanel={setPanel} compact />}
+              {converting ? <span className="font-display text-[22px] font-black uppercase">Conversion</span> : <Tabs panel={panel} onPanel={setPanel} compact />}
               <button type="button" onClick={() => setDrawer(false)} className="press ml-2 grid h-10 w-10 shrink-0 place-items-center rounded-md text-ink/60 ring-1 ring-black/10" aria-label="Fermer">
                 <Icon name="x" size={18} />
               </button>
@@ -425,12 +440,12 @@ export function DocumentApp() {
           </div>
         )}
         <div className="flex items-center gap-1.5 border-t border-black/10 bg-paper px-2 pt-2 text-ink pb-[max(.6rem,env(safe-area-inset-bottom))]">
-          {(converting ? PANELS.slice(0, 1) : panels).map((p) => (
+          {(converting ? PANELS.slice(0, 1) : PANELS).map((p) => (
             <button
               key={p.id}
               type="button"
               onClick={() => { setPanel(p.id); setDrawer(!(drawer && panel === p.id)); }}
-              className={`press flex w-[54px] shrink-0 flex-col items-center gap-0.5 rounded-md py-1.5 text-[12px] font-bold ${drawer && panel === p.id ? "bg-board text-white" : "text-ink/70"}`}
+              className={`press flex w-[62px] shrink-0 flex-col items-center gap-0.5 rounded-md py-1.5 text-[12px] font-bold ${drawer && panel === p.id ? "bg-board text-white" : "text-ink/70"}`}
             >
               <Icon name={p.icon} size={20} />
               {p.label}
@@ -483,10 +498,10 @@ function BoardSegmented<T extends string>({ value, options, onChange }: { value:
   );
 }
 
-function Tabs({ panel, panels, onPanel, compact = false }: { panel: Panel; panels: typeof PANELS; onPanel: (p: Panel) => void; compact?: boolean }) {
+function Tabs({ panel, onPanel, compact = false }: { panel: Panel; onPanel: (p: Panel) => void; compact?: boolean }) {
   return (
     <div className={compact ? "flex-1" : "w-full"}>
-      <Segmented value={panel} onChange={onPanel} options={panels.map((p) => ({ value: p.id, label: compact ? p.label : p.title }))} />
+      <Segmented value={panel} onChange={onPanel} options={PANELS.map((p) => ({ value: p.id, label: compact ? p.label : p.title }))} />
     </div>
   );
 }
