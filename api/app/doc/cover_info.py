@@ -34,7 +34,7 @@ SUPERVISORS = re.compile(
 MATRICULE = re.compile(r"\bmatricule\s*[:\-–]?\s*([A-Z0-9]{5,12})\b", re.I)
 YEAR = re.compile(r"(ann[ée]e (acad[ée]mique|scolaire|universitaire)|academic year)?\s*[:\-–]?\s*((19|20)\d{2}\s*[-/–]\s*(19|20)\d{2})", re.I)
 DEGREE = re.compile(r"(en vue de l'?obtention d[ue]s?|pour l'?obtention d[ue]s?|dans le cadre d[ue]s?)\s+(.+)$", re.I)
-SPECIALTY = re.compile(r"^(fili[èe]re|option|sp[ée]cialit[ée]|parcours|mention|niveau|cycle)\s*[:\-–]\s*(.+)$", re.I)
+SPECIALTY = re.compile(r"^(fili[èe]re|formation|option|sp[ée]cialit[ée]|parcours|mention|niveau|cycle)\s*[:\-–]\s*(.+)$", re.I)
 STRUCTURE = re.compile(r"(effectu[ée] |r[ée]alis[ée] |stage )?(au sein d[eu]s?|chez|à la soci[ée]t[ée]|à l'entreprise)\s+(.+)$", re.I)
 PERIOD = re.compile(r"(p[ée]riode\s*[:\-–]?\s*)?(du\s+\d{1,2}(er)?\s+\w+(\s+\d{4})?\s+au\s+\d{1,2}(er)?\s+\w+\s+\d{4})", re.I)
 TITLE_ROLE = re.compile(r"^((pr|dr|m|mme|mlle|mr)\.?|professeur|docteur|ing[ée]nieur|monsieur|madame)\s", re.I)
@@ -65,7 +65,13 @@ _PEOPLE = re.compile(r"(?i)\b(pr[ée]sent|r[ée]dig|r[ée]alis|par\s*:|membres|e
 def _closes_cover(text: str, seen: list[tuple[int, str]]) -> bool:
     """The academic year written under the names is the last line of a Cameroonian cover page."""
     m = YEAR.search(text)
-    return bool(m and len(text) < 60 and len(seen) >= 5 and any(_PEOPLE.search(ln) for _, ln in seen))
+    return bool(m and _academic(m) and len(text) < 60 and len(seen) >= 5 and any(_PEOPLE.search(ln) for _, ln in seen))
+
+
+def _academic(m: re.Match) -> bool:
+    """"Année académique 2025-2026" or "2025/2026"; not a promotion ("Promotion 2023/2026" spans three years)."""
+    y1, y2 = (int(y) for y in re.findall(r"\d{4}", m.group(3)))
+    return bool(m.group(1)) or y2 - y1 == 1
 
 
 def _body_starts(r, text: str, seen: int, closed: bool) -> bool:
@@ -155,10 +161,21 @@ def extract(raws) -> tuple[dict, set[int]]:
     signals = 0
     mode: str | None = None  # "authors" / "supervisors" while reading the names under a label
     role = ""
-    for _, line in lines:
+    label_at = -1
+    loose: list[tuple[int, str]] = []  # lines that are none of the known fields: the subject is among them
+    for idx, line in lines:
         p = _plain(line)
         if HEADER.match(line) and len(line) < 120:
             if re.match(r"^(\*|-){3,}$", line):
+                continue
+            halves = [h.strip() for h in re.split(r"\s+/\s+", line)]
+            if len(halves) == 2 and all(halves):
+                # "UNIVERSITÉ D'ÉBOLOWA / UNIVERSITY OF EBOLOWA": each half goes to its own column
+                fr_half, en_half = halves if ENGLISH.search(halves[1]) else halves[::-1]
+                f["header_fr"].append(fr_half)
+                f["header_en"].append(en_half)
+                signals += 0.5
+                mode = None
                 continue
             english = (ENGLISH.search(line) and not re.search(r"\b(de|du|des|la|le|et)\b", p)) or p.startswith("the ")
             (f["header_en"] if english else f["header_fr"]).append(line)
@@ -177,6 +194,7 @@ def extract(raws) -> tuple[dict, set[int]]:
             mode = None
         if DOC_LABEL.match(line) and len(line) < 90 and "doc_label" not in f:
             f["doc_label"] = line.rstrip(" :")
+            label_at = idx
             signals += 1
             mode = None
             continue
@@ -203,12 +221,13 @@ def extract(raws) -> tuple[dict, set[int]]:
                 f["matricule"] = m.group(1)
             continue
         if (m := YEAR.search(line)) and len(line) < 60:
-            f["year"] = re.sub(r"\s*[-/–]\s*", "-", m.group(3))
+            if _academic(m) or "year" not in f:
+                f["year"] = re.sub(r"\s*[-/–]\s*", "-", m.group(3))
             signals += 1 if m.group(1) else 0.5
             mode = None
             continue
         if (m := DEGREE.search(line)) and len(line) < 200:
-            f["degree"] = m.group(2).strip(" .")
+            f["degree"] = re.sub(r"(?i)^(la |le |l['’]|du )?dipl[ôo]me d[eu]s?\s+", "", m.group(2).strip(" ."))  # the cover writes "diplôme de" itself
             mode = None
             continue
         if re.match(r"^(fili[èe]re|option|sp[ée]cialit[ée]|parcours|mention)\s*[:\-–]?\s*$", line, re.I):
@@ -244,6 +263,7 @@ def extract(raws) -> tuple[dict, set[int]]:
             f[mode].append(person)
             continue
         mode = None
+        loose.append((idx, line))
         # Title: a longish line in capitals or the region's explicit title, never a sentence.
         # (only a line in capitals: "Stage effectué à … du 04" is a mention, not a title; no title beats a wrong one)
         if "title" not in f and 12 <= len(line) <= 200 and not line.endswith(".") and line.isupper() and not re.search(r"\d{4}", line) and not DOC_LABEL.match(line):
@@ -267,12 +287,20 @@ def extract(raws) -> tuple[dict, set[int]]:
     bare = bool(f.get("doc_label")) and len(lines) <= 14 and end < len(raws) and all(len(ln) < 160 for _, ln in lines)
     if not complete and not bare:
         return {}, set()
-    if not complete and "title" not in f:
-        after = [ln for _, ln in lines if ln != f.get("doc_label", "") and not ln.rstrip(" :") == f["doc_label"]]
-        label_at = next((k for k, (_, ln) in enumerate(lines) if ln.rstrip(" :") == f["doc_label"]), -1)
-        rest = [ln for _, ln in lines[label_at + 1:] if 12 <= len(ln) <= 200 and not re.search(r"[.;]$", ln)]
-        if rest:
-            f["title"] = " ".join(rest[:2]).strip(" :«»\"")
+    if "title" not in f and f.get("doc_label"):
+        # The subject in normal case (under "RAPPORT DE STAGE", or under the names): the first line that is none
+        # of the known fields, with the line that continues it
+        cands = [(i, ln) for i, ln in loose if 12 <= len(ln) <= 200 and re.search(r"[A-Za-zÀ-ÿ]{3}", ln) and not re.search(r"[.;]$", ln) and not _is_name(ln)
+                 and not re.match(r"(?i)^(promotion|l[1-3]|m[12]|licence|master|niveau|classe)\b", ln) and not _PEOPLE.search(ln) and not re.search(r"(?i)\b(obtention|soutenu|pr[ée]sent[ée])", ln)]
+        after = [c for c in cands if c[0] > label_at]
+        cands = after or cands  # the subject is written under "MÉMOIRE", "RAPPORT DE STAGE"
+        if cands:
+            rest = [cands[0][1]]
+            # the line right under it continues the subject ("… en ligne :" / "Comparaison entre …")
+            nxt = next((ln for i, ln in loose if i == cands[0][0] + 1 and 12 <= len(ln) <= 200 and not re.search(r"[.;]$|\d{4}", ln)), None)
+            if nxt:
+                rest.append(nxt)
+            f["title"] = " ".join(rest).strip(" :«»\"")
     if level := f.pop("level", None):
         f["specialty"] = f"{f['specialty']} · Niveau {level}" if f.get("specialty") else f"Niveau {level}"
     for k in ("header_fr", "header_en"):

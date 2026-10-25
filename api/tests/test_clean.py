@@ -55,3 +55,12 @@ def test_all_caps_paragraph_and_section_title_are_rewritten():
 def test_french_typography():
     t = typo_fr('Le taux , selon le rapport , est de 10 % ; il faut agir ! Voici les points : "qualité" et ( délais ) à 10:30')
     assert t == 'Le taux, selon le rapport, est de 10 % ; il faut agir ! Voici les points : « qualité » et (délais) à 10:30'.replace("10 %", "10 %")
+
+
+def test_text_pasted_from_a_chatbot_loses_its_markdown():
+    raws = from_text("Le projet\n\nAvant la solution, tout était manuel.\n\n**Gestion des visites :**\n\n- rapports papier\n\n- saisie dans Excel\n\n```\n\nEn tant que merchandiseur, je veux saisir mes visites.\n\n```")
+    res = detect(raws)
+    every = " ".join(b.get("text", "") + " ".join(map(str, b.get("items", []))) for b in res["blocks"])
+    assert "**" not in every and "```" not in every
+    assert not any(str(i).startswith("*") for b in res["blocks"] if b["type"] == "list" for i in b.get("items", []))
+    assert any("Gestion des visites" in b.get("text", "") for b in res["blocks"] if b["type"] != "list")

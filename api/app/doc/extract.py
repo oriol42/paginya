@@ -696,6 +696,21 @@ def _split_breaks(raw: Raw) -> list[Raw]:
     return out
 
 
+def _cover_boxes(p_el, doc) -> list[str]:
+    """Lines written in the text boxes anchored to a cover paragraph ("Réalisé par", supervisors, dates). Word
+    stores each box twice (DrawingML and its VML fallback): the fallback is skipped and repeats are dropped."""
+    fallback = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback"
+    lines: list[str] = []
+    for box in p_el.iter(qn("w:txbxContent")):
+        if any(a.tag == fallback for a in box.iterancestors()):
+            continue
+        for par in box.iter(qn("w:p")):
+            text = Paragraph(par, doc).text.strip()
+            if text and text not in lines:
+                lines.append(text)
+    return lines
+
+
 def from_docx(path: Path, images_dir: Path) -> list[Raw]:
     try:
         doc = DocxDocument(str(path))
@@ -705,6 +720,7 @@ def from_docx(path: Path, images_dir: Path) -> list[Raw]:
     fmts = _numbering_formats(doc)
     out: list[Raw] = []
     gap, new_page = 0, False
+    on_cover = True  # until the first page break: the text boxes of the cover are read (names, supervisors, dates)
     for el in doc.element.body.iterchildren():
         if el.tag == qn("w:p"):
             raw = _paragraph(Paragraph(el, doc), fmts, images_dir, doc)
@@ -720,15 +736,20 @@ def from_docx(path: Path, images_dir: Path) -> list[Raw]:
                         trailing = True
                     else:
                         leading = True
+            boxes = _cover_boxes(el, doc) if on_cover and not (before or leading) else []
             if raw.text or raw.image:
                 raw.new_page, raw.gap = new_page or before or leading, gap
                 out.extend(_split_breaks(raw))
                 gap, new_page = 0, trailing
+            if boxes:
+                out.extend(Raw(text=t, source="docx") for t in boxes)
+                gap = 0
             else:
                 gap += 1
                 new_page = new_page or before or leading or trailing
             if ppr is not None and ppr.find(qn("w:sectPr")) is not None:
                 new_page = True  # a section ends here: what follows is on a new page
+            on_cover = on_cover and not (new_page or before or leading) and len(out) < 40
         elif el.tag == qn("w:tbl"):
             table = Table(el, doc)
             rows = []

@@ -87,7 +87,12 @@ NUM_NODOT = re.compile(r"^(\d{1,2})\s+([A-ZÀ-Ý][^\d].*)$")  # "1 Historique" (
 ROMAN = re.compile(r"^([IVX]{1,5})\s*[.\-–—)/]\s*(\S.*)$")
 LETTER = re.compile(r"^([A-H])\s*[.\-–—)/]\s+(\S.*)$")
 LOWER_ITEM = re.compile(r"^([a-z])\s*[.)]\s+(\S.*)$")
-BULLET = re.compile(r"^\s*(=>|->|-->|\+(?=\s*[A-Za-zÀ-ÿ])|[-–—•*➢►▪▫◦✓✔→>§❖◆◇■□●○➤➔⇒✗✘☐☑✪★☆♦·]|||||o(?=\s))\s*(\S.*)$")
+BULLET = re.compile(r"^\s*(=>|->|-->|\+(?=\s*[A-Za-zÀ-ÿ])|\*(?!\*)|[-–—•➢►▪▫◦✓✔→>§❖◆◇■□●○➤➔⇒✗✘☐☑✪★☆♦·]|||||o(?=\s))\s*(\S.*)$")
+
+
+FORM_FIELD = re.compile(r"^(noms?|pr[ée]noms?|statut|t[ée]l[ée]phone|t[ée]l|adresse|e-?mail|date|signature|[âa]ge|sexe|profession|matricule|fonction|qualit[ée]|lieu)\s*:\s*\S", re.I)
+FENCE = re.compile(r"^`{3,}\s*\w*$")
+WHOLE_BOLD = re.compile(r"^(?:\*\*|__)(?=\S)([^*]+?)(?<=\S)(?:\*\*|__)\s*[.:;]?$")
 
 
 def _special_of(text: str) -> str | None:
@@ -97,8 +102,8 @@ def _special_of(text: str) -> str | None:
     t = re.sub(r"\s+", " ", t)
     if re.match(r"^(liste|table|index)s? des (figures|tableaux|illustrations|graphiques|images|schemas)\b", t):
         return "toc"  # "Liste des figures & tableaux", "Liste des tableaux et figures"…: rebuilt automatically
-    if re.match(r"^(liste des |table des )?(sigles|abreviations|acronymes)\b[\w ,/&-]*$", t) and len(t) < 70:
-        return "sigles"  # "Liste des abréviations, sigles et acronymes" in any order
+    if re.match(r"^(liste des |table des )?(sigles|abreviations|acronymes|symboles|notations)\b[\w ,/&-]*$", t) and len(t) < 70:
+        return "sigles"  # "Liste des abréviations, sigles et acronymes" in any order, "Liste des symboles et unités"
     return SPECIAL_LOOKUP.get(t)
 
 
@@ -169,9 +174,12 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
         text = r.text.strip()
         if r.style.startswith("toc") or r.style.startswith("table of figures"):
             continue
-        if RULE_LINE.match(text) or (r.source == "pdf" and PAGE_ONLY.match(text)):
-            dropped.append(idx)  # a line drawn with the keyboard (_____, *****), or a page number left by the PDF
+        if RULE_LINE.match(text) or (r.source == "pdf" and PAGE_ONLY.match(text)) or FENCE.match(text):
+            dropped.append(idx)  # a line drawn with the keyboard (_____, *****), a page number left by the PDF, a ``` pasted from a chatbot
             continue
+        if (m := WHOLE_BOLD.match(text)) and not r.explicit:
+            # "**Gestion des visites :**" pasted from a chatbot: the stars are its bold, not a bullet
+            r.text, r.bold, text = m.group(1).strip(), True, m.group(1).strip()
         if LEADERS_END.search(text) and len(text) < 200:
             text = LEADERS_END.sub("", text).strip()  # "Présentation du projet…………": the dots of a plan typed by hand
             r.text = text
@@ -269,7 +277,9 @@ def _not_titles(items: list[dict]) -> int:
         if it.get("type") != "heading" or it.get("special") or it.get("_explicit"):
             continue
         text = it.get("text", "").strip()
-        if (text[:1] in "«“\"" and len(text) > 40) or REFERENCE.match(text) or BIBLIO.search(text) or len(text) > 160 \
+        # "[Emplacement de la figure]", "[Insérer le tableau ici]": a note left in the text, never a title;
+        # "Nom : MENDOGO", "Statut : Étudiante": a filled field of a form (annexes), never a title either
+        if (text[:1] in "«“\"" and len(text) > 40) or (text[:1] == "[" and text[-1:] == "]") or FORM_FIELD.match(text) or REFERENCE.match(text) or BIBLIO.search(text) or len(text) > 160 \
                 or (len(text) > 100 and ENDS_SENTENCE.search(text)):
             for k in ("level", "number", "part", "kind", "special", "numbered"):
                 it.pop(k, None)

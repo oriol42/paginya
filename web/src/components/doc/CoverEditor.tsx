@@ -75,6 +75,9 @@ function fromDocument(meta: DocMeta, info: DocCoverInfo): StudioState {
     // a cover written in English only: English comes first on the new one too
     const own = (lines?: string[]) => (lines ?? []).filter((l) => !OFFICIAL.test(plain(l))).join("\n");
     Object.assign(form, { institutionId: "autre", lang: "en", headerFr: "", headerEn: own(info.header_en) });
+  } else {
+    // no school header on the old cover (training centre, company, abroad): never invent one
+    Object.assign(form, { institutionId: "autre", headerFr: "", headerEn: "", showRepublic: false, showMinistry: false });
   }
   form.title = info.title || meta.title || "";
   if (info.authors?.length) form.authors = info.authors.map((a, i): Person => ({ name: a.name, info: a.info ?? (i === 0 ? info.matricule ?? "" : "") }));
@@ -144,15 +147,17 @@ export async function coverSvg(state: StudioState): Promise<string> {
   return renderCover(state.form, state.style, optsOf(state), false);
 }
 
-/** First attach: show the example header so the page looks finished (the user completes it in the panel). */
+/** First attach: examples only while something essential is missing (the user completes it in the panel);
+ * a cover read complete from the document is saved clean, or the paid file would keep "[date]" and "NOM Prénom". */
 export async function coverSvgPreview(state: StudioState): Promise<string> {
   await loadCoverFonts();
-  return renderCover(state.form, state.style, optsOf(state), true);
+  return renderCover(state.form, state.style, optsOf(state), coverIncomplete(state).length > 0);
 }
 
 export function coverIncomplete(state: StudioState): string[] {
   const missing: string[] = [];
-  if (!state.form.headerFr.trim()) missing.push("le nom de ton école (page de garde)");
+  // "Autre" left empty is a cover without a school header (read that way from a cover that had none)
+  if (!state.form.headerFr.trim() && !state.form.headerEn.trim() && state.form.institutionId !== "autre") missing.push("le nom de ton école (page de garde)");
   if (!state.form.title.trim()) missing.push("le titre (page de garde)");
   if (!state.form.authors.some((a) => a.name.trim())) missing.push("ton nom (page de garde)");
   return missing;
