@@ -17,8 +17,8 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
   openGraph: { type: "website", locale: "fr_CM", siteName: "Paginya", title: "Paginya · Tes documents au propre en 1 minute", description: DESCRIPTION, url: "/", images: [{ url: "/og.png", width: 1200, height: 630 }] },
   twitter: { card: "summary_large_image" },
-  // Google Search Console: paste the code of the "balise HTML" method in NEXT_PUBLIC_GOOGLE_VERIFICATION
-  verification: process.env.NEXT_PUBLIC_GOOGLE_VERIFICATION ? { google: process.env.NEXT_PUBLIC_GOOGLE_VERIFICATION } : undefined,
+  // Google Search Console: the codes of the "balise HTML" method in NEXT_PUBLIC_GOOGLE_VERIFICATION, separated by commas
+  verification: process.env.NEXT_PUBLIC_GOOGLE_VERIFICATION ? { google: process.env.NEXT_PUBLIC_GOOGLE_VERIFICATION.split(",").map((c) => c.trim()) } : undefined,
 };
 
 /** Tells Google what Paginya is (name, kind of app, price) so the name search shows it properly. */

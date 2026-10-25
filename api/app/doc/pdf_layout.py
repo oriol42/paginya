@@ -81,6 +81,19 @@ def _graphics(gray: np.ndarray) -> list[Region]:
     H, W = gray.shape
     ink = (gray < 235).astype(np.uint8)
     pad = int(4 * MM)  # parts of one diagram (boxes, arrows) a few millimetres apart belong together
+    # A border drawn around the whole page (covers, chapter pages) would hold everything on it in one patch:
+    # its band along the edges is wiped first, what it surrounds is looked at on its own.
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(ink, 8)
+    band = int(12 * MM)
+    for i in range(1, n):
+        x, y, w, h, _ = stats[i]
+        if w > 0.7 * W and h > 0.7 * H:
+            ring = np.zeros_like(ink)
+            ring[y:y + h, x:x + w] = 1
+            ring[y + band:y + h - band, x + band:x + w - band] = 0
+            mine = labels == i
+            if (mine & (ring == 1)).sum() >= 0.9 * mine.sum():  # a frame, not a full-page table (lines inside)
+                ink[mine] = 0
     n, _, stats, _ = cv2.connectedComponentsWithStats(cv2.dilate(ink, np.ones((pad, pad), np.uint8)), 8)
     found = []
     for i in range(1, n):
@@ -149,14 +162,17 @@ def _classify(r: Region, words: list[Word], lines: list[list[Word]], page: int) 
         return
     if r.kind == "table":
         cols = max(0, len(r.vlines) - 1) or 1
-        if not inside or cols < 2 and len(r.hlines) < 4:
-            r.kind = "figure"  # two boxes one above the other in a diagram, not a table
-        return
+        if inside and (cols >= 2 or len(r.hlines) >= 4):
+            return
+        r.kind = "figure"  # two boxes one above the other in a diagram, the end of a table on the next page…
+        # …which the tests below may still find to be text in a frame
     if r.kind != "figure":
         return
     small = max(r.w, r.h) < 25 * MM or r.w * r.h < 900 * MM * MM
-    if small and page > 2:
-        r.kind = "text"  # an arrow or an icon in the text; on the first pages, small pictures are the logos
+    if small and (page > 2 or inside):
+        # an arrow or an icon in the text, a page number in a little box; on the first pages, small pictures
+        # without words are the logos
+        r.kind = "text"
         return
     sentences = sum(1 for ws in lines if any(r.holds(w.cx, w.cy) for w in ws) and sum(len(w.text) + 1 for w in ws) > 45)
     if r.tone > 215 or sentences >= 2 and r.tone > 185:
@@ -168,8 +184,19 @@ def _classify(r: Region, words: list[Word], lines: list[list[Word]], page: int) 
     long_lines = sum(1 for ws in lines if all(r.holds(w.cx, w.cy) for w in ws) and sum(len(w.text) + 1 for w in ws) > 45)
     # share of the patch covered by words: a title on a coloured band is mostly words, a chart only a few labels
     covered = sum((w.x1 - w.x0) * (w.y1 - w.y0) for w in inside) / max(1.0, r.w * r.h)
-    if r.fill > 0.5 and covered > 0.08 or long_lines >= 3:
+    if r.fill > 0.5 and covered > 0.08 or long_lines >= 3 or _text_box(r, lines):
         r.kind = "text"  # a coloured band or a shaded box behind sentences: the text is the content
+
+
+def _text_box(r: Region, lines: list[list[Word]]) -> bool:
+    """Text in a frame (an algorithm, a definition, a box of advice): five lines or more, most of them starting
+    at the same left margin. The labels of a diagram are spread over its boxes, or centred in them."""
+    own = [ws for ws in lines if all(r.holds(w.cx, w.cy) for w in ws)]
+    if len(own) < 5 or r.fill > 0.3:
+        return False
+    lefts = sorted(round(min(w.x0 for w in ws)) for ws in own)
+    best = max(sum(1 for x in lefts if a <= x <= a + 3) for a in lefts)
+    return best >= 0.6 * len(own)
 
 
 def _banner(r: Region, inside: list[Word], lines: list[list[Word]]) -> bool:

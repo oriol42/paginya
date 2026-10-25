@@ -20,7 +20,7 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: https://paginya-api.onrender.com
           NEXT_PUBLIC_SITE_URL: https://paginya.pages.dev
-          NEXT_PUBLIC_GOOGLE_VERIFICATION: RVuG1OYgGURXD12C4d-NQdtZHxL-0lDuS_ixWnZsiYs
+          NEXT_PUBLIC_GOOGLE_VERIFICATION: RVuG1OYgGURXD12C4d-NQdtZHxL-0lDuS_ixWnZsiYs,a9PNG7q69Pn2j8kUaAFP_V6jIPphNKNu8RSkNcBUfe0
       - run: npx --yes wrangler@4 pages deploy out --project-name paginya --branch main --commit-dirty=true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
