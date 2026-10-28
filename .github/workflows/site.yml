@@ -1,4 +1,4 @@
-# Publie le site sur Cloudflare Pages à chaque push qui touche web/ (le serveur, lui, est reconstruit par Render).
+# Publie le site sur Cloudflare Pages à chaque push qui touche web/ (le serveur tourne sur le VPS Contabo).
 name: Site
 on:
   push:
@@ -18,7 +18,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npx next build
         env:
-          NEXT_PUBLIC_API_URL: https://paginya-api.onrender.com
+          NEXT_PUBLIC_API_URL: https://31-220-85-180.sslip.io
           NEXT_PUBLIC_SITE_URL: https://paginya.pages.dev
           NEXT_PUBLIC_GOOGLE_VERIFICATION: RVuG1OYgGURXD12C4d-NQdtZHxL-0lDuS_ixWnZsiYs,a9PNG7q69Pn2j8kUaAFP_V6jIPphNKNu8RSkNcBUfe0
       - run: npx --yes wrangler@4 pages deploy out --project-name paginya --branch main --commit-dirty=true
