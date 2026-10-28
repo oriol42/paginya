@@ -374,4 +374,4 @@ Reste, par ordre d'intérêt :
 - **API** : https://31-220-85-180.sslip.io (Caddy, HTTPS automatique ; à remplacer par un vrai domaine). Conteneur Docker `paginya-api`, clés dans `/opt/paginya/.env` (copiées de Render), fichiers dans `/opt/paginya/data`.
 - **Mettre à jour l'API** : `serveur/deploy_vps.sh`. Render n'est plus utilisé pour Paginya (son push le reconstruit encore : le suspendre).
 - Test du 28/10 : rapport de test mis en page en 14 s (24 s sur Render). Paginya au repos : 130 Mo de RAM, 7 Go libres → place pour Affichya (même avec STUDIO=1, ~1 Go).
-- **À faire** : URL du webhook Fapshi → `https://31-220-85-180.sslip.io/webhooks/fapshi` ; suspendre `paginya-api` sur Render et retirer Paginya de la tâche keepalive Cloudflare ; nom de domaine.
+- Fait le 28/10 : webhook Fapshi (service Paginya-Affichya) → `https://31-220-85-180.sslip.io/webhooks/fapshi` (le VPS renvoie ceux d'Affichya vers Render via `FAPSHI_FORWARD`) ; `paginya-api` suspendu sur Render ; keepalive Cloudflare pointé sur le VPS. Reste : nom de domaine.
