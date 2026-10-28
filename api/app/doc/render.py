@@ -575,6 +575,13 @@ class Builder:
             p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT
             p.paragraph_format.first_line_indent = Cm(-1.25)
             p.paragraph_format.left_indent = Cm(1.25)
+        elif role == "label":
+            p = self._para(b["text"])  # the label of a box ("Exemple résolu", "Méthode"): bold, with what it introduces
+            for r in p.runs:
+                r.bold = True
+            p.paragraph_format.first_line_indent = Cm(0)
+            p.paragraph_format.keep_with_next = True
+            p.paragraph_format.space_before = Pt(8)
         elif role == "keywords":
             p = self._para()
             head, _, rest = b["text"].partition(":")

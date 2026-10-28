@@ -23,13 +23,23 @@ type Props = {
   formats: Format[];
   sharePath: string;
   missing?: string[];
+  /** Name proposed for the downloaded files (the document's title); the customer can change it. */
+  fileName?: string;
+  /** Documents only: « J'aide Paginya à s'améliorer » (current choice of the customer). */
+  help?: boolean;
   onStatus: (s: OrderStatus) => void;
   onClose: () => void;
 };
 
 const FORMAT_LABEL: Record<Format, string> = { pdf: "PDF", docx: "Word", png: "Image" };
 
-export function PaySheet({ orderId, amount, status, heading, bullets, formats, sharePath, missing = [], onStatus, onClose }: Props) {
+export function PaySheet({ orderId, amount, status, heading, bullets, formats, sharePath, missing = [], fileName = "", help, onStatus, onClose }: Props) {
+  const [name, setName] = useState(fileName);
+  const [helping, setHelping] = useState(Boolean(help));
+  const toggleHelp = (on: boolean) => {
+    setHelping(on);
+    api.docHelp(orderId, on).catch(() => setHelping(!on));
+  };
   const [phase, setPhase] = useState<Phase>(status === "PAID" ? "paid" : status === "PENDING" ? "pending" : "summary");
   const [phone, setPhone] = useState(() => {
     try { return localStorage.getItem(PHONE_KEY) ?? ""; } catch { return ""; }
@@ -327,11 +337,24 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
           <div className="relative text-center">
             <span className="stamp stamp-in mx-auto text-[44px]">Payé</span>
             <h2 className="mt-6 font-display text-[30px] leading-[0.95] font-black uppercase">Ton document est à toi</h2>
-            <div className={`mt-5 grid gap-2 ${formats.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
+            <label className="mt-5 block text-left">
+              <span className="mb-1.5 block text-[13px] font-bold text-ink/80">Nom du fichier</span>
+              <span className="flex items-center rounded-md bg-paper shadow-[inset_0_-2px_0_0_rgba(22,24,26,0.18)] ring-1 ring-black/10 focus-within:shadow-[inset_0_-3px_0_0_var(--color-hi-deep)]">
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  maxLength={80}
+                  enterKeyHint="done"
+                  placeholder="paginya-document"
+                  className="w-full min-w-0 border-0 bg-transparent px-3 py-3 text-[16px] focus:outline-none"
+                />
+              </span>
+            </label>
+            <div className={`mt-3 grid gap-2 ${formats.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
               {formats.map((fmt) => (
                 <a
                   key={fmt}
-                  href={api.fileUrl(orderId, fmt)}
+                  href={api.fileUrl(orderId, fmt, name)}
                   className="press inline-flex items-center justify-center gap-2 rounded-md bg-hi py-3.5 font-display text-[20px] leading-none font-black text-ink uppercase shadow-[0_2px_0_0_var(--color-hi-deep)]"
                 >
                   <Icon name="download" size={18} stroke={2.5} />
@@ -348,6 +371,15 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
               Garder le lien sur WhatsApp
             </a>
             <p className="mt-3 text-[13px] text-ink/55">Modifications et téléchargements gratuits pendant 7 jours avec ce lien.</p>
+            {help !== undefined && (
+              <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-md bg-paper p-3 text-left ring-1 ring-black/10">
+                <input type="checkbox" checked={helping} onChange={(e) => toggleHelp(e.target.checked)} className="mt-0.5 size-5 shrink-0 accent-board" />
+                <span className="text-[13px] leading-snug text-ink/75">
+                  <b className="text-ink">J&apos;aide Paginya à s&apos;améliorer.</b> L&apos;équipe peut garder ce fichier pour corriger ce que Paginya a mal compris.
+                  Jamais partagé, effacé au plus tard dans 12 mois. Tu peux décocher quand tu veux.
+                </span>
+              </label>
+            )}
             <button type="button" onClick={onClose} className="mt-3 text-[15px] font-semibold text-ink/60 underline">Fermer</button>
           </div>
         )}

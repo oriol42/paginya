@@ -58,6 +58,16 @@ CREATE TABLE IF NOT EXISTS usage (    -- what the server did per day (AI calls, 
     n INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (day, what)
 );
+CREATE TABLE IF NOT EXISTS doc_flags (  -- documents the engine handled badly, waiting for a new rule (app/learn.py)
+    id TEXT PRIMARY KEY,                -- the order
+    created_at REAL NOT NULL,
+    kind TEXT NOT NULL DEFAULT '',
+    words INTEGER NOT NULL DEFAULT 0,
+    reasons TEXT NOT NULL DEFAULT '[]',
+    corrections INTEGER NOT NULL DEFAULT -1,  -- changes made by the customer before paying (-1: not paid yet)
+    has_file INTEGER NOT NULL DEFAULT 0,      -- the customer agreed to let us keep the file
+    reviewed INTEGER NOT NULL DEFAULT 0
+);
 """
 
 
@@ -222,6 +232,35 @@ def bump(what: str) -> None:
                       (_today(), what[:40]))
     except Exception:  # noqa: BLE001
         pass
+
+
+def flag_doc(order_id: str, reasons: list[str] | None = None, **fields) -> None:
+    """Adds a document to the queue of Coulisses (or updates it: reasons add up). Never breaks the action."""
+    try:
+        with connect() as c:
+            row = c.execute("SELECT reasons FROM doc_flags WHERE id = ?", (order_id,)).fetchone()
+            old = json.loads(row["reasons"]) if row else []
+            allr = old + [r for r in (reasons or []) if r not in old]
+            if row is None:
+                if not allr and not fields.get("has_file"):
+                    return  # nothing odd and no file: not worth a line
+                c.execute("INSERT INTO doc_flags (id, created_at, reasons) VALUES (?, ?, ?)", (order_id, time.time(), json.dumps(allr)))
+            sets = {k: v for k, v in fields.items() if k in ("kind", "words", "corrections", "has_file")}
+            sets["reasons"] = json.dumps(allr, ensure_ascii=False)
+            c.execute(f"UPDATE doc_flags SET {', '.join(f'{k} = ?' for k in sets)} WHERE id = ?", (*sets.values(), order_id))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def flagged_docs(limit: int = 200) -> list[dict]:
+    with connect() as c:
+        rows = c.execute("SELECT * FROM doc_flags ORDER BY reviewed, created_at DESC LIMIT ?", (limit,)).fetchall()
+    return [{**dict(r), "reasons": json.loads(r["reasons"])} for r in rows]
+
+
+def review_doc(order_id: str, reviewed: bool = True) -> None:
+    with connect() as c:
+        c.execute("UPDATE doc_flags SET reviewed = ? WHERE id = ?", (int(reviewed), order_id))
 
 
 def usage(since_day: str) -> list[dict]:

@@ -3,5 +3,5 @@ data
 __pycache__
 .pytest_cache
 tests
-ml
+ml/study
 scripts

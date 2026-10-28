@@ -124,12 +124,23 @@ class Model:
 
 
 _model: Model | None | bool = False
+_loaded: tuple[Path, float] | None = None
+
+
+def _learned() -> Path:
+    from .. import config
+
+    return config.DATA_DIR / "learn" / "structure_model.npz"  # retrained each night on real documents (app/learn.py)
 
 
 def model() -> Model | None:
-    global _model
-    if _model is False:
-        _model = Model.load()
+    """The model retrained on real documents when there is one, else the one shipped with the code.
+    Picked up again as soon as the nightly run replaces it."""
+    global _model, _loaded
+    path = _learned() if _learned().exists() else MODEL_PATH
+    stamp = (path, path.stat().st_mtime if path.exists() else 0.0)
+    if _model is False or stamp != _loaded:
+        _model, _loaded = Model.load(path), stamp
     return _model  # type: ignore[return-value]
 
 
@@ -147,10 +158,11 @@ def refine(raws: list[Raw], trace: dict[int, dict], base: float, threshold: floa
         return 0
     pr = m.proba(features(raws, trace, base))
     changed = 0
+    chapters = any(it.get("kind") in ("chapitre", "partie") for it in trace.values())
     for i, it in trace.items():
         if raws[i].explicit or it.get("type") in ("toc", "table", "figure", "code", "title") or it.get("kind") in ("special", "partie", "chapitre", "section"):
             continue  # certain by construction
-        if it.get("role") in ("dedicace", "sigle", "biblio", "keywords") or it.get("hidden"):
+        if it.get("role") in ("dedicace", "sigle", "biblio", "keywords", "label") or it.get("hidden"):
             continue  # its section already says what it is (a poem's short lines are not titles)
         if it.get("_nomark") or it.get("type") == "list" and (raws[i].list_kind or _R["bullet"].search(raws[i].text) or _BULLET.match(raws[i].text)):
             continue  # a bullet is a bullet: never promoted to a heading
@@ -164,10 +176,15 @@ def refine(raws: list[Raw], trace: dict[int, dict], base: float, threshold: floa
             continue  # "LES ABONNÉS : sont ceux qui…" defines a term, it is not a title
         if H1 <= k <= H4 and t != "heading" and i > 0 and raws[i - 1].text.rstrip().endswith(":"):
             continue  # a heading never follows "… les suivantes :" (that's an enumeration)
+        in_run = t == "list" and it.get("ordered") and any(trace.get(j, {}).get("type") == "list" and trace[j].get("ordered") for j in (i - 1, i + 1))
+        if H1 <= k <= H4 and in_run:
+            continue  # "1. Dresse un tableau…" heads a run of numbered steps: an item, not a title
         if H1 <= k <= H4:
             lvl = k - H1 + 1
-            if t == "heading" and (it.get("kind") in _NUMBERED_KINDS or _label_family(raws[i].text)):
+            if t == "heading" and (it.get("kind") in _NUMBERED_KINDS or _label_family(raws[i].text) or it.get("_ranked")):
                 continue  # "1)" under "I)": its depth comes from the numbering, the same for all its siblings
+            if lvl == 1 and chapters:
+                continue  # with chapters in the document, level 1 is theirs ("EXEMPLE DE SCHÉMA" is no chapter)
             if t != "heading" or it.get("level") != lvl:
                 if t != "heading":
                     it.pop("ordered", None)
@@ -178,6 +195,10 @@ def refine(raws: list[Raw], trace: dict[int, dict], base: float, threshold: floa
                 it["level"] = lvl
                 changed += 1
         elif k == PARA and t in ("heading", "list") and it.get("kind") not in ("style1", "style2", "style3", "style4"):
+            if in_run:
+                continue  # "1. Identifier… 2. Découper… 3. Poser…": an item of a numbered run stays in its list
+            if it.get("_full"):
+                it["text"] = it.pop("_full")  # a lone "1. Xxx" made a paragraph keeps its number
             it["type"] = "paragraph"
             it.pop("level", None)
             it.pop("kind", None)

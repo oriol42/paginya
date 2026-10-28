@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import base64
 import binascii
+import logging
 import os
 import re
 import shutil
+import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
@@ -16,7 +19,7 @@ from docx import Document as DocxDocument
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import config, db, pricing, storage
+from . import config, db, learn, pricing, storage
 from .doc import office
 from .doc.detect import detect
 from .doc.extract import ExtractError, from_docx, from_markdown, from_pdf, from_text, looks_like_markdown
@@ -37,6 +40,7 @@ MAX_UPLOAD = 15 * 1024 * 1024
 MAX_TEXT = 1_500_000
 TIERS = ["document_court", "rapport", "memoire"]
 CONVERTIBLE = (".docx",)
+log = logging.getLogger("paginya.docs")
 OLD_WORD = (".doc", ".odt", ".rtf")  # opened by LibreOffice and saved as .docx on arrival
 BLOCK_TYPES = {"heading", "paragraph", "list", "table", "figure", "caption", "source", "quote", "code", "title"}
 BLOCK_KEYS = {"id", "type", "text", "level", "ordered", "rows", "image", "of", "special", "role",
@@ -50,11 +54,25 @@ def doc_dir(order_id: str) -> Path:
 # --- durable inputs (Hugging Face disk is a cache: see storage.py) ------------
 
 def _persist_inputs(order_id: str) -> None:
-    """The original file and its images can't be rebuilt: keep them in durable storage."""
+    """The original file and its images can't be rebuilt: keep them in durable storage. Sent in the background,
+    several at a time (the local copy is already there: the customer does not wait for the upload)."""
     folder = doc_dir(order_id)
-    for path in [*folder.glob("source.*"), *(folder / "images").glob("*")]:
-        if path.is_file():
+    paths = [p for p in [*folder.glob("source.*"), *(folder / "images").glob("*")] if p.is_file()]
+
+    def send(path: Path) -> None:
+        try:
             storage.put(f"docs/{order_id}/{path.relative_to(folder)}", path.read_bytes())
+        except Exception:  # noqa: BLE001 — a failed upload must not break the document; the local copy stays
+            log.exception("upload failed: %s", path.name)
+
+    def run() -> None:
+        with ThreadPoolExecutor(6) as pool:
+            list(pool.map(send, paths))
+
+    if storage.REMOTE:
+        threading.Thread(target=run, daemon=True).start()
+    else:
+        run()
 
 
 def _ensure_inputs(order_id: str) -> None:
@@ -140,6 +158,7 @@ def view(order: dict) -> dict:
         "analysis": doc.get("analysis"),
         "confirmed": doc.get("confirmed", True),  # documents made before the analysis screen existed
         "convert": doc.get("convert"),  # "pdf" | "docx" when the order is a plain conversion
+        "help": bool(doc.get("help")),  # « J'aide Paginya à s'améliorer » (app/learn.py)
     }
 
 
@@ -215,7 +234,8 @@ def create(body: DocIn) -> dict:
     else:
         raise HTTPException(400, "Colle ton texte ou importe un fichier")
 
-    result = detect(raws)
+    result = detect(raws, trace=True)
+    trace = result.pop("trace")
     if not result["blocks"]:
         _discard(tmp_id)
         raise HTTPException(400, "Aucun texte trouvé dans ce document")
@@ -282,12 +302,28 @@ def create(body: DocIn) -> dict:
     else:
         db.update_payload(order_id, {"doc": doc})
     _persist_inputs(order_id)
+    learn.snapshot_later(order_id, raws, result, trace, doc_dir(order_id))
     return view(db.get_order(order_id))
 
 
 @router.get("/{order_id}")
 def get(order_id: str) -> dict:
     return view(_load(order_id))
+
+
+class HelpIn(BaseModel):
+    on: bool
+
+
+@router.post("/{order_id}/help")
+def help_paginya(order_id: str, body: HelpIn) -> dict:
+    """« J'aide Paginya à s'améliorer »: the customer lets us keep this file (12 months at most) to fix what went wrong."""
+    order = _load(order_id)
+    db.update_payload(order_id, {"doc": {**order["payload"]["doc"], "help": body.on}})
+    if not body.on:
+        shutil.rmtree(learn.files_dir() / order_id, ignore_errors=True)
+        db.flag_doc(order_id, has_file=0)
+    return {"help": body.on}
 
 
 def _clean_blocks(blocks: list[dict]) -> list[dict]:

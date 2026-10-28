@@ -67,6 +67,17 @@ export const api = {
     call<{ rows: { day: string; src: string; step: string; n: number }[] }>(`/admin/funnel?days=${days}`, { method: "POST", body: JSON.stringify({ token }) }),
   adminUsage: (token: string, days: number) =>
     call<{ rows: { day: string; what: string; n: number }[] }>(`/admin/usage?days=${days}`, { method: "POST", body: JSON.stringify({ token }) }),
+  adminLearn: (token: string) => call<LearnStatus>("/admin/learn", { method: "POST", body: JSON.stringify({ token }) }),
+  adminLearnReviewed: (id: string, token: string) =>
+    call<{ ok: boolean }>(`/admin/learn/${id}/reviewed`, { method: "POST", body: JSON.stringify({ token }) }),
+  /** The file a customer let us keep: fetched with the team pass, then saved by the browser. */
+  adminLearnFile: async (id: string, token: string): Promise<Blob> => {
+    const res = await fetch(`${API_URL}/admin/learn/${id}/file`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) });
+    if (!res.ok) throw new Error(res.status === 404 ? "Fichier non gardé" : "Téléchargement impossible");
+    return res.blob();
+  },
+  /** « J'aide Paginya à s'améliorer »: the customer lets the team keep this file to fix what went wrong. */
+  docHelp: (id: string, on: boolean) => call<{ help: boolean }>(`/documents/${id}/help`, { method: "POST", body: JSON.stringify({ on }) }),
   adminUnlock: (id: string, token: string) => call<Order>(`/orders/${id}/admin`, { method: "POST", body: JSON.stringify({ token }) }),
   /** Customer accounts (Google): the 30-day pass, and the team's free documents. */
   accountConfig: () => call<{ client_id: string }>("/account/config"),
@@ -92,8 +103,16 @@ export const api = {
   adminGift: (token: string, email: string, plan: Plan, days: number) =>
     call<Omit<Account, "token">>("/admin/gift", { method: "POST", body: JSON.stringify({ token, email, plan, days }) }),
   retry: (id: string) => call<Order>(`/orders/${id}/retry`, { method: "POST" }),
-  fileUrl: (id: string, fmt: "pdf" | "docx" | "png") => `${API_URL}/orders/${id}/file.${fmt}`,
+  fileUrl: (id: string, fmt: "pdf" | "docx" | "png", name = "") =>
+    `${API_URL}/orders/${id}/file.${fmt}${name.trim() ? `?name=${encodeURIComponent(name.trim())}` : ""}`,
 };
+
+export type LearnRun = {
+  at: number; accepted: boolean; why?: string; real_docs: number; harvested?: number;
+  synthetic?: [number, number | null]; real?: [number, number | null]; corpus?: [number | null, number | null];
+};
+export type FlaggedDoc = { id: string; created_at: number; kind: string; words: number; reasons: string[]; corrections: number; has_file: number; reviewed: number };
+export type LearnStatus = { history: LearnRun[]; samples: number; learned_model: boolean; model_date: number | null; docs: FlaggedDoc[] };
 
 /** Best-effort operator guess from the prefix (Fapshi also auto-detects). */
 export function operatorOf(phone: string): "MTN MoMo" | "Orange Money" | null {

@@ -54,8 +54,12 @@ _STARTS_BLOCK = re.compile(r"^([-–—•*➢►▪❖◆■●○➤]|\d+(\.\d
 def _cut(prev: str, nxt: str, strict: bool = False) -> bool:
     """PDF hard wrap: the sentence of `prev` goes on in `nxt`.
     strict (across an empty line): only when `prev` visibly stops mid-sentence."""
-    if not prev or not nxt or pdf_layout.MARK.match(nxt) or _END.search(prev) or _STARTS_BLOCK.match(nxt) or (nxt.isupper() and len(nxt) > 3):
+    if not prev or not nxt or pdf_layout.MARK.match(nxt) or _STARTS_BLOCK.match(nxt) or (nxt.isupper() and len(nxt) > 3):
         return False
+    if _END.search(prev):
+        # … chaque "il reste", chaque "et" / devient un terme…: a closing quote or bracket at the end of a full line,
+        # then a lowercase start, is the same sentence going on
+        return not strict and prev[-1] in "\"»')]" and len(prev) > 60 and nxt[:1].islower()
     if _CONNECT.search(prev):
         return True  # "… des Sciences et" / "Techniques …"
     if strict:
@@ -309,13 +313,26 @@ def _readability(line: str) -> int:
     return sum(1 for w in words if _WORD.match(w) and re.search(r"[aeiouyéèêàâîôû]", w.lower())) + 3 * sum(1 for w in words if w.lower().strip(".,;:") in _FUNC)
 
 
+_CLEAN = re.compile(r"^[(«\"'“]*[A-ZÀ-Ý]?[a-zà-ÿœ'’\-]+[)»\"'”.,;:!?]*$")
+
+
+def _clean_share(line: str) -> float:
+    """Share of the lowercase words of a line that look like real words ("Stage effectué": 1; "`çãéäéíÉê": 0)."""
+    words = [w for w in line.split() if sum(c.isalpha() for c in w) >= 2 and not w.isupper()]
+    if not words:
+        return 0.0
+    return sum(1 for w in words if _CLEAN.match(w) and re.search(r"[aeiouyéèêàâîôû]", w)) / len(words)
+
+
 def fix_shifted_fonts(text: str) -> tuple[str, int]:
     """Decodes the lines that read far better shifted back (line by line: other fonts of the page are fine)."""
     fixed, lines = 0, []
     for line in text.split("\n"):
         if line.strip() and not line.isascii() or re.search(r"[A-Z]{2,}[a-z]?[A-Z]|[0-9][A-Z]{2}", line):
             dec = _unshift(line)
-            if _readability(dec) > _readability(line) + 1:
+            # and most of its words must then be clean ones: a formula ("4×70 000 + 5×30 = 280 170 dm³") or a line
+            # already in clear ("Compléter : 2, 6, 12") also gains a few vowel-words by chance once shifted
+            if _readability(dec) > _readability(line) + 1 and _clean_share(dec) >= 0.6 and _clean_share(dec) > _clean_share(line) + 0.3:
                 lines.append(dec)
                 fixed += 1
                 continue

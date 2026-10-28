@@ -10,11 +10,13 @@ Pages without any of these keep pdftotext's own text, so ordinary pages read exa
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import tempfile
 import uuid
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -263,6 +265,27 @@ def _table_rows(r: Region, words: list[Word]) -> list[list[str]]:
     return rows
 
 
+def _gs_pages(pdf: Path, pages: list[int], out: str, args: list[str], timeout: int) -> dict[int, str]:
+    """Draws the given pages with Ghostscript, split over the processor's cores (gs draws one page at a time):
+    {page: image file}. `out` is the file prefix; each part numbers its own outputs."""
+    parts = max(1, min(os.cpu_count() or 1, 4, len(pages) // 4 or 1))
+    chunks = [pages[k::parts] for k in range(parts)]
+    procs = []
+    for n, chunk in enumerate(chunks):
+        cmd = ["gs", "-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-dUseCropBox", *args, f"-sPageList={','.join(map(str, chunk))}",
+               "-o", f"{out}-{n}-%04d", str(pdf)]
+        procs.append(subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+    try:
+        for proc in procs:
+            if proc.wait(timeout=timeout) != 0:
+                raise subprocess.CalledProcessError(proc.returncode, "gs")
+    finally:
+        for proc in procs:
+            if proc.poll() is None:
+                proc.kill()
+    return {page: f"{out}-{n}-{k:04d}" for n, chunk in enumerate(chunks) for k, page in enumerate(chunk, 1)}
+
+
 def _cut_all(pdf: Path, cuts: list[tuple[int, Region, str]], images_dir: Path) -> set[str]:
     """The patches, text included, cut out of their pages at a printable resolution. The pages are drawn in one
     pass (reading a big PDF once per picture took minutes). Returns the names really saved."""
@@ -271,11 +294,9 @@ def _cut_all(pdf: Path, cuts: list[tuple[int, Region, str]], images_dir: Path) -
     m = 3  # a little margin: frames drawn on the edge stay whole
     saved = set()
     with tempfile.TemporaryDirectory() as tmp:
-        subprocess.run(["gs", "-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-dUseCropBox", "-sDEVICE=ppmraw", f"-r{CUT_DPI}",
-                        "-dTextAlphaBits=4", "-dGraphicsAlphaBits=4", f"-sPageList={','.join(map(str, pages))}",
-                        "-o", f"{tmp}/c-%04d.ppm", str(pdf)], capture_output=True, timeout=300, check=True)
-        for k, page in enumerate(pages, 1):
-            img = cv2.imread(f"{tmp}/c-{k:04d}.ppm")
+        files = _gs_pages(pdf, pages, f"{tmp}/c", ["-sDEVICE=ppmraw", f"-r{CUT_DPI}", "-dTextAlphaBits=4", "-dGraphicsAlphaBits=4"], 300)
+        for page in pages:
+            img = cv2.imread(files[page])
             if img is None:
                 continue
             H, W = img.shape[:2]
@@ -364,14 +385,14 @@ def layout(pdf: Path, pages_text: list[str], images_dir: Path) -> tuple[list[str
         todo = [p for p in (sorted(sizes) or range(1, len(pages_text) + 1)) if p not in scanned]
         with tempfile.TemporaryDirectory() as tmp:
             # only the pages that are not scans; gs numbers its outputs 1, 2, 3… in the order of the list
-            subprocess.run(["gs", "-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-dUseCropBox", "-dFILTERTEXT", "-sDEVICE=pgmraw",
-                            "-r72", f"-sPageList={','.join(map(str, todo))}", "-o", f"{tmp}/p-%04d.pgm", str(pdf)],
-                           capture_output=True, timeout=180, check=True)
-            graphics = {}
-            for k, page in enumerate(todo, 1):
-                gray = cv2.imread(f"{tmp}/p-{k:04d}.pgm", cv2.IMREAD_GRAYSCALE)  # raw: 2.5× faster than PNG to write
-                if gray is not None and (found := _graphics(gray)):
-                    graphics[page] = found
+            files = _gs_pages(pdf, todo, f"{tmp}/p", ["-dFILTERTEXT", "-sDEVICE=pgmraw", "-r72"], 180)  # raw: 2.5× faster than PNG
+
+            def look(page: int) -> list[Region]:
+                gray = cv2.imread(files[page], cv2.IMREAD_GRAYSCALE)
+                return _graphics(gray) if gray is not None else []
+
+            with ThreadPoolExecutor(min(4, os.cpu_count() or 1)) as pool:  # OpenCV works outside the GIL
+                graphics = {page: found for page, found in zip(todo, pool.map(look, todo)) if found}
         if not any(r.kind != "text" for rs in graphics.values() for r in rs):
             return pages_text, tables
         xml = subprocess.run(["pdftotext", "-enc", "UTF-8", "-bbox-layout", str(pdf), "-"], capture_output=True, timeout=120, check=True).stdout

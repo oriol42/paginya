@@ -53,35 +53,53 @@ class Conn:
         return {r[1] for r in self.raw.execute(f"PRAGMA table_info({table})")}
 
 
+_pool = None
+_schema_ready = False
+
+
+def _pg_pool():
+    """Connections to Supabase kept open between requests: opening one costs ~0.6 s from the server (TLS, far away),
+    as much as the work of a whole request. prepare_threshold=None: required behind Supabase's connection pooler."""
+    global _pool
+    if _pool is None:
+        from psycopg.rows import dict_row
+        from psycopg_pool import ConnectionPool
+
+        _pool = ConnectionPool(DATABASE_URL, min_size=1, max_size=8, max_idle=120, max_lifetime=900, timeout=20, open=True,
+                               kwargs={"row_factory": dict_row, "prepare_threshold": None, "connect_timeout": 15})
+    return _pool
+
+
 @contextmanager
 def connect(sqlite_path: Path):
     if PG:
         import psycopg
-        from psycopg.rows import dict_row
 
-        # prepare_threshold=None: required behind Supabase's connection pooler. One retry: a network blip
-        # (or the pooler waking up) must not turn into an error for the user.
+        global _schema_ready
+        pool = _pg_pool()
+        # One retry: a connection the pooler closed while it slept (or a network blip) must not become an error for the user.
         for attempt in (1, 2):
+            conn = pool.getconn()
             try:
-                conn = psycopg.connect(DATABASE_URL, row_factory=dict_row, prepare_threshold=None, connect_timeout=15)
+                if SCHEMA != "public":
+                    if not _schema_ready:
+                        conn.execute(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}")
+                        _schema_ready = True
+                    conn.execute(f"SET LOCAL search_path TO {SCHEMA}")  # LOCAL: safe behind a transaction pooler
                 break
             except psycopg.OperationalError:
+                pool.putconn(conn)  # a broken connection is thrown away by the pool
                 if attempt == 2:
                     raise
-                import time
-
-                time.sleep(1)
-        if SCHEMA != "public":
-            conn.execute(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}")
-            conn.execute(f"SET LOCAL search_path TO {SCHEMA}")  # LOCAL: safe behind a transaction pooler
         try:
             yield Conn(conn)
             conn.commit()
         except Exception:
-            conn.rollback()
+            if not conn.closed:
+                conn.rollback()
             raise
         finally:
-            conn.close()
+            pool.putconn(conn)
         return
     sqlite_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(sqlite_path, timeout=10)

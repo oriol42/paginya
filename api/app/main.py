@@ -6,14 +6,16 @@ import os
 import re
 import threading
 import time
+import unicodedata
 from contextlib import asynccontextmanager
+from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import accounts, admin, config, db, doc_routes, fapshi, forms_routes, guard, pricing, storage, support
+from . import accounts, admin, config, db, doc_routes, fapshi, forms_routes, guard, learn, pricing, storage, support
 from .render import render_cover
 from .svg_safe import UnsafeSvg, sanitize_svg
 
@@ -39,6 +41,8 @@ async def lifespan(_app: FastAPI):
 
     janitor.started = False
     threading.Thread(target=janitor, daemon=True).start()
+    if config.LEARN_NIGHTLY:
+        learn.start_nightly()
     yield
     stop.set()
 
@@ -282,6 +286,35 @@ def admin_usage(body: AdminIn, days: int = 14) -> dict:
     return {"rows": db.usage(since)}
 
 
+@app.post("/admin/learn")
+def admin_learn(body: AdminIn) -> dict:
+    """What Paginya learned (nightly runs) and the documents it handled badly, for the team."""
+    if admin.email_of(body.token) is None:
+        raise HTTPException(403, "Connexion équipe expirée : reconnecte-toi")
+    return {**learn.status(), "docs": db.flagged_docs()}
+
+
+@app.post("/admin/learn/{order_id}/file")
+def admin_learn_file(order_id: str, body: AdminIn) -> Response:
+    """The file a customer let us keep (« J'aide Paginya »)."""
+    if admin.email_of(body.token) is None:
+        raise HTTPException(403, "Connexion équipe expirée : reconnecte-toi")
+    if not re.fullmatch(r"[0-9a-f]{32}", order_id):
+        raise HTTPException(404, "Introuvable")
+    src = next((learn.files_dir() / order_id).glob("source.*"), None)
+    if src is None:
+        raise HTTPException(404, "Fichier non gardé")
+    return Response(src.read_bytes(), media_type="application/octet-stream", headers=_attachment(f"paginya-{order_id[:8]}", src.suffix[1:]))
+
+
+@app.post("/admin/learn/{order_id}/reviewed")
+def admin_learn_reviewed(order_id: str, body: AdminIn) -> dict:
+    if admin.email_of(body.token) is None:
+        raise HTTPException(403, "Connexion équipe expirée : reconnecte-toi")
+    db.review_doc(order_id)
+    return {"ok": True}
+
+
 def _sync_with_fapshi(order: dict) -> dict:
     """Poll Fapshi for a pending order (the webhook is only sent once)."""
     if order["status"] != "PENDING" or not order["trans_id"]:
@@ -335,8 +368,17 @@ async def fapshi_webhook(request: Request) -> dict:
     return {"ok": True}
 
 
+def _attachment(name: str, fmt: str) -> dict:
+    """Content-Disposition with the name chosen by the customer: accents kept (filename*), an ASCII copy for old browsers."""
+    name = re.sub(r"[\x00-\x1f/\\:*?\"<>|]+", " ", name)
+    name = re.sub(rf"\.{fmt}$", "", name.strip(), flags=re.I)
+    name = re.sub(r"\s+", " ", name).strip(" .")[:80] or "paginya-document"
+    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().strip() or "paginya-document"
+    return {"Content-Disposition": f"attachment; filename=\"{ascii_name}.{fmt}\"; filename*=UTF-8''{quote(name)}.{fmt}"}
+
+
 @app.get("/orders/{order_id}/file.{fmt}")
-def download(order_id: str, fmt: str) -> Response:
+def download(order_id: str, fmt: str, name: str = "") -> Response:
     if fmt not in MEDIA:
         raise HTTPException(404, "Format inconnu")
     order = _sync_with_fapshi(_order_or_404(order_id))
@@ -348,17 +390,13 @@ def download(order_id: str, fmt: str) -> Response:
         raise HTTPException(410, "Lien expiré (7 jours après le paiement)")
     if "form_doc" in order["payload"]:
         path = forms_routes.final_file(order_id, fmt)
-        name = "paginya-" + order["payload"]["form_doc"]["kind"]
         return Response(path.read_bytes(), media_type=MEDIA[fmt],
-                        headers={"Content-Disposition": f'attachment; filename="{name}.{fmt}"'})
+                        headers=_attachment(name or "paginya-" + order["payload"]["form_doc"]["kind"], fmt))
     if "doc" in order["payload"]:
         path = doc_routes.final_file(order_id, fmt)
-        return Response(path.read_bytes(), media_type=MEDIA[fmt],
-                        headers={"Content-Disposition": f'attachment; filename="paginya-document.{fmt}"'})
+        return Response(path.read_bytes(), media_type=MEDIA[fmt], headers=_attachment(name or "paginya-document", fmt))
     data = render_cover(order["payload"]["svg"], fmt, watermark=False)
-    filename = f"paginya-page-de-garde.{fmt}"
-    return Response(data, media_type=MEDIA[fmt],
-                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+    return Response(data, media_type=MEDIA[fmt], headers=_attachment(name or "paginya-page-de-garde", fmt))
 
 
 # One address per app in production: the API also serves the static site (web/out) when WEB_DIR is set.

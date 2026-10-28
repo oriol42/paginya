@@ -6,7 +6,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt "psycopg[binary]>=3.2"
+RUN pip install --no-cache-dir -r requirements.txt "psycopg[binary,pool]>=3.2"
 COPY app ./app
 COPY fonts ./fonts
 ENV PROPRE_DATA_DIR=/tmp/data PROPRE_UNO_PYTHON=/usr/bin/python3 HOME=/tmp PYTHONUNBUFFERED=1

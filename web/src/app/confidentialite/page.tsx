@@ -37,6 +37,8 @@ export default function Confidentialite() {
         <li>Photos envoyées pour lecture : supprimées après <b>24 heures</b>.</li>
         <li>Preuve de paiement (numéro, montant, date) : 12 mois.</li>
         <li>Statistiques de visite : 12 mois.</li>
+        <li>Si tu coches « J&apos;aide Paginya à s&apos;améliorer » : ton fichier est gardé <b>12 mois au plus</b>, seulement pour que l&apos;équipe corrige ce que Paginya a mal compris. Il n&apos;est jamais partagé ni publié. Décoche la case (le lien reste valable 7 jours) ou écris-nous pour qu&apos;il soit effacé tout de suite.</li>
+        <li>Pour apprendre, Paginya garde aussi des mesures de mise en forme de chaque document payé (tailles, gras, numéros, place des titres), sans aucun texte : elles ne permettent pas de retrouver ton document.</li>
         <li>Messages au support : 12 mois après le dernier message.</li>
         <li>Compte du pass (adresse Gmail, date de fin du pass) : tant que tu l&apos;utilises ; supprimé sur simple demande.</li>
       </ul>

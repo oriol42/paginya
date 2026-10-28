@@ -24,6 +24,17 @@ def _local_root() -> Path:
     return Path(os.getenv("STORAGE_DIR", DATA_DIR / "objects"))
 
 
+_client: httpx.Client | None = None
+
+
+def _http() -> httpx.Client:
+    """One client for every call: its connections stay open (a new TLS handshake to Supabase costs ~0.3 s each time)."""
+    global _client
+    if _client is None:
+        _client = httpx.Client(timeout=60, limits=httpx.Limits(max_connections=16, max_keepalive_connections=8))
+    return _client
+
+
 def _h(extra: dict | None = None) -> dict:
     return {"Authorization": f"Bearer {KEY}", "apikey": KEY, **(extra or {})}
 
@@ -46,8 +57,8 @@ def ensure_bucket(public: bool = False) -> None:
 def put(key: str, data: bytes, content_type: str = "application/octet-stream") -> None:
     key = _safe(key)
     if REMOTE:
-        r = httpx.post(f"{URL}/storage/v1/object/{BUCKET}/{key}", content=data,
-                       headers=_h({"Content-Type": content_type, "x-upsert": "true"}), timeout=60)
+        r = _http().post(f"{URL}/storage/v1/object/{BUCKET}/{key}", content=data,
+                         headers=_h({"Content-Type": content_type, "x-upsert": "true"}))
         r.raise_for_status()
         return
     path = _local_root() / key
@@ -58,7 +69,7 @@ def put(key: str, data: bytes, content_type: str = "application/octet-stream") -
 def get(key: str) -> bytes | None:
     key = _safe(key)
     if REMOTE:
-        r = httpx.get(f"{URL}/storage/v1/object/{BUCKET}/{key}", headers=_h(), timeout=60)
+        r = _http().get(f"{URL}/storage/v1/object/{BUCKET}/{key}", headers=_h())
         return r.content if r.status_code == 200 else None
     path = _local_root() / key
     return path.read_bytes() if path.is_file() else None

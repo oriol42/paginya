@@ -45,7 +45,7 @@ ROMAN = re.compile(r"^[IVXLC]+$")
 ABBR = {"etc", "cf", "p", "pp", "vol", "art", "n°", "no", "m", "mme", "mlle", "dr", "pr", "ex", "env", "fig", "tab", "i.e", "e.g", "av", "j.-c", "st", "ste"}
 PLACES = {"cameroun", "douala", "yaoundé", "yaounde", "bafoussam", "garoua", "bamenda", "ngaoundéré", "ngaoundere", "kribi", "limbé", "limbe",
           "bertoua", "ebolowa", "maroua", "buea", "afrique", "france", "europe", "chine", "nigeria", "gabon", "tchad", "congo"}
-WORD = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'’\-]*")
+WORD = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿŒœÆæŸ][A-Za-zÀ-ÖØ-öø-ÿŒœÆæŸ'’\-]*")  # Œ: "PAR CŒUR" → "par cœur", not "par CŒur"
 END = re.compile(r"[.!?:;»)\]…]\s*$")
 
 
@@ -66,12 +66,18 @@ def vocabulary(texts: list[str]) -> tuple[set[str], set[str]]:
     for t in texts:
         if _upper_ratio(t) > 0.6:
             continue
-        for i, m in enumerate(WORD.finditer(t)):
+        words = list(WORD.finditer(t))
+        # words of a phrase typed in capitals ("VOIR LA CORRECTION complète") are no acronyms
+        phrase = {k for k in range(len(words) - 1) if words[k].group(0).isupper() and words[k + 1].group(0).isupper()
+                  and len(words[k].group(0)) + len(words[k + 1].group(0)) >= 6 and (words[k].group(0).lower() in SMALL or words[k + 1].group(0).lower() in SMALL)}
+        phrase |= {k + 1 for k in phrase}
+        for i, m in enumerate(words):
             w = m.group(0)
-            if len(w) >= 2 and w.isupper() and not ROMAN.match(w) and w.lower() not in SMALL:
+            if len(w) >= 2 and w.isupper() and not ROMAN.match(w) and w.lower() not in SMALL and i not in phrase:
                 acr.add(w)
-            elif i > 0 and w[:1].isupper() and w[1:].islower() and t[max(0, m.start() - 2):m.start()].strip() not in (".", "!", "?"):
-                proper.add(w.lower())
+            elif (i > 0 and w[:1].isupper() and w[1:].islower() and t[max(0, m.start() - 2):m.start()].strip() not in (".", "!", "?", ":", "«", '"', "·", "•", "|", "—", "–", "(")
+                  and w.lower() not in SMALL):
+                proper.add(w.lower())  # never "De" or "Un" ("De Morgan", "« Un switch… »"): "PUISSANCES DE 2" stays "puissances de 2"
     return acr, proper
 
 
@@ -126,9 +132,27 @@ def harmonise_tops(items: list[dict]) -> int:
     return n
 
 
+# A line of code or a formula keeps its letters as typed: "SELECT … FROM", "p + l = 17", "x > 0 FAIRE"
+CODE_WORDS = re.compile(r"^\s*((SELECT|FROM|WHERE|JOIN|GROUP BY|ORDER BY|HAVING|INSERT INTO|VALUES|UPDATE|DELETE FROM|DELIMITER|BEGIN|END|DECLARE|"
+                        r"FOR EACH ROW|CALL|USE|CREATE (OR REPLACE )?(TABLE|TRIGGER|PROCEDURE|FUNCTION|VIEW|INDEX|DATABASE|USER)|ALTER TABLE|DROP (TABLE|TRIGGER|PROCEDURE))\b(?!\s+[a-zA-Zà-ÿ]{3,}\s+[a-zA-Zà-ÿ]{3,})"
+                        r"|(TANT QUE|POUR|SI|SINON|FIN|FAIRE|ALORS|AFFICHER|LIRE|[ÉE]CRIRE|RETOURNER)\b.*([<>=←]|\b[a-z]\b)"  # pseudo-code: with a variable
+                        r"|(int|float|char|void|return|printf|scanf|for|while|if|else|def|print)\b\s*[(\w]|<[a-z!/][^>]*>)")
+FORMULA = re.compile(r"^\s*[(\[]?[A-Za-zΑ-ω0-9][\w′'²³ⁿ̄]{0,3}\s*[(\[]?\s*[=+−×·<>≤≥≠⇒→⊕∧∨]|[=⇒⊕≤≥≠]\s*\S+\s*[=+\-−×·⇒→]")
+
+
+CODE_LINE = re.compile(r"^\s*([{}]\s*;?|#include\b.*|.*\)\s*\{|.*\w\(.*\)\s*;|</?[a-zA-Z][\w-]*(\s[^>]*)?>.*)\s*$")
+SCHEMA = re.compile(r"^[A-Z_]{2,}\s*\([^)]*,[^)]*\)")  # "EMP(ENO, ENOM, SAL)": a table of a relational schema
+
+
+def is_code_or_formula(text: str) -> bool:
+    return bool(CODE_WORDS.match(text) or FORMULA.search(text) or CODE_LINE.match(text) or SCHEMA.match(text))
+
+
 def fix_caps(text: str) -> tuple[str, int]:
-    """Capital at the start and after a full stop (not after abbreviations, decimals or links)."""
+    """Capital at the start and after a full stop (not after abbreviations, decimals, ellipses or links)."""
     n = 0
+    if is_code_or_formula(text):
+        return text, 0
     chars = list(text)
     for i, ch in enumerate(chars):
         if not ch.isalpha():
@@ -143,7 +167,7 @@ def fix_caps(text: str) -> tuple[str, int]:
     def up(m: re.Match) -> str:
         nonlocal n
         prev = m.group(1).lower().rstrip(".")
-        if prev in ABBR or len(prev) == 1:
+        if prev in ABBR or len(prev) == 1 or m.group(1).endswith(".."):  # "(« si... alors... »)": an ellipsis goes on
             return m.group(0)
         n += 1
         return m.group(0)[:-1] + m.group(0)[-1].upper()
@@ -316,10 +340,16 @@ def clean(items: list[dict]) -> dict:
         text = it.get("text", "")
         if not text:
             continue
+        if is_code_or_formula(text):
+            continue
         if t == "heading" and it.get("level", 1) >= 2 and it.get("kind") not in ("partie", "chapitre", "special") and _upper_ratio(text) > 0.85 and len(text) > 6:
             # "I. LES LOIS" → "I. Les lois": the first word after the number keeps its capital
             it["text"] = re.sub(r"^(\s*(?:[IVXLivxl]+|\d+(?:\.\d+)*|[A-Ha-h])\s*[.\-–)_/:]+\s*)([a-zà-ÿ])", lambda m: m.group(1) + m.group(2).upper(), sentence_case(text, acr, proper))
             caps += 1
+        elif it.get("role") == "label":
+            if _upper_ratio(text) > 0.85:
+                it["text"] = sentence_case(text, acr, proper)  # "EXEMPLE RÉSOLU" → "Exemple résolu"
+                caps += 1
         elif t in ("paragraph", "list", "quote") and it.get("role") not in ("sigle", "biblio"):
             if _upper_ratio(text) > 0.85 and len(text) > 30:
                 it["text"] = sentence_case(text, acr, proper)

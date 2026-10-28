@@ -78,7 +78,7 @@ PARTIE = re.compile(
 )
 CHAPITRE = re.compile(r"^(chapitre|chapter)\s*([ivx]+|\d+|premier|un|une|deux|trois|quatre|cinq|six|one|two|three|four|five)\b", re.I)
 # "TERME : définition en minuscules…" after a number
-DEFINITION = re.compile(r"^\d{1,2}(?:\.\d{1,2})*\s*[.)]?\s+[^:]{2,60}\s:\s+[a-zàâçéèêëîïôûù]\S*\s+\S+\s+\S+")
+DEFINITION = re.compile(r"^\d{1,2}(?:\.\d{1,2})*\s*[.)]?\s+(?![-–—])[^:]{2,60}\s:\s+[a-zàâçéèêëîïôûù]\S*\s+\S+\s+\S+")  # not "1.1 — Méthode : traduire…"
 ARTICLE = re.compile(r"^(article|art\.)\s*(\d+|premier|unique)\s*[.:\-–]\s*\S", re.I)
 ALINEA = re.compile(r"^(alin[ée]a)\s*(\d+(?:\.\d+)*)\s*[.:\-–]?\s*\S", re.I)
 OFFICIAL_LINE = re.compile(r"^[-–—*\s]*(the\s+)?(r[ée]publique|republic|paix|peace|minist[èe]re|ministry|universit[ée]|university|facult[ée]|faculty|b\.?\s?p\b|p\.?\s?o\.?\s?box)\b", re.I)
@@ -128,6 +128,8 @@ def _numbered_title_like(text: str, limit: int, body: str) -> bool:
     if _is_title_like(text, limit):
         return True
     core = re.sub(r"\s*[:.]\s*$", "", body.strip())
+    if core.count(",") >= 2:
+        return False  # "4. Application (HTTP), Transport (TCP), Internet (IP)…": an answer, not a title
     return _is_title_like(core, limit) and not re.search(r"[.!?]\s", core) and len(core.split()) <= 14
 
 
@@ -137,6 +139,174 @@ RANK = [
     "bold", "style3", "dec2", "short", "style4", "dec3", "dec4",
 ]
 
+
+
+# --- clean-ups on the lines before classifying them -----------------------------
+
+_SPACED = re.compile(r"^(?:[^\W\d_]{1,2} ){4,}[^\W\d_]{1,2}$")
+
+
+def _unspace(text: str, vocab: set[str]) -> str:
+    """"P R É PA R AT I O N I N T E N S I V E" (a title spaced letter by letter): the letters glued back, cut into
+    words of the document itself where it can ("PRÉPARATION INTENSIVE"), else into one word."""
+    letters = text.replace(" ", "")
+    low = letters.lower()
+    best: list[list[str] | None] = [None] * (len(low) + 1)
+    best[0] = []
+    for i in range(1, len(low) + 1):
+        for j in range(max(0, i - 25), i):
+            if best[j] is not None and low[j:i] in vocab and (best[i] is None or len(best[j]) + 1 < len(best[i])):
+                best[i] = best[j] + [letters[j:i]]
+    if best[-1] and len(best[-1]) <= max(1, len(low) // 4):
+        return " ".join(best[-1])
+    return letters if len(letters) <= 16 else text
+
+
+# words of covers spaced out letter by letter, when the document does not use them elsewhere
+_TITLE_WORDS = set("""préparation intensive rapport stage mémoire memoire cours fiche fiches révision revision examen examens concours projet
+guide manuel travaux pratiques dirigés exposé expose thème theme devoir épreuve epreuve sujet corrigé corrigés annales session
+fin études etudes cycle licence master thèse these soutenance synthèse dossier technique cahier charges présentation plan
+le la les de des du et en au aux pour sur un une""".split())
+
+
+def _unspace_titles(raws: list[Raw]) -> None:
+    spaced = [r for r in raws if r.text and _SPACED.match(r.text.strip())]
+    if not spaced:
+        return
+    from .clean import ACCENTS
+
+    vocab = {w.lower() for r in raws for w in re.findall(r"[^\W\d_]{3,}", r.text)} | set(ACCENTS.values()) | _TITLE_WORDS
+    for r in spaced:
+        r.text = _unspace(r.text.strip(), vocab)
+
+
+_BARE_CHAPTER = re.compile(r"^(chapitre|chapter|partie|part)\s+([ivxlc]+|\d+|premier|première|un|une|deux|trois|quatre|cinq|six|sept|huit)\s*[:.\-–—]?\s*$", re.I)
+
+
+def _join_chapter_titles(items: list[dict]) -> None:
+    """"CHAPITRE 2" on its line and "Architecture des ordinateurs" under it: one title, "CHAPITRE 2 : Architecture…"
+    (else the chapter has no name in the sommaire and its name becomes a section of its own)."""
+    i = 0
+    while i + 1 < len(items):
+        a, b = items[i], items[i + 1]
+        if (a.get("type") == "heading" and a.get("kind") in ("chapitre", "partie") and not a.get("hidden") and _BARE_CHAPTER.match(a.get("text", "").strip())
+                and b.get("type") in ("heading", "paragraph") and not b.get("hidden") and not b.get("special") and 2 <= len(b.get("text", "")) <= 100
+                and not re.search(r"[.;!?]$", b.get("text", "").rstrip()) and not CHAPITRE.match(b.get("text", "")) and not PARTIE.match(b.get("text", ""))):
+            a["text"] = re.sub(r"\s*[:.\-–—]\s*$", "", a["text"].strip()) + " : " + b["text"].strip()
+            del items[i + 1]
+        i += 1
+
+
+
+_HEURISTIC_KINDS = ("upper", "bold", "short", "big", "ml")
+_NUMBERED = ("roman", "letter", "dec1", "dec2", "dec3", "dec4")
+
+
+def _label_key(text: str) -> str:
+    return " ".join(re.findall(r"[a-z]+", plain(text)))
+
+
+def _repeated_labels(items: list[dict]) -> int:
+    """"EXEMPLE RÉSOLU", "MÉTHODE", "VOIR LA CORRECTION", "À retenir — chapitre 2": the same little title over and
+    over is the label of a box (a course, an exercise sheet), not a section: a bold line, out of the sommaire."""
+    from collections import Counter
+
+    from .clean import is_code_or_formula
+
+    # never "Conclusion TP1", "Introduction partielle": the openings and endings of parts are real sections
+    cands = [it for it in items if it.get("type") == "heading" and it.get("kind") in _HEURISTIC_KINDS and not it.get("hidden")
+             and not _label_family(it.get("text", "")) and not is_code_or_formula(it.get("text", ""))
+             and not re.match(r"(?i)^(introduction|conclusion|synth[eè]se|r[ée]sum[ée]|bilan)\b", it.get("text", "").strip())]
+    # counted over every short line: "VOIR LA CORRECTION" is often a title once and a plain line elsewhere
+    counts = Counter(_label_key(it.get("text", "")) for it in items if it.get("type") in ("heading", "paragraph", "list") and len(it.get("text", "")) <= 60)
+    n = 0
+    for it in cands:
+        if counts[_label_key(it["text"])] >= 3 and _label_key(it["text"]):
+            k = items.index(it)
+            nxt = next((x for x in items[k + 1:] if not x.get("hidden")), {})
+            text = it["text"].strip()
+            # a box label introduces real content and reads like one; a cell of a flattened table ("Un peu en
+            # accord"), a note ("Ibid., p. 73.") or a library mark ("001.4/NGO") is plain text
+            boxed = (nxt.get("type") in ("list", "code", "table") or (nxt.get("type") == "paragraph" and len(nxt.get("text", "")) > 60))
+            looks = (text[:1].isupper() and len(text.split()) <= 8 and not text.endswith(".")
+                     and not re.search(r"\d/|/\d|\bibid\b|^id\b|op\.\s?cit|\bp\.\s?\d", text, re.I))
+            it.pop("kind", None)
+            it.pop("level", None)
+            it.update({"type": "paragraph", **({"role": "label"} if boxed and looks else {})})
+            n += 1
+    return n
+
+
+def _box_tables(items: list[dict]) -> list[dict]:
+    """A framed box read as a table whose text all sits in one column ("EXERCICE TYPE 1.1 Avec les plumes…" then
+    "VOIR LA CORRECTION Étape 1…", empty margins on each side): its text again, each label in bold."""
+    out: list[dict] = []
+    for it in items:
+        rows = it.get("rows", []) if it.get("type") == "table" and not it.get("hidden") else []
+        filled = {k for row in rows for k, c in enumerate(row) if c and c.strip()}
+        if len(filled) != 1:
+            out.append(it)
+            continue
+        col = filled.pop()
+        for n, row in enumerate(rows):
+            text = re.sub(r"\s+", " ", row[col] if col < len(row) else "").strip()
+            if not text:
+                continue
+            src = it.get("_src") if n == 0 else None
+            # "EXERCICE TYPE 1.1 Avec…", "VOIR LA CORRECTION Étape 1…": a label in capitals, then its text
+            m = re.match(r"^((?:[A-ZÀ-ÝŒ][A-ZÀ-ÝŒ'’\-]+\s+){1,5}(?:[A-ZÀ-ÝŒ][A-ZÀ-ÝŒ'’\-]+|\d+(?:\.\d+)*)(?:\s+[—–-]\s+(?:[A-ZÀ-ÝŒ0-9'’\-]+\s?)+)?)\s+(?=[A-ZÀ-Ý][a-zà-ÿ]|\d|«|\")(.*)$", text)
+            if m and len(m.group(1)) <= 70:
+                out.append({"type": "paragraph", "role": "label", "text": m.group(1), **({"_src": src} if src is not None else {})})
+                out.append({"type": "paragraph", "text": m.group(2)})
+            else:
+                out.append({"type": "paragraph", "text": text, **({"_src": src} if src is not None else {})})
+    return out
+
+
+def _sections_rank_first(items: list[dict]) -> bool:
+    """In a course, numbered sections ("1.2 — Problèmes de comptage") hold small unnumbered titles ("Méthode en
+    4 étapes", "Astuce mnémotechnique"): those come under them, whatever their capitals."""
+    child = parent = 0
+    numbered_seen = False
+    for k, it in enumerate(items):
+        if it.get("type") != "heading":
+            continue
+        kind = it.get("kind")
+        if kind in ("chapitre", "partie", "special"):
+            numbered_seen = False
+        elif kind in _NUMBERED:
+            numbered_seen = True
+        elif kind in _HEURISTIC_KINDS:
+            if numbered_seen:
+                child += 1
+            elif any(x.get("type") == "heading" and x.get("kind") in _NUMBERED for x in items[k + 1:k + 40]
+                     if not x.get("kind") in ("chapitre", "partie", "special")):
+                parent += 1
+    return child >= 3 and child >= 3 * parent
+
+
+
+def _code_runs(items: list[dict]) -> list[dict]:
+    """"SELECT EMP.ENOM" / "FROM EMP" / "JOIN DEPT ON …", "int main() {" / "printf(…);" / "}": lines of code one under
+    the other make one code block (kept as typed, never a list with « ; » added, never titles)."""
+    from .clean import CODE_LINE, CODE_WORDS, is_code_or_formula
+
+    out: list[dict] = []
+    i = 0
+    while i < len(items):
+        j = i
+        while (j < len(items) and items[j].get("type") in ("paragraph", "list", "heading", "numcand") and not items[j].get("special")
+               and not items[j].get("hidden") and not items[j].get("_explicit") and len(items[j].get("text", "")) < 160
+               and is_code_or_formula(items[j].get("_full") or items[j].get("text", ""))):
+            j += 1
+        run = items[i:j]
+        if len(run) >= 2 and any(CODE_WORDS.match(t) or CODE_LINE.match(t) for t in (x.get("_full") or x.get("text", "") for x in run)):
+            out.append({"type": "code", "text": "\n".join(x.get("_full") or x.get("text", "") for x in run), "_src": run[0].get("_src")})
+            i = j
+            continue
+        out.append(items[i])
+        i += 1
+    return out
 
 # --- main ------------------------------------------------------------------
 
@@ -151,6 +321,7 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
     from .cover_info import extract as cover_fields
 
     _unflatten_styles(raws)
+    _unspace_titles(raws)
     cover, old_cover = cover_fields(raws)  # the student's own cover page: read, then kept hidden
     stats["cover_lines"] = len(old_cover)
 
@@ -208,6 +379,8 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
             skip_toc = True
             stats["toc_lines"] += 1
             dropped.append(idx)
+            if _PLAN_TITLE.match(text):
+                stats["plan_title_at"] = idx  # "Sommaire": what follows may be a plan typed without page numbers
             continue
         if skip_toc:
             # a typed list of figures often has no page numbers: "Figure 1 : Architecture générale"
@@ -226,16 +399,28 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
             continue
         items.append({**_classify_text(r, nxt, base), "_src": idx})
 
+    _join_chapter_titles(items)
     items = _drop_typed_plan(items, dropped, stats)
+    if "plan_title_at" in stats:
+        # the few short lines before a "Sommaire" are the document's own title page: kept aside like an old cover
+        # (Paginya makes the cover), its first line gives the title
+        own = [it for it in items if not it.get("hidden") and it.get("_src") is not None and it["_src"] < stats["plan_title_at"]]
+        if own and len(own) <= 12 and sum(len(it.get("text", "").split()) for it in own) <= 150 and not any(it.get("special") for it in own):
+            for it in own:
+                it["hidden"] = True
+            stats["own_cover_title"] = next((it["text"] for it in own if it.get("text")), "")
     items = _text_tables(items)
     _announced_chapters(items)
+    items = _code_runs(items)
     items = _resolve_numbered(items)
     _join_cut_titles(items)
+    items = _box_tables(items)
+    stats["labels"] = _repeated_labels(items)
     _assign_levels(items)
     _roles_in_sections(items)
     items, stats["captions_moved"] = _fix_caption_positions(items)
 
-    traced = {it["_src"]: it for it in items if "_src" in it}
+    traced = {it["_src"]: it for it in items if it.get("_src") is not None}
     from .clean import unmarked_lists
 
     stats["lists"] = unmarked_lists(items)  # before the model: it must not turn these lines into headings
@@ -247,6 +432,7 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
         stats["ml_fixes"] = ml.refine(raws, full, base, float(m.p.get("threshold", 0.9)) if m else 0.9)
     from .clean import clean
 
+    stats["labels"] += _repeated_labels(items)  # the model may have made more of them titles
     stats.update(clean(items))
     stats["not_titles"] = _not_titles(items)
     stats["typed_lists"] = sum(1 for it in items if it.pop("_typed", False))
@@ -264,7 +450,7 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
         every = " ".join(b.get("text", "") for b in blocks)
         if (cover and cover.get("header_fr")) or len(MATRICULE_RE.findall(every)) >= 2 or re.search(r"(?i)\b(groupe\s*(n°|no)?\s*\d|membres du groupe)", every):
             meta["kind"] = "expose" if meta["words"] < 6000 else "rapport"
-    meta["title"] = cover.get("title") or _guess_title([b for b in blocks if not b.get("hidden")])
+    meta["title"] = cover.get("title") or stats.get("own_cover_title") or _guess_title([b for b in blocks if not b.get("hidden")])
     if cover:
         meta["cover"] = cover
     if stats.get("typed_plan"):
@@ -278,6 +464,7 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
         it.pop("_full", None)
         it.pop("_nomark", None)
         it.pop("_explicit", None)
+        it.pop("_ranked", None)
     return out
 
 
@@ -322,11 +509,13 @@ def _drop_typed_plan(items: list[dict], dropped: list[int], stats: dict) -> list
     for n, start in enumerate(visible[:25]):
         # at the very start of the text, or right under a "Plan" / "Sommaire" title
         after_title = n > 0 and _PLAN_TITLE.match(items[visible[n - 1]].get("text", "")) and len(items[visible[n - 1]].get("text", "")) < 40
+        # or right under a "Sommaire" already set aside (the cover can come first, whatever its length)
+        after_title = after_title or (items[start].get("_src") is not None and 0 < items[start]["_src"] - stats.get("plan_title_at", -9) <= 2)
         if n > 3 and not after_title and not _PLAN_TITLE.match(items[start].get("text", "")):
             continue
         if items[start].get("type") not in ("heading", "paragraph", "list", "numcand") or len(items[start].get("text", "")) > 160:
             continue
-        if any(items[k].get("type") == "paragraph" and len(items[k].get("text", "")) > 160 for k in visible if k < start):
+        if not after_title and any(items[k].get("type") == "paragraph" and len(items[k].get("text", "")) > 160 for k in visible if k < start):
             break  # a plan comes before the text, never after a real paragraph
         seen: list[str] = []
         end = start
@@ -336,13 +525,14 @@ def _drop_typed_plan(items: list[dict], dropped: list[int], stats: dict) -> list
             if it.get("hidden") or it.get("type") not in ("heading", "paragraph", "list", "numcand") or len(text) > 160:
                 break
             words = len(text.split())
-            if it.get("type") in ("paragraph", "list") and (re.search(r"[.:;!?]$", text.rstrip()) or words > (24 if it["type"] == "list" else 10) or text.count(",") > 2):
+            listing = len(re.findall(r"(?:^|[·|•;]\s*)\d{1,2}\.\d{1,2}\s+\S", text)) >= 2  # "1.1 Énigmes · 1.2 Têtes & pattes · 1.3 Suites"
+            if it.get("type") in ("paragraph", "list") and not listing and (re.search(r"[.:;!?]$", text.rstrip()) or words > (24 if it["type"] == "list" else 10) or text.count(",") > 2):
                 break  # a sentence ("Ce rapport s'articule autour de trois chapitres :") is text, never a line of a plan
             key = _plan_key(text)
             nxt = next((x for x in items[end + 1:] if not x.get("hidden")), None)
             if (key and key in seen) or (nxt and nxt.get("type") == "paragraph" and len(nxt.get("text", "")) > 160):
                 break  # the same title again, or a title followed by its text: the document has begun
-            if key:
+            if key and not listing:
                 seen.append(key)
             end += 1
         short = lambda k: " ".join(k.split()[:2])
@@ -350,7 +540,8 @@ def _drop_typed_plan(items: list[dict], dropped: list[int], stats: dict) -> list
         found = sum(1 for k in seen if short(k) in later)
         # the lines of a plan are numbered ("I.", "1-", "A.") or are the Introduction and the Conclusion
         bare = lambda t: _PLAN_TITLE.sub("", t).lstrip("★➢•*- ")
-        labelled = sum(1 for it in items[start:end] if it.get("type") in ("numcand", "list") or it.get("special")
+        labelled = sum(1 for it in items[start:end] if it.get("type") in ("numcand", "list") or it.get("special") or CHAPITRE.match(bare(it.get("text", "")))
+                       or len(re.findall(r"\d{1,2}\.\d{1,2}\s+\S", it.get("text", ""))) >= 2
                        or re.match(r"^\s*([IVXLivxl]+|\d+(\.\d+)*|[A-Ha-h])\s*[.\-–—)_/:]", bare(it.get("text", "")))
                        or re.match(r"(?i)^(introduction|conclusion|bibliographie|r[ée]f[ée]rences|sources|annexes?)\b", bare(it.get("text", ""))))
         # right after a plan the document starts again from its beginning: its Introduction or its first title
@@ -392,7 +583,12 @@ def _not_titles(items: list[dict]) -> int:
         # "[Emplacement de la figure]", "[Insérer le tableau ici]": a note left in the text, never a title;
         # "Nom : MENDOGO", "Statut : Étudiante": a filled field of a form (annexes), never a title either
         # "UNIVERSITÉ D'EBOLOWA", "-----FACULTÉ DES SCIENCES": the header of a model cover in the annexes, not a title
-        if (text[:1] in "«“\"" and len(text) > 40) or (text[:1] == "[" and text[-1:] == "]") or FORM_FIELD.match(text) or OFFICIAL_LINE.match(text) or PEOPLE_LINE.match(text) or REFERENCE.match(text) or BIBLIO.search(text) or len(text) > 160 \
+        from .clean import CODE_WORDS
+
+        # "S = A·B", "Mémoire adressable = 2n emplacements", "EMP(ENO, ENOM, SAL)", "FROM EMP": a formula or code, never a title
+        formula = (re.search(r"\S\s*[=≤≥≠⇒⊕]\s*\S", text) or CODE_WORDS.match(text) or re.match(r"^[A-Z_]{2,}\s*\([^)]*,[^)]*\)\s*$", text)
+                   or re.search(r"\d+\s*,\s*\d+\s*,\s*\d+", text))  # "Compléter : 2, 6, 12, 20, 30, ?"
+        if formula or (text[:1] in "«“\"" and len(text) > 40) or (text[:1] == "[" and text[-1:] == "]") or FORM_FIELD.match(text) or OFFICIAL_LINE.match(text) or PEOPLE_LINE.match(text) or REFERENCE.match(text) or BIBLIO.search(text) or len(text) > 160 \
                 or (len(text) > 100 and ENDS_SENTENCE.search(text)):
             for k in ("level", "number", "part", "kind", "special", "numbered"):
                 it.pop(k, None)
@@ -659,6 +855,9 @@ def _resolve_numbered(items: list[dict]) -> list[dict]:
             next_c = False  # "2. Matériel utilisé" then bullets: a title and its list, not a numbered list
         # after a *bullet* list, a short "2. Xxx" followed by text is the next section, not a list item
         after_bullets = i > 0 and items[i - 1].get("type") == "list" and not items[i - 1].get("ordered")
+        if it["text"].rstrip().endswith(":") and i + 1 < len(items) and items[i + 1].get("type") in ("code", "table"):
+            out.append({"type": "paragraph", "text": it["text"], "_src": it.get("_src")})  # "1. Noms des employés :" + its query
+            continue
         if it["title_like"] and not next_c and (not prev_c or after_bullets or it.get("bold") or it.get("nodot")):
             out.append({"type": "heading", "kind": "dec1", "text": it["text"], "_src": it.get("_src")})
         else:
@@ -672,7 +871,15 @@ def _assign_levels(items: list[dict]) -> None:
     So "1.1" right under "CHAPITRE III" gets the same level as "I." under
     "CHAPITRE I", whatever numbering style each chapter uses.
     """
-    rank = {k: i for i, k in enumerate(RANK)}
+    order = RANK
+    if _sections_rank_first(items):
+        order = [k for k in RANK if k not in _HEURISTIC_KINDS] + list(_HEURISTIC_KINDS)
+    kinds = [it.get("kind") for it in items if it.get("type") == "heading"]
+    if "dec2" in kinds and "dec1" in kinds and kinds.index("dec1") > kinds.index("dec2"):
+        # "1.1 —", "1.2 —" as sections, and "1." only inside them: there "1." is a step of a section, under it
+        order = [k for k in order if k != "dec1"]
+        order.insert(order.index("dec4") + 1, "dec1")
+    rank = {k: i for i, k in enumerate(order)}
     stack: list[int] = []
     # Without chapters or parts (an exposé: Introduction, I., II., Conclusion), "I." is a sibling of the
     # Introduction, not a section under it
@@ -685,7 +892,9 @@ def _assign_levels(items: list[dict]) -> None:
             stack = [rank["chapitre"]] if chapters else []
             it["level"] = 1
             continue
-        r = rank.get(it["kind"], len(RANK))
+        if order is not RANK and it["kind"] in _HEURISTIC_KINDS:
+            it["_ranked"] = True  # its level comes from the numbered sections around it (the model keeps it)
+        r = rank.get(it["kind"], len(order))
         while stack and stack[-1] >= r:
             stack.pop()
         stack.append(r)

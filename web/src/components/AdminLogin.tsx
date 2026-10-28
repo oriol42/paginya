@@ -8,6 +8,7 @@ import { GoogleButton } from "./GoogleButton";
 import { Icon } from "./Icon";
 import { Logo } from "./Logo";
 import { SupportInbox } from "./SupportInbox";
+import { LearnStats } from "./LearnStats";
 import { UsageStats } from "./UsageStats";
 
 const EMAIL_KEY = "propre:admin-email";
@@ -112,7 +113,7 @@ export function AdminLogin() {
           <Icon name="badge-check" size={16} className="text-board" /> Sur cet appareil, tes documents se téléchargent sans payer, sans limite (30 jours).
         </p>
         <div className={tab === "support" ? "" : "hidden"}><SupportInbox onWaiting={setWaiting} /></div>
-        {tab === "stats" && <div className="paper rounded-[2px] p-5 sm:p-7"><FunnelStats /><UsageStats /></div>}
+        {tab === "stats" && <div className="paper rounded-[2px] p-5 sm:p-7"><FunnelStats /><UsageStats /><LearnStats /></div>}
       </main>
     </div>
   );

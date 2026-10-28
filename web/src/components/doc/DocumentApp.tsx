@@ -472,6 +472,8 @@ export function DocumentApp() {
           formats={doc.convert ? [doc.convert] : ["pdf", "docx"]}
           sharePath={`/document?doc=${doc.id}`}
           missing={missing}
+          fileName={doc.meta.cover?.title || doc.meta.title || ""}
+          help={doc.convert ? undefined : Boolean(doc.help)}
           onStatus={onStatus}
           onClose={() => setPayOpen(false)}
         />

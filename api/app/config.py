@@ -41,3 +41,7 @@ ACCOUNT_SECRET = os.getenv("ACCOUNT_SECRET", "") or ADMIN_SECRET
 
 # Paid orders stay downloadable/editable this long (decision: 7 days).
 ORDER_VALIDITY_DAYS = 7
+
+# Learning from paid documents each night (app/learn.py): on by default on the production server (its own disk keeps
+# the examples between nights), off in development and tests.
+LEARN_NIGHTLY = os.getenv("LEARN_NIGHTLY", "1" if os.getenv("DATABASE_URL", "").startswith("postgres") else "0") == "1"

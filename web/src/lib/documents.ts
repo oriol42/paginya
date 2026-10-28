@@ -126,6 +126,8 @@ export type DocView = {
   confirmed: boolean;
   /** Set when the order only changes the format: the file it will become. */
   convert?: "pdf" | "docx" | null;
+  /** The customer agreed to let the team keep the file to improve Paginya. */
+  help?: boolean;
 };
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
