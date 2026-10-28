@@ -372,6 +372,6 @@ Reste, par ordre d'intérêt :
 ## VPS Contabo (28/10/2026) ✅ API Paginya
 - **Serveur** : Contabo Cloud VPS 4 (4 vCPU, 8 Go, 100 Go SSD, UE), 6,60 $/mois au mois. IP `31.220.85.180`, Ubuntu 24.04, accès root par clé SSH seulement (`~/.ssh/id_ed25519`), pare-feu ufw (22/80/443), fail2ban, swap 2 Go.
 - **API** : https://31-220-85-180.sslip.io (Caddy, HTTPS automatique ; à remplacer par un vrai domaine). Conteneur Docker `paginya-api`, clés dans `/opt/paginya/.env` (copiées de Render), fichiers dans `/opt/paginya/data`.
-- **Mettre à jour l'API** : `serveur/deploy_vps.sh`. Render n'est plus utilisé pour Paginya (son push le reconstruit encore : le suspendre).
+- **Mettre à jour l'API** : automatique à chaque push qui touche `api/` (workflow `.github/workflows/api.yml` → `/opt/paginya/deploy.sh` sur le VPS : récupère main, reconstruit, relance, remet l'ancienne version si `/health` ne répond pas). À la main : `serveur/deploy_vps.sh`. Clés : `VPS_DEPLOY_KEY` (ne peut lancer que ce script) et `VPS_HOST_KEY` en secrets GitHub ; clé de lecture seule « VPS Contabo (lecture) » sur le dépôt.
 - Test du 28/10 : rapport de test mis en page en 14 s (24 s sur Render). Paginya au repos : 130 Mo de RAM, 7 Go libres → place pour Affichya (même avec STUDIO=1, ~1 Go).
 - Fait le 28/10 : webhook Fapshi (service Paginya-Affichya) → `https://31-220-85-180.sslip.io/webhooks/fapshi` (le VPS renvoie ceux d'Affichya vers Render via `FAPSHI_FORWARD`) ; `paginya-api` suspendu sur Render ; keepalive Cloudflare pointé sur le VPS. Reste : nom de domaine.

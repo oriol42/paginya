@@ -1,0 +1,22 @@
+# Met à jour l'API sur le VPS Contabo à chaque push qui touche api/.
+# La clé VPS_DEPLOY_KEY ne peut lancer que /opt/paginya/deploy.sh sur le serveur (rien d'autre).
+name: API
+on:
+  push:
+    branches: [main]
+    paths: ["api/**", ".github/workflows/api.yml"]
+  workflow_dispatch:
+concurrency: { group: api, cancel-in-progress: false }
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Déployer sur le VPS
+        run: |
+          install -m 600 /dev/null key && printf '%s\n' "$KEY" > key
+          echo "31.220.85.180 $HOSTKEY" > known_hosts
+          ssh -i key -o UserKnownHostsFile=known_hosts root@31.220.85.180
+        env:
+          KEY: ${{ secrets.VPS_DEPLOY_KEY }}
+          HOSTKEY: ${{ secrets.VPS_HOST_KEY }}
