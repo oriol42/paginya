@@ -383,7 +383,7 @@ def _label_column(lines: list[str], i: int) -> tuple[list[str], int] | None:
     return [f"{a} {b}" for a, b in zip(labels, items)], j
 
 
-def pdf_cleanup(text: str) -> str:
+def pdf_cleanup(text: str, keep_toc: bool = False) -> str:
     """What a PDF adds around the text: running headers/footers, page numbers, the old typed table of
     contents (dot leaders), numbering labels put on their own line. Pages are separated by form feeds."""
     pages = [p.split("\n") for p in text.split("\f")]
@@ -418,6 +418,8 @@ def pdf_cleanup(text: str) -> str:
             j -= 1
         if j >= 0 and j not in drop and len(out[j]) < 120 and not _LEADERS.search(out[j]) and (j - 1 in drop or _LABEL.match(out[j].strip()) or re.search(r"\b(sommaire|table des mati)", out[j], re.I)):
             drop.add(j)
+    if keep_toc:
+        drop = set()  # a conversion keeps the author's sommaire (detect sets it apart, the conversion puts it back)
     lines = [ln for i, ln in enumerate(out) if i not in drop]
     # 3. "2." or "-" alone on its line, the title or the item on the next one
     merged: list[str] = []
@@ -468,7 +470,7 @@ def _pdftotext(path: Path) -> str:
     return out.stdout.decode("utf-8", "replace")
 
 
-def from_pdf(path: Path, images_dir: Path | None = None) -> list[Raw]:
+def from_pdf(path: Path, images_dir: Path | None = None, keep_toc: bool = False) -> list[Raw]:
     """images_dir given: the pictures, diagrams and ruled tables of the PDF come back too (pdf_layout)."""
     try:
         raw = _pdftotext(path)
@@ -486,7 +488,7 @@ def from_pdf(path: Path, images_dir: Path | None = None) -> list[Raw]:
         pages, tables = pdf_layout.layout(path, raw.split("\f"), images_dir)
         raw = "\f".join(pages)
     text, _ = fix_shifted_fonts(raw)
-    text = pdf_cleanup(text)
+    text = pdf_cleanup(text, keep_toc)
     if len(text.strip()) < 20:
         try:
             text = _ocr_pdf(path)  # a scanned document: read its pages like photos

@@ -7,7 +7,7 @@ import { docs } from "@/lib/documents";
 import { Icon } from "../Icon";
 import { Logo } from "../Logo";
 
-/** Word -> PDF (PDF -> Word is not sold yet): pick the file, then the usual preview and payment on /document. */
+/** Word -> PDF (the file as it is) and PDF -> Word (to edit): pick the file, then the usual preview and payment on /document. */
 export function ConvertScreen() {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
@@ -18,14 +18,15 @@ export function ConvertScreen() {
   async function pick(file: File | undefined) {
     if (!file || busy) return;
     const name = file.name.toLowerCase();
-    if (!name.endsWith(".docx")) {
-      setError("Choisis un fichier Word (.docx). La conversion PDF vers Word arrive bientôt.");
+    const pdf = name.endsWith(".pdf");
+    if (!pdf && !name.endsWith(".docx")) {
+      setError("Choisis un fichier Word (.docx) ou PDF.");
       return;
     }
     setError("");
     setBusy("Envoi du fichier… 0 %");
     try {
-      const view = await docs.convert(file, (sent) => setBusy(sent < 1 ? `Envoi du fichier… ${Math.round(sent * 100)} %` : "Lecture du fichier Word…"));
+      const view = await docs.convert(file, (sent) => setBusy(sent < 1 ? `Envoi du fichier… ${Math.round(sent * 100)} %` : pdf ? "Lecture du PDF…" : "Lecture du fichier Word…"));
       router.push(`/document?doc=${view.id}`);
     } catch (e) {
       setError((e as Error).message);
@@ -46,7 +47,8 @@ export function ConvertScreen() {
       <main className="mx-auto w-full max-w-2xl px-5 pt-8 pb-24">
         <h1 className="font-display text-[2.6rem] leading-[0.95] font-black uppercase">Convertir un fichier</h1>
         <p className="mt-3 max-w-prose text-[16px] text-ink/70">
-          Ton Word devient un PDF prêt à imprimer ou à envoyer, tel qu&apos;il est. Tu vois le résultat avant de payer.
+          Ton Word devient un PDF prêt à imprimer ou à envoyer, tel qu&apos;il est. Ton PDF devient un Word que tu peux
+          modifier : texte, titres, listes, tableaux et images. Tu vois le résultat avant de payer.
         </p>
         <button
           type="button"
@@ -59,18 +61,18 @@ export function ConvertScreen() {
         >
           <Icon name={busy ? "loader-circle" : "refresh-cw"} size={44} stroke={1.5} className={`text-board ${busy ? "animate-spin" : ""}`} />
           <span className="mt-4 font-display text-[26px] leading-none font-black uppercase">{busy || "Choisis ton fichier"}</span>
-          <span className="mt-2 text-[14px] text-ink/60">Word (.docx) · 15 Mo max</span>
+          <span className="mt-2 text-[14px] text-ink/60">Word (.docx) ou PDF · 15 Mo max</span>
           <input
             ref={input}
             type="file"
-            accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             className="hidden"
             onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }}
           />
         </button>
         {error && <p className="mt-3 flex gap-2 text-[15px] text-pin"><Icon name="triangle-alert" size={18} className="mt-0.5" />{error}</p>}
         <p className="mt-6 text-[14px] text-ink/60">
-          PDF vers Word : bientôt disponible.
+          PDF scanné (photos de pages) : le texte est lu automatiquement, relis-le avant de payer.
         </p>
       </main>
     </div>

@@ -907,8 +907,12 @@ def build_docx(document: dict, images_dir: Path) -> bytes:
     blocks = [x for x in blocks if not (x.get("type") == "title" and any(x is t for t in titles))]
     if opts.get("letterhead") and document.get("letterhead") and not has_cover:
         b.letterhead(_letterhead_data(document["letterhead"]))
+    own_cover = document.get("cover_png")  # a PDF turned into Word: its own first page, kept as it looks
     if has_cover:
         b.cover(cover_render.svg_to_png(document["cover_svg"], 200))
+        started = True
+    elif own_cover and (images_dir / own_cover).is_file():
+        b.cover((images_dir / own_cover).read_bytes())
         started = True
     elif titles:
         for t in titles:

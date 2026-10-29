@@ -289,6 +289,31 @@ def test_a_conversion_changes_the_format_and_nothing_else(client, tmp_path):
     assert client.post("/documents", json={"filename": "c.txt", "data": data, "convert": True}).status_code == 400
 
 
+def test_pdf_becomes_an_editable_word_with_its_sommaire(client, tmp_path):
+    """PDF -> Word: the text, titles and the author's own sommaire come back in a Word file; nothing is added."""
+    import base64
+    import subprocess
+    from docx import Document
+
+    long = "Cette structure occupe une place importante dans le tissu économique de la région du Centre. " * 4
+    d = Document()
+    d.add_paragraph("SOMMAIRE")
+    d.add_paragraph("INTRODUCTION ......................................... 1")
+    d.add_paragraph("CHAPITRE I : PRÉSENTATION ............................. 2")
+    d.add_page_break()
+    for t in ("INTRODUCTION", "CHAPITRE I : PRÉSENTATION"):
+        d.add_paragraph().add_run(t).bold = True
+        d.add_paragraph(long)
+    d.save(tmp_path / "p.docx")
+    subprocess.run(["soffice", "--headless", "--convert-to", "pdf", "--outdir", str(tmp_path), str(tmp_path / "p.docx")], capture_output=True, timeout=120)
+    data = base64.b64encode((tmp_path / "p.pdf").read_bytes()).decode()
+    view = client.post("/documents", json={"filename": "p.pdf", "data": data, "convert": True}).json()
+    assert view["convert"] == "docx" and view["confirmed"] is True
+    texts = [b.get("text", "") for b in view["blocks"]]
+    assert any(t.startswith("CHAPITRE I : PRÉSENTATION") and "2" in t for t in texts)  # the old sommaire line is kept
+    assert any(b["type"] == "heading" and b["text"].startswith("CHAPITRE I") for b in view["blocks"])
+
+
 def test_numbered_titles_keep_one_level_per_numbering():
     """"I) / 1) / 2)": the items under a roman title all sit one level below it (the model must not move them).
     Without chapters, "I)" is a sibling of the Introduction (level 1), as in an exposé."""

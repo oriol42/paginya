@@ -24,7 +24,7 @@ export function Footer() {
           <Link href="/lettre" className="hover:text-white">Lettre / demande</Link>
           <Link href="/confidentialite" className="hover:text-white">Confidentialité</Link>
           <Link href="/epreuve" className="hover:text-white">Épreuve (profs)</Link>
-          <Link href="/convertir" className="hover:text-white">Convertir en PDF</Link>
+          <Link href="/convertir" className="hover:text-white">Convertir Word / PDF</Link>
           <Link href="/mentions-legales" className="hover:text-white">Mentions légales</Link>
           <Link href="/aide" className="hover:text-white">Aide · nous écrire</Link>
           <Link href="/compte" className="hover:text-white">Mon compte</Link>

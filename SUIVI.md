@@ -400,4 +400,5 @@ Document client (cours ENSPD, PDF WeasyPrint, 43 p.) : 54 → 35 pages, sommaire
 - **Photos** : `ml/study/bench/photos.py` (photos de téléphone simulées : biais, ombre, flou, JPEG) → ~90 % des mots retrouvés, 2 s/photo.
 - Banc 184 documents : 0 échec, documents de référence inchangés (rappel 1,00, précision 0,991, niveaux 0,992).
 - **Sauvegarde** : `db.backup()` chaque nuit (SQLite → Supabase Storage `backups/`, 14 jours) si la base est locale.
-- **PDF → Word** : toujours bloqué volontairement (`CONVERTIBLE`), à décider.
+- **PDF → Word ouvert (29/10)** : `CONVERTIBLE = (.docx, .pdf)`. Word modifiable (titres en styles, listes, tableaux, images) ; la garde du PDF est gardée en image pleine page (`doc.cover_png`, `render.build_docx`) ; l'ancien sommaire tapé est gardé (`from_pdf(keep_toc=True)` + `doc_routes._with_toc_lines`). ~97 % des mots repris sur de vrais mémoires (le reste : en-têtes de page répétés). Page `/convertir` + lien depuis l'écran d'import.
+- **Base Paginya sur le VPS (29/10)** : SQLite `/opt/paginya/data/propre.sqlite3` (migration `serveur/vps_sqlite.sh`, retour : `vps_sqlite.sh retour`) ; Supabase garde l'ancienne copie ; sauvegarde chaque nuit dans Supabase Storage `backups/` (14 j). Ouverture d'un document : 1-2 s → 0,5 s (= le réseau Cameroun↔Europe).

@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import shutil
+import subprocess
 import threading
 import time
 import uuid
@@ -39,7 +40,7 @@ router = APIRouter(prefix="/documents")
 MAX_UPLOAD = 15 * 1024 * 1024
 MAX_TEXT = 1_500_000
 TIERS = ["document_court", "rapport", "memoire"]
-CONVERTIBLE = (".docx",)
+CONVERTIBLE = (".docx", ".pdf")
 log = logging.getLogger("paginya.docs")
 _LAYOUT_POOL = ThreadPoolExecutor(2)
 OLD_WORD = (".doc", ".odt", ".rtf")  # opened by LibreOffice and saved as .docx on arrival
@@ -219,7 +220,7 @@ def create(body: DocIn) -> dict:
                 early_layout = _LAYOUT_POOL.submit(office.layout, src, folder / "layout.json", folder / "before" / "before.pdf")
                 raws = from_docx(src, folder / "images")
             elif ext == ".pdf":
-                raws = from_pdf(src, folder / "images")
+                raws = from_pdf(src, folder / "images", keep_toc=body.convert)
             elif ext in (".txt", ".md", ".markdown"):
                 content = raw_bytes.decode("utf-8", "replace")
                 raws = from_markdown(content) if ext != ".txt" or looks_like_markdown(content) else from_text(content)
@@ -290,14 +291,23 @@ def create(body: DocIn) -> dict:
     # A file formatted by hand (titles in bold, no Word styles) is rebuilt: keeping it would keep its disorder.
     if body.convert:
         ext = Path(body.filename or "").suffix.lower()
-        # PDF -> Word is written below but not sold yet: read from the text alone it loses the pictures and the cover
         if ext not in CONVERTIBLE:
             _discard(tmp_id)
-            raise HTTPException(400, "Pour l'instant, la conversion prend un fichier Word (.docx) et en fait un PDF")
+            raise HTTPException(400, "La conversion prend un fichier Word (.docx) ou PDF")
         doc["confirmed"] = True  # nothing to choose: the file is shown converted straight away
         if ext == ".docx":  # the Word file exactly as it is, printed to PDF
             doc.update(convert="pdf", mode="keep", plan={"cover": "keep", "toc": "keep", "numbers": "keep"})
-        else:  # the text, titles and tables of the PDF in a plain Word file, with no page added
+        else:  # the text, titles, lists, tables and pictures of the PDF in a Word file to edit, with no page added
+            if any(b.get("hidden") for b in result["blocks"]) or result["meta"].get("cover"):
+                # its own cover (logos, frames, layout) can't be rebuilt from its words: kept as a picture of the page
+                try:
+                    (folder / "images").mkdir(parents=True, exist_ok=True)
+                    subprocess.run(["pdftoppm", "-r", "150", "-png", "-f", "1", "-l", "1", "-singlefile", str(src), str(folder / "images" / "own-cover")],
+                                   capture_output=True, timeout=60, check=True)
+                    doc["cover_png"] = "own-cover.png"
+                except (subprocess.SubprocessError, FileNotFoundError):
+                    pass
+            doc["blocks"] = _with_toc_lines(doc["blocks"], trace, raws)  # a conversion keeps the author's own sommaire
             doc.pop("mode", None)
             doc["meta"]["kind"] = "document"
             doc.update(convert="docx", options={k: False for k in DEFAULT_OPTIONS}, style={"theme": "simple", "color": "#0E9F6E"},
@@ -309,6 +319,29 @@ def create(body: DocIn) -> dict:
     _persist_inputs(order_id)
     learn.snapshot_later(order_id, raws, result, trace, doc_dir(order_id))
     return view(db.get_order(order_id))
+
+
+def _with_toc_lines(blocks: list[dict], trace: dict, raws: list) -> list[dict]:
+    """The lines Paginya sets aside when it rebuilds a document (a sommaire typed by hand, a list of figures), put back
+    where they were, as plain text: a conversion changes the format, never the content."""
+    pos = {b["id"]: k for k, b in enumerate(blocks)}
+    before: dict[int, list[dict]] = {}
+    pending: list[dict] = []
+    for i in sorted(trace):
+        it = trace[i]
+        if it.get("type") == "toc" and i < len(raws) and raws[i].text.strip():
+            pending.append({"type": "paragraph", "text": raws[i].text.strip()})
+        elif pending and it.get("id") in pos:
+            before.setdefault(pos[it["id"]], []).extend(pending)
+            pending = []
+    out = []
+    for k, b in enumerate(blocks):
+        out.extend(before.get(k, []))
+        out.append(b)
+    out.extend(pending)
+    for n, b in enumerate(out, 1):
+        b["id"] = n
+    return out
 
 
 @router.get("/{order_id}")
