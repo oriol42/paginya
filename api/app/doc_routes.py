@@ -41,6 +41,7 @@ MAX_TEXT = 1_500_000
 TIERS = ["document_court", "rapport", "memoire"]
 CONVERTIBLE = (".docx",)
 log = logging.getLogger("paginya.docs")
+_LAYOUT_POOL = ThreadPoolExecutor(2)
 OLD_WORD = (".doc", ".odt", ".rtf")  # opened by LibreOffice and saved as .docx on arrival
 BLOCK_TYPES = {"heading", "paragraph", "list", "table", "figure", "caption", "source", "quote", "code", "title"}
 BLOCK_KEYS = {"id", "type", "text", "level", "ordered", "rows", "image", "of", "special", "role",
@@ -187,6 +188,7 @@ async def upload(request: Request, filename: str, convert: bool = False) -> dict
 @router.post("")
 def create(body: DocIn) -> dict:
     tmp_id = None
+    early_layout = None
     if body.data and body.filename:
         try:
             raw_bytes = base64.b64decode(body.data, validate=True)
@@ -212,6 +214,9 @@ def create(body: DocIn) -> dict:
                 finally:
                     upload.unlink(missing_ok=True)
             if ext == ".docx":
+                # LibreOffice lays the original out (the "Avant" view, its cover page) while we read it: ~half the wait on big files
+                (folder / "before").mkdir(exist_ok=True)
+                early_layout = _LAYOUT_POOL.submit(office.layout, src, folder / "layout.json", folder / "before" / "before.pdf")
                 raws = from_docx(src, folder / "images")
             elif ext == ".pdf":
                 raws = from_pdf(src, folder / "images")
@@ -255,7 +260,7 @@ def create(body: DocIn) -> dict:
         (folder / "before").mkdir(exist_ok=True)
         try:
             # the real pages, as LibreOffice lays the file out (its PDF is the "Avant" view, made once)
-            existing = keep.inspect(src, office.layout(src, folder / "layout.json", folder / "before" / "before.pdf"))
+            existing = keep.inspect(src, early_layout.result() if early_layout else office.layout(src, folder / "layout.json", folder / "before" / "before.pdf"))
         except Exception:  # an odd file python-docx cannot read: the normal flow still works
             existing = None
         if existing:

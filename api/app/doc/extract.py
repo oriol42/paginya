@@ -6,6 +6,7 @@ detector then decides what each paragraph *is*.
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import uuid
@@ -13,6 +14,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from docx.enum.style import WD_STYLE_TYPE
 from docx import Document as DocxDocument
 from docx.oxml.ns import qn
 from docx.table import Table
@@ -130,8 +132,14 @@ def from_text(text: str, source: str = "text") -> list[Raw]:
             prev = buf[-1].strip()
             # PDF-style hard wraps: previous line long, unfinished, next starts lowercase.
             # A title in capitals at the top of a page, typed on several lines, is one title.
-            wrapped = source == "pdf" and (_cut(prev, line.strip()) or page and len(buf) < 4 and _caps(prev) and _caps(line.strip()) and not _STARTS_BLOCK.match(line.strip())
-                                          and sum(len(x) for x in buf) + len(line) < 100)
+            nxt = line.strip()
+            wrapped = source == "pdf" and (_cut(prev, nxt) or page and len(buf) < 4 and _caps(prev) and _caps(nxt) and not _STARTS_BLOCK.match(nxt)
+                                          and sum(len(x) for x in buf) + len(line) < 100
+                                          # "… pendant une période de trois" / "mois. Selon…": a short last line that does not end
+                                          # the sentence, then a lowercase start (a Word file converted from a PDF, printed again)
+                                          # (or a narrow column: "Toutefois, ma subjectivité" / "n’est-elle pas…")
+                                          or nxt[:1].islower() and not _END.search(prev) and sum(len(x) for x in buf) > 12
+                                          and not _STARTS_BLOCK.match(nxt) and not pdf_layout.MARK.match(nxt))
             if wrapped:
                 buf.append(line)
                 continue
@@ -504,7 +512,7 @@ def from_pdf(path: Path, images_dir: Path | None = None) -> list[Raw]:
     return out
 
 
-OCR_MAX_PAGES = 25  # the free server reads ~1 page every few seconds
+OCR_MAX_PAGES = 150  # ~2 s a page on one core, four at a time on the server
 REOCR_MAX_PAGES = 8  # reading a scan again is only worth the wait on short documents (exam papers…)
 _WORD = re.compile(r"^[(«\"'“]*([A-Za-zÀ-ÖØ-öø-ÿŒœ'’\-]+|\d+([.,:/h]\d+)*%?|[A-Za-zÀ-ÿ]\)|\d+[°)]?|[-–•*:;!?=+/])[)»\"'”.,;:!?]*$")
 
@@ -532,18 +540,30 @@ def _ocr_pdf(path: Path, max_pages: int = OCR_MAX_PAGES) -> str:
 
     from .scan import ScanError, ocr_local
 
+    from concurrent.futures import ThreadPoolExecutor
+
+    n = min(_page_count(path), max_pages)
+    workers = max(1, min(os.cpu_count() or 1, 4))
     with tempfile.TemporaryDirectory() as tmp:
-        try:
-            subprocess.run(["pdftoppm", "-r", "200", "-gray", "-jpeg", "-l", str(max_pages), str(path), f"{tmp}/p"],
-                           capture_output=True, timeout=300, check=True)
-        except (subprocess.SubprocessError, FileNotFoundError) as exc:
-            raise ExtractError("Impossible de lire ce PDF : il est peut-être abîmé. Réessaie avec le fichier Word.") from exc
-        pages = []
-        for jpg in sorted(Path(tmp).glob("p-*.jpg")):
+        # pages drawn and read four at a time (each Tesseract on one core): a 100-page scan in about a minute
+        chunks = [(a, min(n, a + (n + workers - 1) // workers - 1)) for a in range(1, n + 1, max(1, (n + workers - 1) // workers))]
+
+        def draw(chunk: tuple[int, int]) -> None:
+            subprocess.run(["pdftoppm", "-r", "200", "-gray", "-jpeg", "-f", str(chunk[0]), "-l", str(chunk[1]), str(path), f"{tmp}/p{chunk[0]:04d}"],
+                           capture_output=True, timeout=600, check=True)
+
+        def read(jpg: Path) -> str:
             try:
-                pages.append(ocr_local(jpg.read_bytes())[0])
+                return ocr_local(jpg.read_bytes())[0]
             except ScanError:
-                continue
+                return ""
+
+        with ThreadPoolExecutor(workers) as pool:
+            try:
+                list(pool.map(draw, chunks))
+            except (subprocess.SubprocessError, FileNotFoundError) as exc:
+                raise ExtractError("Impossible de lire ce PDF : il est peut-être abîmé. Réessaie avec le fichier Word.") from exc
+            pages = list(pool.map(read, sorted(Path(tmp).glob("p*.jpg"))))
     text = "\n\n".join(p for p in pages if p.strip())
     if len(text.strip()) < 20:
         raise ExtractError("Ce PDF ne contient pas de texte lisible. Prends plutôt tes pages en photo, bien à plat.")
@@ -633,8 +653,24 @@ def _text_with_math(p_el, images_dir: Path) -> str:
     return "".join(out)
 
 
+def _style_of(p: Paragraph):
+    """The paragraph's style, found through a table made once per document (p.style searches every style of the
+    document each time: ~3 ms per paragraph, more than a minute on a 300-page mémoire)."""
+    part = p.part
+    if not hasattr(part, "styles"):
+        return p.style
+    table = getattr(part, "_paginya_styles", None)
+    if table is None:
+        table = {st.style_id: st for st in part.styles}
+        table[None] = part.styles.default(WD_STYLE_TYPE.PARAGRAPH)
+        part._paginya_styles = table
+    ppr = p._p.pPr
+    sid = ppr.pStyle.val if ppr is not None and ppr.pStyle is not None else None
+    return table[sid] if sid in table else p.style
+
+
 def _paragraph(p: Paragraph, fmts: dict, images_dir: Path, doc) -> Raw:
-    style = p.style
+    style = _style_of(p)
     has_math = next(p._p.iter(*MATH_TAGS), None) is not None
     text = _text_with_math(p._p, images_dir) if has_math else p.text
     raw = Raw(text=text.strip(), style=(style.name or "").lower() if style is not None else "", source="docx")
@@ -786,6 +822,52 @@ def from_docx(path: Path, images_dir: Path) -> list[Raw]:
                 for blip in list(el.iter(qn("a:blip")))[:3]:
                     if name := _save_blip(blip, doc, images_dir):
                         out.append(Raw(image=name, source="docx"))
+    return _undo_conversion(out)
+
+
+_LONE_NUMBER = re.compile(r"^[-–(]?\s*\d{1,3}\s*[-–)]?$|^page\s+\d{1,3}(\s*(/|sur)\s*\d{1,3})?$", re.I)
+
+
+def _undo_conversion(raws: list[Raw]) -> list[Raw]:
+    """A PDF turned into Word by an online converter (or typed with Enter at the end of every line): one paragraph
+    per printed line, the page numbers and the running header typed between the pages. Glued back and cleaned."""
+    texts = [r for r in raws if r.text and not r.rows and not r.image]
+    if not texts:
+        return raws
+    # page numbers typed as text ("12", "Page 3"), and a header line repeated on every page
+    lone = [r for r in texts if _LONE_NUMBER.match(r.text.strip())]
+    from collections import Counter
+
+    repeated = Counter(r.text.strip() for r in texts if len(r.text.strip()) < 110 and not r.list_kind)
+    pages = max(1, sum(1 for r in raws if r.new_page))
+    # a header comes back on a good share of the pages, and is never a chapter or a part coming back
+    headers = {t for t, n in repeated.items() if n >= 3 and n >= 0.3 * pages and sum(1 for r in texts if r.text.strip() == t and r.new_page) * 2 >= n
+               and not re.match(r"(?i)(chapitre|chapter|partie|part)\b", t)}
+    drop = {id(r) for r in lone} if len(lone) >= 3 else set()
+    drop |= {id(r) for r in texts if r.text.strip() in headers}
+    kept, carry = [], False
+    for r in raws:
+        if id(r) in drop:
+            carry = carry or r.new_page  # the page change it carried goes to the next paragraph
+            continue
+        r.new_page, carry = r.new_page or carry, False
+        kept.append(r)
+    raws = kept
+    # hard wraps: many full lines ending without punctuation, the next one going on the sentence
+    plain = [r for r in raws if r.text and not r.rows and not r.image and not r.list_kind]
+    full = [r for r in plain if 60 <= len(r.text) <= 110 and not _END.search(r.text.rstrip())]
+    if len(plain) < 20 or len(full) < 0.25 * len(plain):
+        return raws
+    out: list[Raw] = []
+    for r in raws:
+        prev = out[-1] if out else None
+        if (prev is not None and prev.text and r.text and not r.rows and not r.image and not prev.rows and not prev.image
+                and not r.list_kind and not prev.list_kind and prev.bold == r.bold and abs((prev.size or 0) - (r.size or 0)) < 0.6
+                and prev.style == r.style and not r.new_page and r.gap <= 1 and _cut(  # gap 1: no empty line (from_docx counts the paragraph)
+                    prev.text.split("\n")[-1][-110:], r.text.strip())):
+            prev.text = prev.text.rstrip() + " " + r.text.strip()
+            continue
+        out.append(r)
     return out
 
 

@@ -279,7 +279,8 @@ def _tesseract(path: str, psm: str) -> tuple[str, float]:
     try:
         out = subprocess.run(
             ["tesseract", path, "-", "-l", "fra+eng", "--psm", psm, "tsv"],
-            capture_output=True, timeout=120, check=True,
+            # one thread: Tesseract's own threads fight each other as soon as the server is busy (5 s → 2 min)
+            capture_output=True, timeout=120, check=True, env={**os.environ, "OMP_THREAD_LIMIT": "1"},
         ).stdout.decode("utf-8", "replace")
     except FileNotFoundError as exc:
         raise OcrUnavailable("Tesseract n'est pas installé sur le serveur") from exc

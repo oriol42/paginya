@@ -392,3 +392,12 @@ Document client (cours ENSPD, PDF WeasyPrint, 43 p.) : 54 → 35 pages, sommaire
 - **Case « J'aide Paginya à s'améliorer »** (écran de téléchargement, décochée par défaut) : fichier gardé 12 mois max dans `data/learn/files/` ; page confidentialité mise à jour.
 - **Coulisses → Statistiques → Apprentissage** : dernières nuits, documents à regarder, fichiers gardés.
 - **Séance de corrections** (quand l'abonnement revient) : `serveur/learn_pull.sh` rapatrie les documents signalés dans `api/data/corpus3/`, puis banc + corrections du moteur.
+
+## Campagne de tests lourds (29/10/2026, nuit)
+- **Nouveaux documents d'erreurs humaines** : `api/ml/study/bench/human2.py` (PDF converti en Word, titres numérotés par Word, texte collé du web, tabulations, mémoire de 304 pages) → `data/corpus/hm2_*` avec plan attendu. Tous à 100 % sauf le PDF de 304 pages (précision 0,93).
+- **Corrections** : Word issu d'un PDF (une ligne = un paragraphe, numéros de page et en-tête de page tapés) recollé et nettoyé (`extract._undo_conversion`) ; titres en gras numérotés par Word = titres (niveau par `ilvl` ou « List Number 2 ») ; phrase non finie + minuscule = même paragraphe même sur ligne courte (colonnes étroites) ; titres dans un cadre en contour (« SERMENT DE PROBITÉ ») gardés en texte (`pdf_layout._banner`).
+- **Vitesse** : styles Word lus via une table par document (`extract._style_of`, `keep._style_names`) : mémoire de 300 p. 82 s → 20 s à l'import ; mise en page LibreOffice de l'original lancée pendant la lecture ; Tesseract sur un seul fil (`OMP_THREAD_LIMIT=1`) : photo 60 s/échec → 2 s ; PDF scannés lus 4 pages à la fois, jusqu'à 150 pages (avant : 25) ; analyse images/tableaux jusqu'à 700 pages (avant : 300).
+- **Photos** : `ml/study/bench/photos.py` (photos de téléphone simulées : biais, ombre, flou, JPEG) → ~90 % des mots retrouvés, 2 s/photo.
+- Banc 184 documents : 0 échec, documents de référence inchangés (rappel 1,00, précision 0,991, niveaux 0,992).
+- **Sauvegarde** : `db.backup()` chaque nuit (SQLite → Supabase Storage `backups/`, 14 jours) si la base est locale.
+- **PDF → Word** : toujours bloqué volontairement (`CONVERTIBLE`), à décider.

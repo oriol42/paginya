@@ -9,5 +9,5 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt "psycopg[binary,pool]>=3.2"
 COPY app ./app
 COPY fonts ./fonts
-ENV PROPRE_DATA_DIR=/tmp/data PROPRE_UNO_PYTHON=/usr/bin/python3 HOME=/tmp PYTHONUNBUFFERED=1
+ENV OMP_THREAD_LIMIT=1 PROPRE_DATA_DIR=/tmp/data PROPRE_UNO_PYTHON=/usr/bin/python3 HOME=/tmp PYTHONUNBUFFERED=1
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000} --workers 1 --proxy-headers --forwarded-allow-ips '*'"]

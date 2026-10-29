@@ -232,7 +232,7 @@ def _repeated_labels(items: list[dict]) -> int:
                      and not re.search(r"\d/|/\d|\bibid\b|^id\b|op\.\s?cit|\bp\.\s?\d", text, re.I))
             it.pop("kind", None)
             it.pop("level", None)
-            it.update({"type": "paragraph", **({"role": "label"} if boxed and looks else {})})
+            it.update({"type": "paragraph", **({"role": "label"} if boxed and looks else {"_repeat": True})})  # _repeat: the model leaves it
             n += 1
     return n
 
@@ -465,6 +465,7 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
         it.pop("_nomark", None)
         it.pop("_explicit", None)
         it.pop("_ranked", None)
+        it.pop("_repeat", None)
     return out
 
 
@@ -730,6 +731,11 @@ def _classify_text(r: Raw, nxt: Raw | None, base: float) -> dict:
     if SOURCE.match(text):
         return {"type": "source", "text": text}
 
+    if (r.list_kind == "number" and r.source == "docx" and r.bold and _is_title_like(text, 120) and nxt is not None
+            and not nxt.list_kind and not nxt.rows and len(nxt.text) > 80):
+        # a title numbered with Word's own numbering ("1.", "1.1" drawn by Word, not typed), bold, then its text
+        depth = r.indent or (int(m.group(1)) - 1 if (m := re.search(r"(?:number|numéro)\s*(\d)$", r.style)) else 0)  # "List Number 2"
+        return {"type": "heading", "kind": ("dec1", "dec2", "dec3", "dec4")[min(depth, 3)], "text": text}
     if r.list_kind:
         body = BULLET.match(text)
         clean = body.group(2) if body else text

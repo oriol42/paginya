@@ -24,7 +24,7 @@ import cv2
 import numpy as np
 
 MARK = re.compile(r"^⟦pdf(img|tab):([\w.]+)⟧$")
-MAX_PAGES = 300  # the page analysis takes ~10 ms a page; beyond this, text only
+MAX_PAGES = 700  # drawing + analysis ~15 ms a page over 4 cores; beyond this, text only
 CUT_DPI = 150    # pictures cut out of the page
 MAX_PER_PAGE = 12  # more pictures and tables than this on one page: the page is misread, it stays text
 
@@ -205,7 +205,9 @@ def _banner(r: Region, inside: list[Word], lines: list[list[Word]]) -> bool:
     """A title drawn in a shape ("DÉDICACE" in a blue scroll, "CHAPITRE I : …" in a banner): one to three short
     lines in the middle of a filled shape. A chart or a map has its labels spread out, a photo none."""
     own = [ws for ws in lines if all(r.holds(w.cx, w.cy) for w in ws)]
-    if r.fill < 0.3 or not 1 <= len(own) <= 3 or sum(len(w.text) + 1 for ws in own for w in ws) > 90:
+    # filled, or only an outline wide and low ("SERMENT DE PROBITÉ" in a rounded frame): a chart is neither
+    framed = r.fill >= 0.3 or r.w >= 2 * r.h
+    if not framed or not 1 <= len(own) <= 3 or sum(len(w.text) + 1 for ws in own for w in ws) > 160:
         return False
     if len(inside) != sum(len(ws) for ws in own):
         return False  # words of other lines (labels) inside

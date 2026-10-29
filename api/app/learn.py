@@ -360,10 +360,16 @@ def forget_old_files() -> None:
 
 def nightly() -> dict:
     root().mkdir(parents=True, exist_ok=True)
+    try:
+        saved = db.backup()  # the database first: it matters more than what follows
+    except Exception:  # noqa: BLE001
+        log.exception("backup failed")
+        saved = None
     harvested = harvest()
     forget_old_files()
     res = retrain()
     res["harvested"] = len(harvested)
+    res["backup"] = saved
     _record(res)
     log.info("nightly: %s", res)
     return res

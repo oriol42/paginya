@@ -18,12 +18,14 @@ import unicodedata
 from pathlib import Path
 
 from docx import Document
+from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Mm, Pt
 
 from .extract import _numbering_formats
+from .extract import _style_of as _para_style
 from .render import _field
 
 _COVER_WORDS = re.compile(
@@ -81,8 +83,28 @@ def _section_has_numbers(section) -> bool:
     return any(_has_page_field(part._element) for part in (section.footer, section.first_page_footer, section.header, section.first_page_header))
 
 
+def _style_names(part) -> dict[str | None, str]:
+    """{style id: lowercased name} of a document, read once (paragraph.style searches every style each time:
+    3 ms per paragraph, a minute on a 300-page document)."""
+    names = getattr(part, "_paginya_style_names", None)
+    if names is None:
+        names = {}
+        for st in part.styles:
+            names[st.style_id] = (st.name or "").lower()
+        default = part.styles.default(WD_STYLE_TYPE.PARAGRAPH)
+        names[None] = (default.name or "").lower() if default is not None else ""
+        part._paginya_style_names = names
+    return names
+
+
 def _style_name(paragraph) -> str:
-    return (paragraph.style.name if paragraph.style is not None else "").lower()
+    part = paragraph.part
+    if not hasattr(part, "styles"):  # a header or footer paragraph: the slow way
+        return (paragraph.style.name if paragraph.style is not None else "").lower()
+    ppr = paragraph._p.pPr
+    sid = ppr.pStyle.val if ppr is not None and ppr.pStyle is not None else None
+    names = _style_names(part)
+    return names.get(sid, names[None]) if sid in names or sid is None else (paragraph.style.name if paragraph.style is not None else "").lower()
 
 
 def _is_toc_style(paragraph) -> bool:
@@ -213,7 +235,8 @@ def _runs_bold(paragraph) -> bool:
     runs = [r for r in paragraph.runs if (r.text or "").strip()]
     if not runs:
         return False
-    style_bold = bool(paragraph.style is not None and paragraph.style.font is not None and paragraph.style.font.bold)
+    style = _para_style(paragraph)
+    style_bold = bool(style is not None and style.font is not None and style.font.bold)
     return all(r.bold if r.bold is not None else style_bold for r in runs)
 
 
@@ -221,7 +244,7 @@ def _runs_size(paragraph) -> float:
     sizes = [r.font.size.pt for r in paragraph.runs if r.font.size is not None and (r.text or "").strip()]
     if sizes:
         return max(sizes)
-    style = paragraph.style
+    style = _para_style(paragraph)
     return style.font.size.pt if style is not None and style.font is not None and style.font.size is not None else 0.0
 
 

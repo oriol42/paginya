@@ -68,3 +68,12 @@ def test_retrain_waits_for_enough_documents(client):
     assert res["accepted"] is False and "il en faut" in res["why"]
     learn._record(res)
     assert json.loads(learn.history_path().read_text())[-1]["accepted"] is False
+
+
+def test_nightly_backs_up_the_database(client, tmp_path, monkeypatch):
+    from app import storage
+
+    monkeypatch.setattr(storage, "REMOTE", False)
+    monkeypatch.setenv("STORAGE_DIR", str(tmp_path / "objects"))
+    key = db.backup()
+    assert key and (tmp_path / "objects" / key).stat().st_size > 0

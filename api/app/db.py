@@ -3,6 +3,7 @@ import json
 import time
 import uuid
 from contextlib import contextmanager
+from pathlib import Path
 
 from . import pricing, sqlcompat
 from .config import DATA_DIR, DB_PATH  # noqa: F401  (DATA_DIR: patched by tests)
@@ -340,3 +341,28 @@ def purge_tickets(now: float | None = None) -> None:
     with connect() as c:
         c.execute("DELETE FROM ticket_messages WHERE ticket_id IN (SELECT id FROM tickets WHERE updated_at < ?)", (limit,))
         c.execute("DELETE FROM tickets WHERE updated_at < ?", (limit,))
+
+
+def backup(keep: int = 14) -> str | None:
+    """A copy of the SQLite database in durable storage (Supabase), one per day, the last `keep` kept.
+    The server's disk has no backup of its own: this is what a lost disk would be rebuilt from."""
+    import sqlite3
+    import tempfile
+
+    from . import storage
+
+    if sqlcompat.PG or not DB_PATH.exists():
+        return None  # Postgres (Supabase) keeps its own backups
+    with tempfile.TemporaryDirectory() as tmp:
+        copy = Path(tmp) / "paginya.sqlite3"
+        src, dst = sqlite3.connect(DB_PATH), sqlite3.connect(copy)
+        with dst:
+            src.backup(dst)  # consistent even while the server writes
+        src.close()
+        dst.close()
+        key = f"backups/paginya-{time.strftime('%Y-%m-%d', time.gmtime(time.time() + 3600))}.sqlite3"
+        storage.put(key, copy.read_bytes())
+    old = sorted(k for k in storage.list_keys("backups/") if k.startswith("backups/paginya-"))[:-keep]
+    for k in old:
+        storage.delete_prefix(k)
+    return key
