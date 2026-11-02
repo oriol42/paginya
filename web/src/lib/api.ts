@@ -103,7 +103,7 @@ export const api = {
   adminGift: (token: string, email: string, plan: Plan, days: number) =>
     call<Omit<Account, "token">>("/admin/gift", { method: "POST", body: JSON.stringify({ token, email, plan, days }) }),
   retry: (id: string) => call<Order>(`/orders/${id}/retry`, { method: "POST" }),
-  fileUrl: (id: string, fmt: "pdf" | "docx" | "png", name = "") =>
+  fileUrl: (id: string, fmt: "pdf" | "docx" | "png" | "pptx", name = "") =>
     `${API_URL}/orders/${id}/file.${fmt}${name.trim() ? `?name=${encodeURIComponent(name.trim())}` : ""}`,
 };
 

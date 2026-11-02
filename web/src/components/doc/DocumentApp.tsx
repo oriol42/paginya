@@ -1,11 +1,13 @@
 "use client";
 
+import { DeckPanel } from "./DeckChoices";
+import { DeckShow } from "./DeckShow";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { OrderStatus } from "@/lib/api";
 import { forget, remember } from "@/lib/recents";
-import { KIND_LABEL, docs, type Block, type DocMode, type DocOptions, type DocPlan, type DocStyle, type DocView, type Letterhead } from "@/lib/documents";
+import { type DeckPatch, KIND_LABEL, docs, type Block, type DocMode, type DocOptions, type DocPlan, type DocStyle, type DocView, type Letterhead } from "@/lib/documents";
 import { saveExamDraft } from "@/lib/examDraft";
 import { saveLetterDraft } from "@/lib/letterDraft";
 import { SpellPanel } from "./SpellPanel";
@@ -39,6 +41,7 @@ export function DocumentApp() {
   const [doc, setDoc] = useState<DocView | null>(null);
   const [phase, setPhase] = useState<"import" | "working" | "analysis" | "editor">("import");
   const [rendering, setRendering] = useState(false);
+  const [showing, setShowing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [panel, setPanel] = useState<Panel>("style");
@@ -278,17 +281,35 @@ export function DocumentApp() {
   const missing = doc.has_cover && cover ? coverIncomplete(cover) : [];
 
   const keeping = doc.mode === "keep";
+  async function changeDeck(patch: DeckPatch) {
+    if (!doc) return;
+    setRendering(true);
+    setError("");
+    try {
+      setDoc(await docs.deck(doc.id, patch));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+    setRendering(false);
+  }
   const converting = !!doc.convert;
-  const target = doc.convert === "pdf" ? "PDF" : "Word";
+  const slides = doc.convert === "pptx";
+  const target = doc.convert === "pdf" ? "PDF" : slides ? "PowerPoint" : "Word";
+  const unit = slides ? "diapositive" : "page";
   const panelBody = converting ? (
     <div className="space-y-4">
       <p className="text-[15px] leading-relaxed text-ink/75">
         {doc.convert === "pdf"
           ? "Ton fichier Word est converti en PDF tel qu'il est : rien n'est ajouté ni changé."
+          : slides
+          ? "L'IA a lu ton document et préparé ta présentation. Relis bien les diapositives : ce que tu dis à l'oral est dans les notes de chaque diapositive du PowerPoint."
           : "Le texte, les titres et les tableaux de ton PDF sont remis dans un fichier Word que tu peux modifier."}
       </p>
-      <p className="text-[14px] leading-relaxed text-ink/60">Regarde l&apos;aperçu, puis télécharge. Pour ajouter une page de garde, un sommaire ou des numéros, utilise plutôt la mise en forme.</p>
-      <Link href="/document" className="press block w-full rounded-md px-3 py-3 text-center text-[14px] font-bold ring-1 ring-black/15 hover:bg-ink/5">Mettre en forme un document</Link>
+      {doc.deck && <button type="button" disabled={rendering} onClick={() => setShowing(true)} className="press flex w-full items-center justify-center gap-2 rounded-md bg-hi px-3 py-3.5 text-[15px] font-bold text-ink"><Icon name="presentation" size={19} />Voir le diaporama</button>}
+      {doc.deck && <DeckPanel deck={doc.deck} busy={rendering} onChange={changeDeck} />}
+      <p className="text-[14px] leading-relaxed text-ink/60">Regarde l&apos;aperçu, puis télécharge. {!slides && <>Pour ajouter une page de garde, un sommaire ou des numéros, utilise plutôt la mise en forme.</>}</p>
+      {!slides && <Link href={`/convertir?vers=powerpoint&doc=${doc.id}`} className="press block w-full rounded-md bg-board px-3 py-3 text-center text-[14px] font-bold text-white">Faire un PowerPoint</Link>}
+      {!slides && <Link href="/document" className="press block w-full rounded-md px-3 py-3 text-center text-[14px] font-bold ring-1 ring-black/15 hover:bg-ink/5">Mettre en forme un document</Link>}
     </div>
   ) : keeping ? (
     <div className="space-y-4">
@@ -346,7 +367,7 @@ export function DocumentApp() {
     </>
   );
 
-  const title = `${converting ? `Conversion en ${target}` : KIND_LABEL[doc.meta.kind] ?? "Document"} · ${pages} page${pages > 1 ? "s" : ""}`;
+  const title = `${converting ? `Conversion en ${target}` : KIND_LABEL[doc.meta.kind] ?? "Document"} · ${pages} ${unit}${pages > 1 ? "s" : ""}`;
   const views = [
     { value: "after" as View, label: "Après" },
     { value: "before" as View, label: "Avant" },
@@ -403,7 +424,7 @@ export function DocumentApp() {
           <div className="mt-auto w-full px-2"><MoreMenu onNew={reset} onDelete={remove} /></div>
         </nav>
         <aside className="hidden w-[350px] shrink-0 flex-col border-r border-black/10 bg-paper text-ink lg:flex">
-          <p className="px-5 pt-6 font-display text-[26px] leading-none font-black uppercase">{converting ? "Conversion" : PANELS.find((p) => p.id === panel)?.title}</p>
+          <p className="px-5 pt-6 font-display text-[26px] leading-none font-black uppercase">{converting ? (slides ? "Présentation" : "Conversion") : PANELS.find((p) => p.id === panel)?.title}</p>
           <div key={panel} className="panel-in min-h-0 flex-1 overflow-y-auto px-5 pt-4 pb-6">{panelBody}</div>
         </aside>
 
@@ -414,13 +435,22 @@ export function DocumentApp() {
           </div>
           {error && <p className="mx-auto mt-3 flex max-w-[720px] gap-2 rounded-md bg-paper px-4 py-3 text-[15px] text-pin"><Icon name="triangle-alert" size={18} className="mt-0.5" />{error}</p>}
           <div className="px-4 pt-3 sm:px-8 lg:pt-10">
-            {!keeping && doc.meta.existing && (doc.meta.existing.cover || doc.meta.existing.toc || doc.meta.existing.page_numbers) && (
+            {!keeping && !converting && doc.meta.existing && (doc.meta.existing.cover || doc.meta.existing.toc || doc.meta.existing.page_numbers) && (
               <section className="paper mx-auto mb-4 flex max-w-[720px] items-center justify-between gap-3 rounded-[2px] p-4 text-ink">
                 <p className="text-[14px] text-ink/70">Ton fichier avait déjà sa mise en page ; elle a été remplacée par celle de Paginya.</p>
                 <button type="button" onClick={() => switchMode("keep")} className="press shrink-0 rounded-md px-3 py-2 text-[14px] font-bold ring-1 ring-black/15 hover:bg-ink/5">Revenir à mon document</button>
               </section>
             )}
             <Pages doc={doc} view={view} beforePages={beforePages} dim={rendering} cover={doc.has_cover && doc.options.cover ? liveCover : ""} zoom={zoom} />
+            {!slides && (
+              <section className="paper mx-auto mt-8 flex max-w-[760px] flex-wrap items-center justify-between gap-3 rounded-[2px] p-5 text-ink">
+                <div>
+                  <p className="font-display text-[24px] leading-none font-black uppercase">Tu dois le présenter ?</p>
+                  <p className="mt-1.5 text-[14px] text-ink/70">L&apos;IA en fait un PowerPoint, avec le nombre de diapos que tu veux. Rien à renvoyer.</p>
+                </div>
+                <Link href={`/convertir?vers=powerpoint&doc=${doc.id}`} className="press shrink-0 rounded-md bg-board px-4 py-3 text-[15px] font-bold text-white">Faire un PowerPoint</Link>
+              </section>
+            )}
           </div>
         </main>
       </div>
@@ -431,7 +461,7 @@ export function DocumentApp() {
           <div className="sheet-in paper relative flex h-[48dvh] flex-col rounded-t-xl">
             <span className="pin top-2 left-1/2 -translate-x-1/2" aria-hidden />
             <div className="flex items-center justify-between px-4 pt-6 pb-2">
-              {converting ? <span className="font-display text-[22px] font-black uppercase">Conversion</span> : <Tabs panel={panel} onPanel={setPanel} compact />}
+              {converting ? <span className="font-display text-[22px] font-black uppercase">{slides ? "Présentation" : "Conversion"}</span> : <Tabs panel={panel} onPanel={setPanel} compact />}
               <button type="button" onClick={() => setDrawer(false)} className="press ml-2 grid h-10 w-10 shrink-0 place-items-center rounded-md text-ink/60 ring-1 ring-black/10" aria-label="Fermer">
                 <Icon name="x" size={18} />
               </button>
@@ -455,13 +485,14 @@ export function DocumentApp() {
         </div>
       </div>
 
+      {showing && <DeckShow docId={doc.id} onClose={() => setShowing(false)} />}
       {payOpen && (
         <PaySheet
           orderId={doc.id}
           amount={doc.amount}
           status={doc.status}
           heading={converting ? `Ton fichier ${target} est prêt` : "Ton document est prêt"}
-          bullets={converting ? [`${pages} page${pages > 1 ? "s" : ""} converties en ${target}`, doc.convert === "pdf" ? "PDF prêt à imprimer ou à envoyer" : "Word que tu peux modifier", "Téléchargements gratuits pendant 7 jours"] : [
+          bullets={converting ? [`${pages} ${unit}${pages > 1 ? "s" : ""} en ${target}`, doc.convert === "pdf" ? "PDF prêt à imprimer ou à envoyer" : slides ? "PowerPoint modifiable, avec les notes pour l'oral" : "Word que tu peux modifier", "Téléchargements gratuits pendant 7 jours"] : [
             `${pages} pages mises en forme`,
             keeping
               ? ["ton texte et tes styles gardés", doc.plan.cover === "redo" && "page de garde refaite", doc.plan.cover === "add" && "page de garde ajoutée", doc.plan.toc === "add" && "sommaire ajouté", doc.plan.toc === "redo" && "sommaire refait", doc.plan.numbers !== "keep" && doc.plan.numbers !== "none" && "numéros de page aux normes"].filter(Boolean).join(" · ")
@@ -471,6 +502,7 @@ export function DocumentApp() {
           ]}
           formats={doc.convert ? [doc.convert] : ["pdf", "docx"]}
           sharePath={`/document?doc=${doc.id}`}
+          presentId={slides ? undefined : doc.id}
           missing={missing}
           fileName={doc.meta.cover?.title || doc.meta.title || ""}
           help={doc.convert ? undefined : Boolean(doc.help)}
@@ -521,7 +553,7 @@ function Pages({ doc, view, beforePages, dim, cover, zoom }: { doc: DocView; vie
       i === 0 && cover ? (
         <CoverView svg={cover} watermark={doc.status !== "PAID"} />
       ) : (
-        <PageImage key={`${doc.render!.version}-${i}`} src={docs.pageUrl(doc.id, i + 1, doc.render!.version)} alt={`Page ${i + 1}`} eager={i < 3} />
+        <PageImage key={`${doc.render!.version}-${i}`} src={docs.pageUrl(doc.id, i + 1, doc.render!.version)} alt={`Page ${i + 1}`} eager={i < 3} wide={doc.convert === "pptx"} />
       ),
       i,
     );
@@ -568,10 +600,10 @@ function Pages({ doc, view, beforePages, dim, cover, zoom }: { doc: DocView; vie
 }
 
 /** A page fades in when its (new) image has arrived, instead of popping in half-drawn. */
-function PageImage({ src, alt, eager }: { src: string; alt: string; eager: boolean }) {
+function PageImage({ src, alt, eager, wide }: { src: string; alt: string; eager: boolean; wide: boolean }) {
   const [loaded, setLoaded] = useState(false);
   return (
-    <div className="relative aspect-[210/297] w-full overflow-hidden bg-white">
+    <div className={`relative ${wide ? "aspect-video" : "aspect-[210/297]"} w-full overflow-hidden bg-white`}>
       {!loaded && <div className="absolute inset-0 animate-pulse bg-[repeating-linear-gradient(180deg,#fff_0_22px,#f1f2ee_22px_30px)] [background-position:0_60px] opacity-60" />}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={src} alt={alt} loading={eager ? "eager" : "lazy"} onLoad={() => setLoaded(true)} className={`page-img h-full w-full ${loaded ? "is-loaded" : ""}`} />

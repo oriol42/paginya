@@ -425,3 +425,343 @@ def test_typed_plan_without_page_numbers_is_dropped():
     heads = headings(detect(from_text(text))["blocks"])
     assert [t.upper()[:12] for t, _ in heads] == ["INTRODUCTION", "I. LES DIFFÉ", "II. L'ORGANI", "CONCLUSION"]
     assert {lv for _, lv in heads} == {1}
+
+
+ITEMS = [{"head": "Stock", "text": "Suivi quotidien", "icon": "layers"}, {"head": "Livraisons", "text": "Tournées", "icon": "truck"}, {"head": "Clients", "text": "Accueil", "icon": "pas-une-icone"}]
+DECK_ANSWER = {"notes": "Bonjour à tous.", "thanks": "Merci de votre attention", "slides": [
+    {"type": "points", "title": "Le contexte", "points": ["Un stage à Douala", "Trois mois en logistique"], "notes": "Je commence par le contexte."},
+    {"type": "liste", "title": "Les missions", "items": ITEMS, "notes": ""},
+    {"type": "chiffres", "title": "Inventé", "stats": [{"value": "87 %", "label": "pas dans le document"}, {"value": "1200", "label": "non plus"}]},
+    {"type": "chiffres", "title": "Vrai", "stats": [{"value": "3", "label": "mois", "icon": "clock"}, {"value": "2026", "label": "année"}]},
+    {"type": "graphique", "title": "Faux", "chart": "donut", "series": [{"label": "A", "value": 77}, {"label": "B", "value": 88}]},
+    {"type": "etapes", "title": "La démarche", "items": ITEMS},
+    {"type": "comparaison", "title": "Avant et après", "left": {"title": "Avant", "points": ["Papier"]}, "right": {"title": "Après", "points": ["Tableur"]}},
+    {"type": "figure", "title": "Image inconnue", "figure": "F9", "points": []},
+    {"type": "inconnu", "title": "Conclusion", "points": ["Un stage enrichissant", "Fait en 3 mois", "Soit 999 clients"]},
+]}
+
+
+def stage_docx(path: Path) -> None:
+    d = Document()
+    d.add_heading("Introduction", 1)
+    d.add_paragraph("Le stage s'est déroulé à Douala pendant 3 mois en 2026 dans une entreprise de logistique, au service des stocks et des livraisons. " * 12)
+    d.add_heading("Conclusion", 1)
+    d.add_paragraph("Ce stage a été très enrichissant pour la suite de ma formation professionnelle dans la gestion des entreprises. " * 12)
+    d.save(path)
+
+
+def test_the_ai_never_gets_to_invent_a_number(monkeypatch):
+    """Whatever it answers: unknown types become points, unknown pictures go, a number not in the document goes."""
+    import json
+    from app.doc import deck
+    monkeypatch.setattr(deck, "ask", lambda source, prompt: (json.dumps(DECK_ANSWER), "gemini"))
+    document = {"blocks": [{"type": "paragraph", "text": "Stage de 3 mois à Douala en 2026."}]}
+    made = deck.write(document, 9, None)
+    slides = made["slides"]
+    assert len(made["parts"]) >= 2 and all(s["part"] in made["parts"] for s in slides)  # the plan and the progress bar
+    assert [s["title"] for s in slides] == ["Le contexte", "Les missions", "Vrai", "La démarche", "Avant et après", "Conclusion"]
+    assert [x["head"] for x in slides[-1]["items"]] == ["Un stage enrichissant", "Fait en 3 mois"]
+    assert slides[1]["items"][2]["icon"] == "circle-check"  # an icon we do not have
+    types = [s["type"] for s in slides]
+    assert all(a != b for a, b in zip(types, types[1:]))  # never the same page twice in a row
+    assert deck.total(deck.write(document, 5, None)) == 5  # the number chosen by the user wins
+    assert deck.max_slides(100) == 5 and deck.max_slides(600) == 24 and deck.max_slides(90_000) == 30
+
+
+def test_the_plan_reads_well_however_the_ai_names_its_parts():
+    from app.doc.deck import _label, _with_parts
+    slides = [{"title": t, "part": p} for t, p in (("A", 1), ("B", "1"), ("C", 2), ("D", None))]
+    assert _with_parts(slides, ["Contexte", "Résultats"]) == ["Contexte", "Résultats"]
+    assert [s["part"] for s in slides] == ["Contexte", "Contexte", "Résultats", "Résultats"]
+    assert _label("Architecture générale de la plateforme") == "Architecture générale"
+
+
+def test_school_slides_open_and_close_like_the_report_and_a_plain_one_does_not(tmp_path):
+    from pptx import Presentation
+    from app.doc.slides import build_pptx, title_info
+    Image.new("RGB", (80, 80), "blue").save(tmp_path / "logo.png")
+    cover = {"title": "Mon rapport", "doc_label": "Rapport", "logos": ["logo.png"], "header_fr": ["RÉPUBLIQUE DU CAMEROUN", "*****"], "header_en": ["REPUBLIC OF CAMEROON"],
+             "authors": [{"name": "KAMGA Paul", "info": "23I0080FS"}], "supervisors": [{"name": "Dr. NKE", "role": "ENCADREUR"}]}
+    school = title_info({"blocks": [], "meta": {"cover": cover}}, tmp_path)
+    assert school["logos"] == ["logo.png"] and school["header"] == ["RÉPUBLIQUE DU CAMEROUN"] and school["author_lines"] == ["KAMGA Paul (23I0080FS)"]
+    plain = title_info({"deck_school": False, "blocks": [], "meta": {"cover": cover}}, tmp_path)
+    assert plain["logos"] == [] and plain["header"] == [] and plain["supervisors"] == [] and plain["authors"] == ["KAMGA Paul"]
+    deck = {"slides": [{"type": "liste", "title": "A", "items": [{"head": "x", "text": "y", "icon": "users"}]}], "parts": ["A"]}
+
+    def pictures(info, index):
+        path = tmp_path / "s.pptx"
+        path.write_bytes(build_pptx(deck, info, "academique", tmp_path))
+        return sum(1 for shape in Presentation(path).slides[index].shapes if shape.name.startswith("Picture"))
+
+    assert pictures(school, 0) == 1 and pictures(school, -1) == 1  # the logos on the first page and the last
+    assert pictures(plain, 0) == 0 and pictures(plain, -1) == 0
+
+
+def test_title_mark_and_big_number_are_checked_too(monkeypatch):
+    import json
+    from app.doc import deck
+    answer = {"slides": [
+        {"type": "grand", "title": "Trois mois sur place", "highlight": "Trois mois", "value": "3 mois", "text": "À Douala", "takeaway": "Un vrai terrain"},
+        {"type": "grand", "title": "Inventé", "value": "99 %", "text": "Faux"},
+        {"type": "liste", "title": "Le stage", "highlight": "absent du titre", "items": ITEMS},
+        {"type": "grille", "title": "Les tâches", "items": ITEMS}]}
+    monkeypatch.setattr(deck, "ask", lambda source, prompt: (json.dumps(answer), "gemini"))
+    slides = deck.write({"blocks": [{"type": "paragraph", "text": "Stage de 3 mois à Douala."}]}, 7)["slides"]
+    assert [s["title"] for s in slides] == ["Trois mois sur place", "Le stage", "Les tâches"]
+    assert slides[0]["highlight"] == "Trois mois" and slides[0]["takeaway"] == "Un vrai terrain" and not slides[1]["highlight"]
+
+
+def test_chart_values_must_be_in_the_document():
+    from app.doc.deck import _number
+    assert _number("40", {"40"}) == 40 and _number("40 %", {"40"}) == 40 and _number("12,5", {"12,5"}) == 12.5
+    assert _number("41", {"40"}) is None and _number("beaucoup", {"40"}) is None
+
+
+def test_big_tables_are_left_to_the_ai_to_tell():
+    from app.doc.deck import _source
+    small = [["Année", "Ventes"], ["2020", "10"]]
+    huge = [["Terme", "Définition"], *[[f"Mot {i}", "une très longue définition " * 6] for i in range(4)]]
+    _, _, tables = _source([{"type": "table", "rows": small}, {"type": "table", "rows": huge}])
+    assert [t["rows"] for t in tables.values()] == [small]
+
+
+@pytest.mark.parametrize("theme", ["academique", "sorbonne", "campus", "savane", "ocean", "medical", "royal", "corail", "soleil", "ardoise", "nuit", "neon", "contraste", "vitamine", "terre", "foret", "prairie", "horizon", "azur", "graphite", "ambre", "citron", "halo", "iris", "brume"])
+def test_every_theme_draws_every_kind_of_slide(tmp_path, theme):
+    from pptx import Presentation
+    from app.doc.slides import build_pptx, title_info
+    Image.new("RGB", (300, 200), "red").save(tmp_path / "a.webp", "WEBP")
+    items = [{"head": "Stock", "text": "Suivi quotidien", "icon": "layers"}, {"head": "Vente", "text": "Par mois", "icon": "coins"}, {"head": "Clients", "text": "Accueil", "icon": "users"}]
+    slides = [{"type": kind, "title": "Le contexte", "items": items, "notes": "Dire ceci.", "highlight": "contexte", "takeaway": "À retenir"} for kind in ("liste", "grille", "panneau", "schema", "chronologie", "etapes")]
+    slides += [{"type": "grand", "title": "Un chiffre", "value": "3 semaines", "text": "Le délai", "icon": "clock"}]
+    slides += [{"type": "grille", "title": "Six", "items": items * 2}, {"type": "grille", "title": "Quatre", "items": [*items, items[0]]}]
+    slides += [{"type": "comparaison", "title": "Avant", "left": {"title": "A", "points": ["x"]}, "right": {"title": "B", "points": ["y"]}}]
+    slides += [{"type": "graphique", "title": "Parts", "chart": chart, "series": [{"label": "A", "value": 40}, {"label": "B", "value": 60}], "key": "Message", "icon": "chart-pie"} for chart in ("donut", "barres")]
+    slides += [{"type": "encadre", "title": "La question", "label": "Problématique", "text": "Comment gérer les stocks ?"}, {"type": "section", "title": "Partie 1"}, {"type": "chiffres", "title": "Vrai", "stats": [{"value": "3", "label": "mois", "icon": "clock"}, {"value": "2026", "label": "année", "icon": "calendar"}]},
+               {"type": "figure", "title": "Schéma", "image": "a.webp", "caption": "Le schéma", "points": ["Un point"]},
+               {"type": "tableau", "title": "Ventes", "rows": [["A", "B"], ["1", "2"]], "caption": ""}]
+    Image.new("RGB", (80, 80), "blue").save(tmp_path / "logo.png")
+    info = title_info({"deck_logo": "logo.png", "blocks": [], "meta": {"title": "Mon rapport", "cover": {"doc_label": "Mémoire", "header_fr": ["UNIVERSITÉ DE YAOUNDÉ I"],
+                       "authors": [{"name": "KAMGA Paul"}], "supervisors": ["Pr NKE"], "year": "2025-2026"}}}, tmp_path)
+    assert info["logos"] == ["logo.png"] and info["authors"] == ["KAMGA Paul"]
+    saved = tmp_path / "s.pptx"
+    saved.write_bytes(build_pptx({"slides": slides, "parts": ["Contexte"], "notes": "Bonjour", "thanks": "Merci"}, info, theme, tmp_path))
+    prs = Presentation(saved)
+    assert len(prs.slides) == len(slides) + 3 and prs.slide_width > prs.slide_height
+    assert prs.slides[0].shapes.title.text == "Mon rapport" and prs.slides[0].notes_slide.notes_text_frame.text == "Bonjour"
+    assert prs.slides[2].shapes.title.text.lower() == "le contexte" and prs.slides[2].notes_slide.notes_text_frame.text == "Dire ceci."
+    assert any(shape.has_table for shape in prs.slides[-2].shapes)
+    for slide in prs.slides:  # PowerPoint refuses what LibreOffice lets through: one id per shape
+        ids = [shape.shape_id for shape in slide.shapes]
+        assert len(ids) == len(set(ids))
+
+
+def test_presentation_needs_consent_and_can_change_look_and_length(client, tmp_path, monkeypatch):
+    import json
+    import os
+    from pptx import Presentation
+    from app import doc_routes
+    from app.doc import deck
+
+    calls = []
+    monkeypatch.setattr(deck, "ask", lambda source, prompt: (calls.append(1), (json.dumps(DECK_ANSWER), "gemini"))[1])
+    stage_docx(tmp_path / "r.docx")
+    data = base64.b64encode((tmp_path / "r.docx").read_bytes()).decode()
+    body = {"filename": "r.docx", "data": data, "convert": True, "to": "pptx", "slides": 9, "theme": "corail"}
+    assert client.post("/documents", json=body).status_code == 400
+    view = client.post("/documents", json={**body, "consent": True}).json()
+    assert view["convert"] == "pptx" and (view["deck"]["slides"], view["deck"]["theme"], view["deck"]["file"], view["deck"]["school"]) == (9, "corail", "r.docx", True) and len(calls) == 1
+    if not (os.getenv("PROPRE_SOFFICE") or shutil.which("simpress")):
+        pytest.skip("LibreOffice Impress n'est pas installé")
+    done = client.post(f"/documents/{view['id']}/deck", json={"theme": "nuit"}).json()
+    assert done["render"]["pages"] == 9 and done["deck"]["theme"] == "nuit" and len(calls) == 1  # a new look costs no AI call
+    assert client.post(f"/documents/{view['id']}/deck", json={"school": False}).json()["deck"]["school"] is False and len(calls) == 1
+    client.post(f"/documents/{view['id']}/deck", json={"slides": 6})
+    assert len(calls) == 2
+    assert len(Presentation(doc_routes.final_file(view["id"], "pptx")).slides) == 6
+
+
+def test_a_formatted_document_becomes_a_presentation_without_sending_it_again(client, tmp_path, monkeypatch):
+    import json
+    from app.doc import deck
+    monkeypatch.setattr(deck, "ask", lambda source, prompt: (json.dumps(DECK_ANSWER), "gemini"))
+    stage_docx(tmp_path / "r.docx")
+    data = base64.b64encode((tmp_path / "r.docx").read_bytes()).decode()
+    first = client.post("/documents", json={"filename": "r.docx", "data": data}).json()
+    assert client.post(f"/documents/{first['id']}/present", json={}).status_code == 400  # no consent
+    made = client.post(f"/documents/{first['id']}/present", json={"slides": 9, "theme": "foret", "consent": True}).json()
+    assert made["id"] != first["id"] and made["convert"] == "pptx" and made["deck"]["slides"] == 9 and made["deck"]["theme"] == "foret"
+    assert client.post(f"/documents/{made['id']}/present", json={"consent": True}).status_code == 400
+    assert client.get(f"/documents/{first['id']}").json().get("convert") is None  # the document itself has not moved
+
+
+def test_a_failed_ai_leaves_nothing_behind(client, tmp_path, monkeypatch):
+    from app.doc import deck
+    from app.doc.spelling import SpellError
+
+    def down(source, prompt):
+        raise SpellError("occupé")
+    monkeypatch.setattr(deck, "ask", down)
+    stage_docx(tmp_path / "r.docx")
+    data = base64.b64encode((tmp_path / "r.docx").read_bytes()).decode()
+    r = client.post("/documents", json={"filename": "r.docx", "data": data, "convert": True, "to": "pptx", "consent": True})
+    assert r.status_code == 503 and "IA" in r.json()["detail"]
+
+
+def audit_slides(path) -> list[str]:
+    """Everything that would be seen spilling out of its box or off the slide."""
+    from pptx import Presentation
+    from pptx.util import Emu
+    from app.doc.slides import text_height
+    prs = Presentation(path)
+    width, height = prs.slide_width, prs.slide_height
+    faults = []
+    for n, slide in enumerate(prs.slides, 1):
+        for shape in slide.shapes:
+            if shape.name == "Décor":
+                continue
+            if shape.left < -1000 or shape.top < -1000 or shape.left + shape.width > width + 1000 or shape.top + shape.height > height + 1000:
+                faults.append(f"{n}: {shape.name} hors de la diapo")
+            if shape.has_text_frame and shape.text_frame.text.strip():
+                used = 0.0
+                for p in shape.text_frame.paragraphs:
+                    runs = [r for r in p.runs if r.font.size]
+                    if runs:
+                        indent = 0.32 if p._p.pPr is not None and p._p.pPr.get("marL") else 0
+                        size = runs[0].font.size.pt
+                        used += text_height("".join(r.text for r in p.runs), size, Emu(shape.width).inches - indent, runs[0].font.name or "Calibri", bool(runs[0].font.bold))
+                        used += (p.space_after.pt / 72 if p.space_after else 0)
+                if used > Emu(shape.height).inches + 0.2:
+                    faults.append(f"{n}: « {shape.text_frame.text[:40]} » {used:.2f} pouces pour {Emu(shape.height).inches:.2f}")
+            if shape.has_table if hasattr(shape, "has_table") else False:
+                if shape.top + sum(r.height for r in shape.table.rows) > Emu(int(7.05 * 914400)):
+                    faults.append(f"{n}: tableau trop haut")
+    return faults
+
+
+@pytest.mark.parametrize("theme", ["academique", "sorbonne", "campus", "savane", "ocean", "medical", "royal", "corail", "soleil", "ardoise", "nuit", "neon", "contraste", "vitamine", "terre", "foret", "aurora", "braise", "lagon", "minuit", "perle", "menthe", "prairie", "horizon", "azur", "graphite", "ambre", "citron", "halo", "iris", "brume"])
+def test_nothing_overflows_even_with_the_longest_text_allowed(tmp_path, theme):
+    """The worst case the AI can send: every limit reached, for every layout."""
+    from app.doc.slides import build_pptx, title_info
+    long = "Une phrase volontairement très longue qui atteint presque la limite autorisée pour un élément de diapo ici"
+    head = "Un titre court mais quand même assez long"
+    item = {"head": head, "text": long, "icon": "users"}
+    title = "Un titre de diapositive très long qui dit vraiment tout le message de la diapositive en entier"
+    slides = [{"type": kind, "title": title, "part": "Contexte", "items": [item] * n, "key": long, "takeaway": long[:90]}
+              for kind, n in (("liste", 5), ("grille", 6), ("grille", 4), ("grille", 3), ("grille", 2), ("schema", 3), ("schema", 4), ("schema", 5), ("schema", 6), ("panneau", 4), ("chronologie", 6), ("chronologie", 3), ("etapes", 5), ("etapes", 4), ("etapes", 3))]
+    points = [long[:90]] * 4
+    rows = [["Colonne un", "Colonne deux", "Colonne trois", "Colonne quatre"], *[["Une cellule assez longue pour tester le retour à la ligne automatique du tableau", "x" * 60, "y y y " * 12, "z"] for _ in range(7)]]
+    slides += [{"type": "comparaison", "title": title, "left": {"title": head, "points": points}, "right": {"title": head, "points": points}},
+               {"type": "chiffres", "title": title, "stats": [{"value": "1 234 567 FCFA", "label": long[:70], "icon": "coins"}] * 4},
+               {"type": "encadre", "title": title, "label": "Problématique", "text": long * 2},
+               {"type": "grand", "title": title, "value": "Hétérogénéités", "text": long, "icon": "target"},
+               {"type": "tableau", "title": title, "rows": rows, "caption": long},
+               {"type": "graphique", "title": title, "chart": "barres", "series": [{"label": "A", "value": 40}, {"label": "B", "value": 60}], "key": long, "icon": "chart-pie"}]
+    cover = {"title": title * 2, "doc_label": "Mémoire de fin d'études", "header_fr": ["DÉPARTEMENT DES TECHNOLOGIES DE L'INFORMATION ET DE LA COMMUNICATION"] * 7,
+             "header_en": ["DEPARTMENT OF INFORMATION TECHNOLOGIES AND COMMUNICATION OF THE UNIVERSITY"] * 7, "specialty": "TIC · Niveau Licence 3", "year": "2025-2026",
+             "authors": [{"name": "ZEUDJO TIYO VARELA ORIOL NOM TRÈS LONG", "info": "23I0080FS"}] * 4, "supervisors": [{"name": "Dr. KENGI OLGA"}] * 3}
+    saved = tmp_path / "s.pptx"
+    for seed in range(3):  # three documents: each takes other compositions of the layouts
+        cover["title"] = f"{title} {seed}" * 2
+        saved.write_bytes(build_pptx({"slides": slides * 2, "parts": ["Contexte", "Solution", "Conclusion", "Résultats obtenus", "Perspectives"], "thanks": "Merci"}, title_info({"blocks": [], "meta": {"cover": cover}}, tmp_path), theme, tmp_path))
+        assert audit_slides(saved) == []
+
+
+def test_slides_carry_their_transition_and_animation_in_the_order_powerpoint_wants(tmp_path):
+    from pptx import Presentation
+    from app.doc.slides import build_pptx, title_info
+    items = [{"head": "Stock", "text": "Suivi", "icon": "layers"}, {"head": "Vente", "text": "Mois", "icon": "coins"}]
+    deck = {"slides": [{"type": "liste", "title": "Le contexte", "items": items, "part": "A"}], "parts": ["A", "B"]}
+    info = title_info({"blocks": [], "meta": {"title": "Mon rapport"}}, tmp_path)
+    saved = tmp_path / "s.pptx"
+    saved.write_bytes(build_pptx(deck, info, "foret", tmp_path))
+    prs = Presentation(saved)
+    assert [c.tag.rsplit("}", 1)[1] for c in prs.slides[2]._element] == ["cSld", "clrMapOvr", "transition", "timing"]
+    timing = prs.slides[2]._element.find("{http://schemas.openxmlformats.org/presentationml/2006/main}timing")
+    ids = timing.xpath(".//p:cTn/@id")
+    assert len(ids) == len(set(ids))  # every id only once
+    shapes = {str(s.shape_id) for s in prs.slides[2].shapes}
+    assert set(timing.xpath(".//p:spTgt/@spid")) <= shapes  # only shapes that exist
+    saved.write_bytes(build_pptx(deck, info, "foret", tmp_path, moving=False))
+    assert [c.tag.rsplit("}", 1)[1] for c in Presentation(saved).slides[2]._element] == ["cSld", "clrMapOvr"]
+
+
+def test_the_style_follows_the_subject():
+    from app.doc.slides import choose_theme
+    health = {"blocks": [{"text": "Les soins infirmiers en réanimation : patient, hôpital, médicaments."}], "meta": {"kind": "cours"}}
+    farm = {"blocks": [{"text": "Agriculture et élevage : la plantation de cacao, agronomie."}], "meta": {"kind": "rapport"}}
+    assert choose_theme(health) in ("medical", "brume", "horizon", "menthe") and choose_theme(farm) in ("prairie", "citron", "halo", "horizon", "menthe")
+
+
+def test_the_user_changes_words_order_colours_and_font(client, tmp_path, monkeypatch):
+    import json
+    import os
+    from pptx import Presentation
+    from app import doc_routes
+    from app.doc import deck
+    monkeypatch.setattr(deck, "ask", lambda source, prompt: (json.dumps(DECK_ANSWER), "gemini"))
+    stage_docx(tmp_path / "r.docx")
+    data = base64.b64encode((tmp_path / "r.docx").read_bytes()).decode()
+    view = client.post("/documents", json={"filename": "r.docx", "data": data, "convert": True, "to": "pptx", "slides": 9, "theme": "foret", "consent": True}).json()
+    if not (os.getenv("PROPRE_SOFFICE") or shutil.which("simpress")):
+        pytest.skip("LibreOffice Impress n'est pas installé")
+    edited = view["deck"]["content"]
+    edited[0]["title"] = "Mon propre titre"
+    edited[0]["items"][0]["head"] = "Mes mots à moi"
+    edited = [edited[1], edited[0], *edited[2:-1]]  # moved, and the last one removed
+    done = client.post(f"/documents/{view['id']}/deck", json={"edited": edited, "colors": {"accent": "#123456", "second": "abcdef", "x": "1"}, "font": "Arial"}).json()
+    assert done["deck"]["colors"] == {"accent": "123456", "second": "ABCDEF"} and done["deck"]["font"] == "Arial"
+    assert done["deck"]["content"][1]["title"] == "Mon propre titre" and done["deck"]["slides"] == 8
+    prs = Presentation(doc_routes.final_file(view["id"], "pptx"))
+    assert prs.slides[3].shapes.title.text == "Mon propre titre" and len(prs.slides) == 8
+    assert client.post(f"/documents/{view['id']}/deck", json={"edited": [{"type": "liste", "title": ""}]}).status_code == 400
+
+
+def test_a_slide_without_its_picture_still_works(tmp_path, monkeypatch):
+    """The free picture service can be down: the talk must come out all the same."""
+    import httpx
+    from pptx import Presentation
+    from app.doc import art
+    from app.doc.slides import build_pptx, title_info
+
+    def down(*args, **kwargs):
+        raise httpx.ConnectError("down")
+    monkeypatch.setattr(art.httpx, "get", down)
+    items = [{"head": "Stock", "text": "Suivi", "icon": "layers"}, {"head": "Vente", "text": "Mois", "icon": "coins"}]
+    deck = {"visual": "a warehouse", "slides": [{"type": "panneau", "title": "Le contexte", "items": items, "visual": "a truck", "part": "A"}, {"type": "grand", "title": "Un chiffre", "value": "3", "text": "mois", "part": "B"}], "parts": ["A", "B"]}
+    art.illustrate(deck, tmp_path / "images")
+    assert deck["art"] == "" and deck["slides"][0]["art"] == ""
+    saved = tmp_path / "s.pptx"
+    saved.write_bytes(build_pptx(deck, title_info({"blocks": [], "meta": {"title": "Mon rapport"}, "deck_school": False}, tmp_path), "aurora", tmp_path))
+    assert len(Presentation(saved).slides) == 5
+
+
+def test_the_slideshow_on_the_site_builds_up_step_by_step(client, tmp_path, monkeypatch):
+    import json
+    import os
+    from pptx import Presentation
+    from app import doc_routes
+    from app.doc import deck
+    from app.doc.slides import frame_deck, show_plan
+    monkeypatch.setattr(deck, "ask", lambda source, prompt: (json.dumps(DECK_ANSWER), "gemini"))
+    if not (os.getenv("PROPRE_SOFFICE") or shutil.which("simpress")):
+        pytest.skip("LibreOffice Impress n'est pas installé")
+    stage_docx(tmp_path / "r.docx")
+    data = base64.b64encode((tmp_path / "r.docx").read_bytes()).decode()
+    view = client.post("/documents", json={"filename": "r.docx", "data": data, "convert": True, "to": "pptx", "slides": 9, "theme": "lagon", "school": False, "consent": True}).json()
+    client.post(f"/documents/{view['id']}/render")
+    final = doc_routes.doc_dir(view["id"]) / "build" / "final.pptx"
+    plan = show_plan(final)
+    assert plan[0]["frames"] == 1 and max(s["frames"] for s in plan) > 1  # the title page does not build up
+    stage = tmp_path / "stage.pptx"
+    stage.write_bytes(frame_deck(final, 0))
+    moving = next(i for i, s in enumerate(plan) if s["frames"] > 1)
+    assert len(Presentation(stage).slides[moving].shapes) < len(Presentation(final).slides[moving].shapes)
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(2) as pool:  # a double click: both calls get the slideshow
+        answers = list(pool.map(lambda _: client.post(f"/documents/{view['id']}/show"), range(2)))
+    assert [r.status_code for r in answers] == [200, 200]
+    made = answers[0].json()
+    assert len(made["slides"]) == 9
+    n, last = moving + 1, plan[moving]["frames"] - 1
+    assert client.get(f"/documents/{view['id']}/show/{n}-0.webp").status_code == 200
+    assert client.get(f"/documents/{view['id']}/show/{n}-{last}.webp").status_code == 200

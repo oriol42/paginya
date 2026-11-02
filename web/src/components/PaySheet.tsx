@@ -12,7 +12,7 @@ import { PinLabel } from "./ui";
 export const PHONE_KEY = "propre:phone";
 type Phase = "summary" | "pending" | "paid" | "failed";
 const PENDING_TIMEOUT_MS = 10 * 60 * 1000; // the Fapshi payment page can take a few minutes
-type Format = "pdf" | "docx" | "png";
+type Format = "pdf" | "docx" | "png" | "pptx";
 
 type Props = {
   orderId: string;
@@ -21,6 +21,8 @@ type Props = {
   heading: string;
   bullets: string[];
   formats: Format[];
+  /** After paying for a document: make a presentation of it. */
+  presentId?: string;
   sharePath: string;
   missing?: string[];
   /** Name proposed for the downloaded files (the document's title); the customer can change it. */
@@ -31,9 +33,9 @@ type Props = {
   onClose: () => void;
 };
 
-const FORMAT_LABEL: Record<Format, string> = { pdf: "PDF", docx: "Word", png: "Image" };
+const FORMAT_LABEL: Record<Format, string> = { pdf: "PDF", docx: "Word", png: "Image", pptx: "PowerPoint" };
 
-export function PaySheet({ orderId, amount, status, heading, bullets, formats, sharePath, missing = [], fileName = "", help, onStatus, onClose }: Props) {
+export function PaySheet({ orderId, amount, status, heading, bullets, formats, presentId, sharePath, missing = [], fileName = "", help, onStatus, onClose }: Props) {
   const [name, setName] = useState(fileName);
   const [helping, setHelping] = useState(Boolean(help));
   const toggleHelp = (on: boolean) => {
@@ -350,7 +352,7 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
                 />
               </span>
             </label>
-            <div className={`mt-3 grid gap-2 ${formats.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
+            <div className={`mt-3 grid gap-2 ${formats.length === 3 ? "grid-cols-3" : formats.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
               {formats.map((fmt) => (
                 <a
                   key={fmt}
@@ -362,6 +364,11 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, s
                 </a>
               ))}
             </div>
+            {presentId && (
+              <a href={`/convertir?vers=powerpoint&doc=${presentId}`} className="press mt-3 flex items-center justify-center rounded-md bg-board py-3.5 text-[16px] font-bold text-white">
+                Faire un PowerPoint de ce document
+              </a>
+            )}
             <a
               href={`https://wa.me/?text=${encodeURIComponent(`Mon document Paginya (modifiable 7 jours) : ${shareUrl}`)}`}
               target="_blank"

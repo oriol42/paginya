@@ -219,7 +219,7 @@ export function ImportScreen({ error, onText, onFile, onOpen }: Props) {
           )}
           {mode === "file" && (
             <p className="mt-3 text-center text-[14px] text-ink/60">
-              Tu veux seulement changer le format ? <Link href="/convertir" className="font-semibold text-board underline">Convertir Word en PDF ou PDF en Word</Link>
+              Tu veux seulement changer le format ? <Link href="/convertir" className="font-semibold text-board underline">Convertir en PDF, Word ou PowerPoint</Link>
             </p>
           )}
 

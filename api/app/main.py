@@ -62,6 +62,8 @@ guard.LIMITS[:] = [
     ("POST", r"/account/pass|/orders/[^/]+/unlock", 60, 3600),
     ("POST", r"/support", 10, 3600),  # new support conversations
     ("POST", r"/documents/[^/]+/spelling", 8, 3600),  # AI spelling: free quotas
+    ("POST", r"/documents/[^/]+/show", 40, 3600),  # slideshow pictures: several LibreOffice passes
+    ("POST", r"/documents/[^/]+/present", 15, 3600),  # AI presentation: free quotas
     ("POST", r"/support/[^/]+/messages", 40, 3600),
 ]
 app.middleware("http")(guard.middleware)  # before CORS: a refusal still carries the CORS headers
@@ -81,6 +83,7 @@ MEDIA = {
     "pdf": "application/pdf",
     "png": "image/png",
     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 }
 
 
@@ -395,6 +398,8 @@ def download(order_id: str, fmt: str, name: str = "") -> Response:
     if "doc" in order["payload"]:
         path = doc_routes.final_file(order_id, fmt)
         return Response(path.read_bytes(), media_type=MEDIA[fmt], headers=_attachment(name or "paginya-document", fmt))
+    if fmt == "pptx":
+        raise HTTPException(404, "Format inconnu")
     data = render_cover(order["payload"]["svg"], fmt, watermark=False)
     return Response(data, media_type=MEDIA[fmt], headers=_attachment(name or "paginya-page-de-garde", fmt))
 

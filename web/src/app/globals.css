@@ -265,3 +265,10 @@ h1, h2, h3 {
     transition-duration: 1ms !important;
   }
 }
+
+/* Slideshow on the site: the same two transitions as the PowerPoint file */
+@keyframes show-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes show-push { from { opacity: 0.4; transform: translateX(7%); } to { opacity: 1; transform: none; } }
+.show-fade { animation: show-fade 420ms ease-out both; }
+.show-push { animation: show-push 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@media (prefers-reduced-motion: reduce) { .show-fade, .show-push { animation: none; } }

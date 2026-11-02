@@ -36,7 +36,7 @@ class SpellError(Exception):
     pass
 
 
-def _ask_gemini(payload: str, key: str) -> str:
+def _ask_gemini(payload: str, key: str, prompt: str = PROMPT) -> str:
     # flash-lite answers in ~3 s; gemini-flash-latest "thinks" for a minute per chunk (25/10/2026): last resort only
     models = [os.getenv("GEMINI_TEXT_MODEL", ""), "gemini-3.5-flash-lite", "gemini-flash-latest"]
 
@@ -44,7 +44,7 @@ def _ask_gemini(payload: str, key: str) -> str:
         try:
             r = httpx.post(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
                            headers={"x-goog-api-key": key, "Content-Type": "application/json"},
-                           json={"contents": [{"parts": [{"text": PROMPT + payload}]}],
+                           json={"contents": [{"parts": [{"text": prompt + payload}]}],
                                  "generationConfig": {"temperature": 0, "responseMimeType": "application/json"}}, timeout=120)
         except httpx.HTTPError as exc:
             raise ServiceBusy("Gemini ne répond pas") from exc
@@ -57,7 +57,7 @@ def _ask_gemini(payload: str, key: str) -> str:
     return _try_models(models, call)
 
 
-def _ask_groq(payload: str, key: str) -> str:
+def _ask_groq(payload: str, key: str, prompt: str = PROMPT) -> str:
     models = [os.getenv("GROQ_TEXT_MODEL", ""), "openai/gpt-oss-120b", "openai/gpt-oss-20b"]
 
     def call(model: str) -> str:
@@ -65,7 +65,7 @@ def _ask_groq(payload: str, key: str) -> str:
             r = httpx.post("https://api.groq.com/openai/v1/chat/completions",
                            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                            json={"model": model, "temperature": 0, "response_format": {"type": "json_object"},
-                                 "messages": [{"role": "user", "content": PROMPT + payload}]}, timeout=120)
+                                 "messages": [{"role": "user", "content": prompt + payload}]}, timeout=120)
         except httpx.HTTPError as exc:
             raise ServiceBusy("Groq ne répond pas") from exc
         _check_response(r, model)
@@ -77,7 +77,7 @@ def _ask_groq(payload: str, key: str) -> str:
     return _try_models(models, call)
 
 
-def ask(payload: str) -> tuple[str, str]:
+def ask(payload: str, prompt: str = PROMPT) -> tuple[str, str]:
     """(JSON text, provider) from the first AI that answers."""
     errors = []
     for name, env, fn in (("gemini", "GEMINI_API_KEY", _ask_gemini), ("groq", "GROQ_API_KEY", _ask_groq)):
@@ -85,7 +85,7 @@ def ask(payload: str) -> tuple[str, str]:
         if not key:
             continue
         try:
-            return fn(payload, key), name
+            return fn(payload, key, prompt), name
         except (ScanError, ModelNotFound, ServiceBusy) as exc:
             errors.append(f"{name} : {exc}")
     raise SpellError("La correction n'est pas disponible pour le moment. Réessaie dans quelques minutes." if errors

@@ -2,18 +2,51 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { docs } from "@/lib/documents";
 import { Icon } from "../Icon";
 import { Logo } from "../Logo";
+import { PurposePick, SlideCount, ThemePick } from "./DeckChoices";
 
-/** Word -> PDF (the file as it is) and PDF -> Word (to edit): pick the file, then the usual preview and payment on /document. */
+/** Word -> PDF (the file as it is), PDF -> Word (to edit), Word or PDF -> a presentation written by the AI: pick the file, then the usual preview and payment on /document. */
 export function ConvertScreen() {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [slides, setSlides] = useState(false);
+  const [count, setCount] = useState(12);
+  const [theme, setTheme] = useState("auto");
+  const [consent, setConsent] = useState(false);
+  const [school, setSchool] = useState(true);
+  const [source, setSource] = useState<{ id: string; title: string } | null>(null); // a document already formatted on Paginya
+
+  // /convertir?vers=powerpoint: straight to the presentation (read here: the page itself is static)
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (query.get("vers") === "powerpoint") setSlides(true);
+    const id = query.get("doc");
+    if (id) docs.get(id).then((d) => setSource({ id, title: d.meta.cover?.title || d.meta.title || "Ton document" })).catch(() => setError("Ce document n'est plus disponible : choisis ton fichier."));
+  }, []);
+
+  async function fromDocument() {
+    if (!source || busy) return;
+    if (!consent) {
+      setError("Coche la case pour que l'IA puisse lire ton document.");
+      return;
+    }
+    setError("");
+    setBusy("L'IA prépare tes diapos…");
+    try {
+      const view = await docs.presentFrom(source.id, count, theme, school);
+      router.push(`/document?doc=${view.id}`);
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy("");
+    }
+  }
 
   async function pick(file: File | undefined) {
     if (!file || busy) return;
@@ -23,10 +56,15 @@ export function ConvertScreen() {
       setError("Choisis un fichier Word (.docx) ou PDF.");
       return;
     }
+    if (slides && !consent) {
+      setError("Coche la case pour que l'IA puisse lire ton document.");
+      return;
+    }
     setError("");
     setBusy("Envoi du fichier… 0 %");
     try {
-      const view = await docs.convert(file, (sent) => setBusy(sent < 1 ? `Envoi du fichier… ${Math.round(sent * 100)} %` : pdf ? "Lecture du PDF…" : "Lecture du fichier Word…"));
+      const progress = (sent: number) => setBusy(sent < 1 ? `Envoi du fichier… ${Math.round(sent * 100)} %` : slides ? `L'IA lit « ${file.name.slice(0, 40)} »…` : pdf ? "Lecture du PDF…" : "Lecture du fichier Word…");
+      const view = await (slides ? docs.present(file, count, theme, school, progress) : docs.convert(file, progress));
       router.push(`/document?doc=${view.id}`);
     } catch (e) {
       setError((e as Error).message);
@@ -47,12 +85,48 @@ export function ConvertScreen() {
       <main className="mx-auto w-full max-w-2xl px-5 pt-8 pb-24">
         <h1 className="font-display text-[2.6rem] leading-[0.95] font-black uppercase">Convertir un fichier</h1>
         <p className="mt-3 max-w-prose text-[16px] text-ink/70">
-          Ton Word devient un PDF prêt à imprimer ou à envoyer, tel qu&apos;il est. Ton PDF devient un Word que tu peux
-          modifier : texte, titres, listes, tableaux et images. Tu vois le résultat avant de payer.
+          {slides
+            ? "L'IA lit ton Word ou ton PDF, garde l'essentiel et prépare une vraie présentation, avec le nombre de diapos que tu veux et les notes pour l'oral. Tu vois le résultat avant de payer."
+            : "Ton Word devient un PDF prêt à imprimer ou à envoyer, tel qu'il est. Ton PDF devient un Word que tu peux modifier : texte, titres, listes, tableaux et images. Tu vois le résultat avant de payer."}
         </p>
+        {source && <p className="mt-5 rounded-md bg-brand-50 px-4 py-3 text-[15px] font-semibold">Depuis ton document : {source.title}</p>}
+        <div role="radiogroup" aria-label="Type de conversion" className={`mt-5 grid-cols-2 gap-2 ${source ? "hidden" : "grid"}`}>
+          {[{ on: true, label: "Faire un PowerPoint", hint: "L'IA prépare ta présentation" }, { on: false, label: "Word ↔ PDF", hint: "Changer le format du fichier" }].map((choice) => (
+            <button
+              key={choice.label}
+              type="button"
+              role="radio"
+              aria-checked={slides === choice.on}
+              disabled={!!busy}
+              onClick={() => setSlides(choice.on)}
+              className={`press rounded-md px-3 py-3.5 text-left ring-1 ${slides === choice.on ? "bg-board text-white ring-board" : "ring-black/15 hover:bg-ink/5"}`}
+            >
+              <span className="block text-[16px] font-bold">{choice.label}</span>
+              <span className={`mt-0.5 block text-[13px] ${slides === choice.on ? "text-white/75" : "text-ink/60"}`}>{choice.hint}</span>
+            </button>
+          ))}
+        </div>
+        {slides && (
+          <div className="mt-5 space-y-5">
+            <PurposePick school={school} disabled={!!busy} onChange={setSchool} />
+            <SlideCount value={count} max={30} disabled={!!busy} onChange={setCount} />
+            <ThemePick value={theme} disabled={!!busy} onChange={setTheme} auto />
+            <label className="flex cursor-pointer items-start gap-3 text-[14px] text-ink/75">
+              <input type="checkbox" checked={consent} disabled={!!busy} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-board)]" />
+              J&apos;accepte que le texte de mon document soit envoyé à un service d&apos;IA pour préparer la présentation, et que de courtes descriptions d&apos;images soient envoyées à un service d&apos;illustration.
+            </label>
+          </div>
+        )}
+        {source && (
+          <button type="button" disabled={!!busy} onClick={fromDocument} className="press mt-6 flex w-full items-center justify-center gap-2 rounded-md bg-board px-4 py-4 text-[17px] font-bold text-white">
+            {busy && <Icon name="loader-circle" size={20} className="animate-spin" />}
+            {busy || `Créer mes ${count} diapos`}
+          </button>
+        )}
         <button
           type="button"
           disabled={!!busy}
+          hidden={!!source}
           onClick={() => input.current?.click()}
           onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
           onDragLeave={() => setDrag(false)}

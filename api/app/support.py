@@ -1,8 +1,8 @@
 """Support: a customer writes from the site, both team members see the same inbox and answer from it.
 
 The customer keeps a secret link to the conversation (and finds it on their account when signed in), and
-leaves a WhatsApp number or an e-mail so the team can also answer outside the site. Each new message rings
-the team's phones through ntfy (free app, no account: subscribe to SUPPORT_NTFY_TOPIC); the notification
+leaves a WhatsApp number or an e-mail so the team can also answer outside the site. Each new message alerts
+the team on Discord (SUPPORT_DISCORD_WEBHOOK), or through ntfy (SUPPORT_NTFY_TOPIC) as a backup; the notification
 carries no content, only a link to the inbox.
 """
 from __future__ import annotations
@@ -22,16 +22,27 @@ STATUSES = ("NEW", "ANSWERED", "CLOSED")
 
 
 def notify(title: str, text: str) -> None:
-    """Rings the team's phones (in the background: a slow ntfy never delays the customer)."""
-    if not config.SUPPORT_NTFY_TOPIC:
+    """Alerts the team in the background (a slow service never delays the customer): Discord first, ntfy as backup."""
+    if not config.SUPPORT_DISCORD_WEBHOOK and not config.SUPPORT_NTFY_TOPIC:
         return
 
     def send() -> None:
-        try:
-            httpx.post(f"https://ntfy.sh/{config.SUPPORT_NTFY_TOPIC}", content=text.encode(), timeout=10,
-                       params={"title": title, "tags": "speech_balloon", "click": f"{config.WEB_URL}/coulisses/"})
-        except httpx.HTTPError:
-            log.warning("ntfy unreachable")
+        lien = f"{config.WEB_URL}/coulisses/"
+        if config.SUPPORT_DISCORD_WEBHOOK:
+            embed = {"title": f"💬 {title}"[:250], "description": f"{text}\n\n[Ouvrir la boîte de réception]({lien})"[:3900], "color": 0x3B82F6}
+            try:
+                r = httpx.post(config.SUPPORT_DISCORD_WEBHOOK, timeout=10, json={"username": "Support", "embeds": [embed], "allowed_mentions": {"parse": []}})
+                if r.is_success:
+                    return
+                log.warning("discord %s", r.status_code)
+            except httpx.HTTPError:
+                log.warning("discord unreachable")
+        if config.SUPPORT_NTFY_TOPIC:
+            try:
+                httpx.post(f"https://ntfy.sh/{config.SUPPORT_NTFY_TOPIC}", content=text.encode(), timeout=10,
+                           params={"title": title, "tags": "speech_balloon", "click": lien})
+            except httpx.HTTPError:
+                log.warning("ntfy unreachable")
 
     threading.Thread(target=send, daemon=True).start()
 

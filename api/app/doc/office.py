@@ -15,6 +15,7 @@ from ..config import DATA_DIR, FONTS_DIR
 
 UNO_PYTHON = os.getenv("PROPRE_UNO_PYTHON", "/usr/bin/python3")
 PIPE = os.getenv("PROPRE_LO_PIPE", "propre_lo")
+SOFFICE = os.getenv("PROPRE_SOFFICE", "soffice")
 WORKER = Path(__file__).with_name("uno_worker.py")
 _lock = threading.Lock()  # one LibreOffice instance: one document at a time
 
@@ -60,6 +61,26 @@ def to_docx(src: Path, dst: Path) -> None:
         except (subprocess.TimeoutExpired, OSError) as exc:
             raise OfficeError("Conversion impossible") from exc
     made = out_dir / f"{src.stem}.docx"
+    if not made.is_file() or made.stat().st_size == 0:
+        raise OfficeError(proc.stderr.decode("utf-8", "replace")[-400:] or "Conversion impossible")
+    made.replace(dst)
+    out_dir.rmdir()
+
+
+def slides_to_pdf(src: Path, dst: Path) -> None:
+    """A PowerPoint printed to PDF by LibreOffice Impress: the preview of the slides."""
+    profile = DATA_DIR / "lo-convert"
+    profile.mkdir(parents=True, exist_ok=True)
+    out_dir = dst.parent / "slides-pdf"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with _lock:
+        try:
+            proc = subprocess.run(
+                [SOFFICE, f"-env:UserInstallation=file://{profile}", "--headless", "--norestore", "--convert-to", "pdf:impress_pdf_Export",
+                 "--outdir", str(out_dir), str(src)], capture_output=True, timeout=180)
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            raise OfficeError("Conversion impossible") from exc
+    made = out_dir / f"{src.stem}.pdf"
     if not made.is_file() or made.stat().st_size == 0:
         raise OfficeError(proc.stderr.decode("utf-8", "replace")[-400:] or "Conversion impossible")
     made.replace(dst)

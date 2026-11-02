@@ -125,10 +125,18 @@ export type DocView = {
   /** False until the user has seen the analysis and chosen: nothing is laid out before that. */
   confirmed: boolean;
   /** Set when the order only changes the format: the file it will become. */
-  convert?: "pdf" | "docx" | null;
+  convert?: "pdf" | "docx" | "pptx" | null;
+  /** The presentation written by the AI (convert "pptx"). */
+  deck?: DeckInfo | null;
   /** The customer agreed to let the team keep the file to improve Paginya. */
   help?: boolean;
 };
+
+export type DeckShowPlan = { slides: { frames: number; push: boolean }[]; version: string };
+export type DeckItem = { head: string; text: string; icon: string };
+export type DeckSlide = { type: string; title: string; items?: DeckItem[]; key?: string; takeaway?: string; value?: string; text?: string; [other: string]: unknown };
+export type DeckInfo = { slides: number; theme: string; max: number; file?: string; school?: boolean; moving?: boolean; colors?: { accent?: string; second?: string }; font?: string; content?: DeckSlide[] };
+export type DeckPatch = { slides?: number; theme?: string; logo?: string; school?: boolean; moving?: boolean; colors?: { accent?: string; second?: string }; font?: string; edited?: DeckSlide[] };
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
@@ -176,6 +184,18 @@ export const docs = {
   /** Word -> PDF or PDF -> Word, nothing added or restyled. */
   convert: (file: File, onProgress?: (sent: number) => void) =>
     created(upload(`/documents/upload?filename=${encodeURIComponent(file.name)}&convert=true`, file, onProgress)),
+  /** A Word or PDF file as a presentation: the AI reads it and writes the number of slides asked. */
+  present: (file: File, slides: number, theme: string, school: boolean, onProgress?: (sent: number) => void) =>
+    created(upload(`/documents/upload?filename=${encodeURIComponent(file.name)}&convert=true&to=pptx&consent=true&slides=${slides}&theme=${theme}&school=${school}`, file, onProgress)),
+  /** A document already formatted as a presentation: nothing to send again, a new order. */
+  presentFrom: (id: string, slides: number, theme: string, school: boolean) =>
+    call<DocView>(`/documents/${id}/present`, { method: "POST", body: JSON.stringify({ slides, theme, school, consent: true }) }),
+  /** Pictures of each slide as its things appear, for the slideshow on the site. */
+  show: (id: string) => call<DeckShowPlan>(`/documents/${id}/show`, { method: "POST" }),
+  showUrl: (id: string, slide: number, frame: number, version: string) => `${API_URL}/documents/${id}/show/${slide}-${frame}.webp?v=${version}`,
+  /** A new number of slides (the AI writes them again) or a new theme (same words). */
+  deck: (id: string, patch: DeckPatch) =>
+    call<DocView>(`/documents/${id}/deck`, { method: "POST", body: JSON.stringify(patch) }),
   get: (id: string) => call<DocView>(`/documents/${id}`),
   update: (id: string, patch: Partial<{ blocks: Block[]; style: DocStyle; options: DocOptions; kind: string; letterhead: Letterhead; cover_svg: string; remove_cover: boolean; mode: DocMode; plan: Partial<DocPlan>; confirm: boolean }>) =>
     call<DocView>(`/documents/${id}`, { method: "PUT", body: JSON.stringify(patch) }),

@@ -17,6 +17,16 @@ Poste   Effectif   Rôle
 Chef d'agence   1   Direction
 Tableau 1 : Répartition du personnel`;
 
+// Many visitors come for one precise thing: each tool has its own door, right under the board.
+const TOOLS = [
+  ["/document", "file-text", "Mettre en forme", "Rapport, mémoire, cours, exposé : titres, sommaire, pagination."],
+  ["/convertir?vers=powerpoint", "presentation", "Faire un PowerPoint", "L'IA résume ton document pour ta soutenance, en autant de diapos que tu veux."],
+  ["/garde", "landmark", "Page de garde", "Aux normes de ton école, avec l'en-tête et le logo."],
+  ["/convertir", "refresh-cw", "Word ↔ PDF", "Ton Word en PDF, ou ton PDF en Word à modifier."],
+  ["/lettre", "mail", "Lettre, demande", "Lettre de motivation, demande de stage, requête."],
+  ["/epreuve", "pen-line", "Épreuve", "Pour les enseignants : un sujet propre, prêt à imprimer."],
+] as const;
+
 const STEPS: [string, string, string][] = [
   ["Dépose", "Ton fichier Word ou PDF, des photos de tes pages, ou ton texte collé depuis WhatsApp ou ChatGPT.", "Même tout en désordre."],
   ["Vérifie", "Tu vois toutes tes pages gratuitement. Tu choisis le type : cours, exposé, rapport de stage, mémoire…", "Rien n'est ajouté sans ton accord."],
@@ -40,7 +50,7 @@ const PRICES: [string, string, string][] = [
 ];
 
 const FAQ: [string, string][] = [
-  ["Est-ce que vous modifiez mon texte ?", "Non. Paginya ne change pas tes mots : il s'occupe seulement de la présentation."],
+  ["Est-ce que vous modifiez mon texte ?", "Non, pas pour la mise en forme : Paginya ne change pas tes mots, il s'occupe seulement de la présentation. Seul le PowerPoint est résumé par l'IA, et seulement si tu l'acceptes."],
   ["Comment je paie ?", "Par MTN Mobile Money ou Orange Money. Tu vois tout ton document gratuitement avant, tu paies seulement pour le télécharger."],
   ["Et si mon encadreur demande des corrections ?", "Tu modifies et tu retélécharges gratuitement pendant 7 jours avec le même lien."],
   ["Mon école n'est pas dans la liste ?", "Choisis « Autre » et tape ton en-tête : Paginya le met en forme comme les autres."],
@@ -59,6 +69,7 @@ export default function Home() {
             <Link href="/tarifs" className="hidden rounded-md px-3 py-2 text-white/75 hover:text-white sm:block">Tarifs</Link>
             <Link href="/compte" className="hidden rounded-md px-3 py-2 text-white/75 hover:text-white sm:block">Mon compte</Link>
             <Link href="/garde" className="hidden rounded-md px-3 py-2 text-white/75 hover:text-white sm:block">Page de garde</Link>
+            <Link href="/convertir?vers=powerpoint" className="hidden rounded-md px-3 py-2 text-white/75 hover:text-white sm:block">PowerPoint</Link>
             <Link href="/document" className="press rounded-md bg-white/10 px-3.5 py-2 text-white ring-1 ring-white/20 hover:bg-white/15">Commencer</Link>
           </nav>
         </header>
@@ -83,6 +94,9 @@ export default function Home() {
                 <Icon name="arrow-right" size={22} stroke={2.6} />
               </Link>
               <p className="text-[14px] font-semibold text-white/70">Aperçu gratuit · 550 F le document · MTN MoMo et Orange Money</p>
+              <a href="#outils" className="press flex items-center gap-2 rounded-md py-1 text-[16px] font-bold text-white underline underline-offset-4">
+                PowerPoint, page de garde, Word ↔ PDF…<Icon name="arrow-down" size={18} />
+              </a>
             </div>
           </div>
 
@@ -111,6 +125,24 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ---------- One door per tool ---------- */}
+      <section id="outils" className="mx-auto w-full max-w-6xl scroll-mt-4 px-6 pt-14 sm:pt-16">
+        <h2 className="font-display text-[2.6rem] leading-[0.95] font-black uppercase sm:text-[3.4rem]">Tu viens pour quoi ?</h2>
+        <ul className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {TOOLS.map(([href, icon, label, text]) => (
+            <li key={href}>
+              <Link href={href} className="press paper group flex h-full items-start gap-4 rounded-[3px] p-5 ring-1 ring-black/10 hover:ring-board">
+                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-md bg-board text-white"><Icon name={icon} size={24} /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1 font-display text-[23px] leading-none font-black uppercase">{label}<Icon name="chevron-right" size={18} className="text-ink/40 group-hover:text-board" /></span>
+                  <span className="mt-1.5 block text-[15px] leading-snug text-ink/70">{text}</span>
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
+
       {/* ---------- Three steps, like an instruction sheet ---------- */}
       <section className="mx-auto w-full max-w-6xl px-6 py-16 sm:py-20">
         <h2 className="max-w-2xl font-display text-[2.6rem] leading-[0.95] font-black uppercase sm:text-[3.4rem]">Trois gestes, et c&apos;est rendu.</h2>
@@ -124,19 +156,6 @@ export default function Home() {
             </li>
           ))}
         </ol>
-        <div className="paper relative mt-14 max-w-xl -rotate-1 rounded-[2px] px-6 pt-7 pb-5" style={{ background: "#fff8c9" }}>
-          <span className="pin top-2 left-6" aria-hidden />
-          <p className="font-display text-[20px] font-black uppercase">Aussi, en deux minutes</p>
-          <ul className="mt-3 grid gap-1 sm:grid-cols-3">
-            {([["/garde", "landmark", "Page de garde"], ["/lettre", "mail", "Lettre, demande"], ["/epreuve", "pen-line", "Épreuve (profs)"]] as const).map(([href, icon, label]) => (
-              <li key={href}>
-                <Link href={href} className="press flex items-center gap-2 rounded-md py-2 text-[16px] font-bold hover:text-board">
-                  <Icon name={icon} size={18} className="text-board" />{label}<Icon name="chevron-right" size={16} className="text-ink/40" />
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
       </section>
 
       {/* ---------- What it does, as a real table of contents ---------- */}

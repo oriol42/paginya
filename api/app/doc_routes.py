@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import io
 import logging
 import os
 import re
@@ -18,6 +19,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from docx import Document as DocxDocument
 from fastapi.responses import FileResponse
+from PIL import Image
 from pydantic import BaseModel
 
 from . import config, db, learn, pricing, storage
@@ -26,19 +28,22 @@ from .doc.detect import detect
 from .doc.extract import ExtractError, from_docx, from_markdown, from_pdf, from_text, looks_like_markdown
 from .doc.render import DEFAULT_OPTIONS, KINDS, THEMES, build_docx, options_for
 from . import render as cover_render
-from .doc import analysis, keep
+from .doc import analysis, art, keep
 from .doc.cover_info import split_header_lines
 from .forms.letter_parse import parse_letter
 from .doc import spelling as spell
 from .doc.exam_scan import AUTO_PROMPT, EXAM_PROMPT, blocks_to_text, exam_signals, raws_to_text, split_type
 from .doc.exam_scan import finalize as finalize_exam
 from .doc.scan import ScanError, ocr_local, read_text, read_text_with_engine, straighten
+from .doc import deck as deck_ai
+from .doc.slides import DEFAULT_THEME, THEMES as SLIDE_THEMES, build_pptx, choose_theme, frame_deck, show_plan, title_info
 from .svg_safe import UnsafeSvg, sanitize_svg
 
 router = APIRouter(prefix="/documents")
 
 MAX_UPLOAD = 15 * 1024 * 1024
 MAX_TEXT = 1_500_000
+MAX_DECK_RUNS = 6  # each one is an AI call on a free quota
 TIERS = ["document_court", "rapport", "memoire"]
 CONVERTIBLE = (".docx", ".pdf")
 log = logging.getLogger("paginya.docs")
@@ -116,6 +121,11 @@ class DocIn(BaseModel):
     filename: str | None = None
     data: str | None = None  # base64 file content
     convert: bool = False  # only change the format (Word -> PDF, PDF -> Word): nothing is added or restyled
+    to: str = ""  # "pptx": the Word or PDF file becomes a presentation written by the AI (with convert)
+    slides: int = deck_ai.DEFAULT_SLIDES  # how many, chosen by the user
+    theme: str = "auto"
+    school: bool = True  # a school work: the slides open and close like the report (logos, establishment, supervisors)
+    consent: bool = False  # the text is sent to an AI service: the user agreed
 
 
 class DocPatch(BaseModel):
@@ -159,7 +169,10 @@ def view(order: dict) -> dict:
         "plan": plan_of(doc),
         "analysis": doc.get("analysis"),
         "confirmed": doc.get("confirmed", True),  # documents made before the analysis screen existed
-        "convert": doc.get("convert"),  # "pdf" | "docx" when the order is a plain conversion
+        "convert": doc.get("convert"),  # "pdf" | "docx" | "pptx" when the order is a plain conversion
+        "deck": {"slides": deck_ai.total(doc["deck"]), "theme": doc.get("deck_theme", DEFAULT_THEME),
+                 "max": deck_ai.max_slides(doc["meta"].get("words", 0)), "file": doc.get("deck_file", ""), "school": doc.get("deck_school", True), "moving": doc.get("deck_moving", True),
+                 "colors": doc.get("deck_colors") or {}, "font": doc.get("deck_font") or "", "content": doc["deck"]["slides"]} if doc.get("deck") else None,
         "help": bool(doc.get("help")),  # « J'aide Paginya à s'améliorer » (app/learn.py)
     }
 
@@ -173,7 +186,8 @@ def plan_of(doc: dict) -> dict:
 
 
 @router.post("/upload")
-async def upload(request: Request, filename: str, convert: bool = False) -> dict:
+async def upload(request: Request, filename: str, convert: bool = False, to: str = "", slides: int = deck_ai.DEFAULT_SLIDES,
+                 theme: str = "auto", consent: bool = False, school: bool = True) -> dict:
     """The file sent as it is (no base64): a third less to send on a slow 3G line than /documents."""
     raw = b""
     async for chunk in request.stream():
@@ -182,7 +196,7 @@ async def upload(request: Request, filename: str, convert: bool = False) -> dict
             raise HTTPException(413, "Fichier trop lourd (15 Mo maximum)")
     if not raw:
         raise HTTPException(400, "Fichier vide")
-    body = DocIn(filename=filename[:200], data=base64.b64encode(raw).decode(), convert=convert)
+    body = DocIn(filename=filename[:200], data=base64.b64encode(raw).decode(), convert=convert, to=to, slides=slides, theme=theme, consent=consent, school=school)
     return await run_in_threadpool(create, body)  # the heavy work stays off the event loop, like /documents
 
 
@@ -190,6 +204,8 @@ async def upload(request: Request, filename: str, convert: bool = False) -> dict
 def create(body: DocIn) -> dict:
     tmp_id = None
     early_layout = None
+    if body.to == "pptx" and not body.consent:
+        raise HTTPException(400, "Accepte l'envoi du texte à l'IA pour préparer la présentation")
     if body.data and body.filename:
         try:
             raw_bytes = base64.b64decode(body.data, validate=True)
@@ -220,7 +236,7 @@ def create(body: DocIn) -> dict:
                 early_layout = _LAYOUT_POOL.submit(office.layout, src, folder / "layout.json", folder / "before" / "before.pdf")
                 raws = from_docx(src, folder / "images")
             elif ext == ".pdf":
-                raws = from_pdf(src, folder / "images", keep_toc=body.convert)
+                raws = from_pdf(src, folder / "images", keep_toc=body.convert and body.to != "pptx")  # a sommaire has no place on slides
             elif ext in (".txt", ".md", ".markdown"):
                 content = raw_bytes.decode("utf-8", "replace")
                 raws = from_markdown(content) if ext != ".txt" or looks_like_markdown(content) else from_text(content)
@@ -295,7 +311,16 @@ def create(body: DocIn) -> dict:
             _discard(tmp_id)
             raise HTTPException(400, "La conversion prend un fichier Word (.docx) ou PDF")
         doc["confirmed"] = True  # nothing to choose: the file is shown converted straight away
-        if ext == ".docx":  # the Word file exactly as it is, printed to PDF
+        if body.to == "pptx":  # the content of the file as slides to edit: only what it says, cut into slides
+            doc.pop("mode", None)
+            doc.update(convert="pptx", plan={"cover": "none", "toc": "none", "numbers": "none"}, deck_theme=_theme(body.theme, doc), deck_file=(body.filename or "")[:200], deck_school=body.school)
+            try:
+                _write_deck(doc, body.slides, folder / "images")
+            except deck_ai.DeckError as exc:
+                db.bump("ia_echec")
+                _discard(tmp_id)
+                raise HTTPException(503, str(exc)) from exc
+        elif ext == ".docx":  # the Word file exactly as it is, printed to PDF
             doc.update(convert="pdf", mode="keep", plan={"cover": "keep", "toc": "keep", "numbers": "keep"})
         else:  # the text, titles, lists, tables and pictures of the PDF in a Word file to edit, with no page added
             if any(b.get("hidden") for b in result["blocks"]) or result["meta"].get("cover"):
@@ -319,6 +344,21 @@ def create(body: DocIn) -> dict:
     _persist_inputs(order_id)
     learn.snapshot_later(order_id, raws, result, trace, doc_dir(order_id))
     return view(db.get_order(order_id))
+
+
+def _theme(name: str, doc: dict | None = None) -> str:
+    if name in SLIDE_THEMES:
+        return name
+    return choose_theme(doc) if doc else DEFAULT_THEME
+
+
+def _write_deck(doc: dict, wanted: int, images: Path | None = None) -> None:
+    most = deck_ai.max_slides(doc["meta"].get("words", 0))
+    count = max(deck_ai.MIN_SLIDES, min(wanted, most))
+    doc["deck"] = deck_ai.write(doc, count, on_call=lambda provider: db.bump(f"ia:presentation-{provider}"))
+    doc["deck_runs"] = doc.get("deck_runs", 0) + 1
+    if images is not None:
+        art.illustrate(doc["deck"], images)
 
 
 def _with_toc_lines(blocks: list[dict], trace: dict, raws: list) -> list[dict]:
@@ -452,6 +492,232 @@ def update(order_id: str, body: DocPatch) -> dict:
     return view(db.get_order(order_id))
 
 
+def _save_logo(order_id: str, data: str) -> str:
+    try:
+        raw = base64.b64decode(data.split(",")[-1], validate=True)
+        if len(raw) > 3 * 1024 * 1024:
+            raise HTTPException(413, "Logo trop lourd (3 Mo maximum)")
+        with Image.open(io.BytesIO(raw)) as img:
+            img.thumbnail((800, 800))
+            folder = doc_dir(order_id) / "images"
+            folder.mkdir(parents=True, exist_ok=True)
+            img.convert("RGBA").save(folder / "deck-logo.png", "PNG")
+    except (binascii.Error, ValueError, OSError) as exc:
+        raise HTTPException(400, "Image illisible : choisis un logo en PNG ou JPEG") from exc
+    _persist_inputs(order_id)
+    return "deck-logo.png"
+
+
+class PresentIn(BaseModel):
+    slides: int = deck_ai.DEFAULT_SLIDES
+    theme: str = "auto"
+    school: bool = True
+    consent: bool = False  # the text is sent to an AI service: the user agreed
+
+
+@router.post("/{order_id}/present")
+def present(order_id: str, body: PresentIn) -> dict:
+    """A document already formatted becomes a presentation, with the user's corrections, without sending the file again.
+    It is a new order: the presentation is a second file, sold like any other document."""
+    if not body.consent:
+        raise HTTPException(400, "Accepte l'envoi du texte à l'IA pour préparer la présentation")
+    source = _load(order_id)["payload"]["doc"]
+    if source.get("convert") == "pptx":
+        raise HTTPException(400, "Ce document est déjà une présentation")
+    _ensure_inputs(order_id)
+    new_id = db.create_order("document_court", pricing.price_for("document_court"), {"doc": {}})
+    folder, origin = doc_dir(new_id), doc_dir(order_id)
+    folder.mkdir(parents=True, exist_ok=True)
+    if (origin / "images").is_dir():
+        shutil.copytree(origin / "images", folder / "images")
+    for path in origin.glob("source.*"):
+        shutil.copy(path, folder / path.name)
+    meta = source["meta"]
+    doc = {"blocks": source["blocks"], "meta": meta, "style": source["style"], "options": source["options"], "cover_svg": None, "render": None, "analysis": None,
+           "confirmed": True, "convert": "pptx", "plan": {"cover": "none", "toc": "none", "numbers": "none"}, "deck_theme": "",
+           "deck_file": str((meta.get("cover") or {}).get("title") or meta.get("title") or "Ton document")[:200], "deck_school": body.school}
+    doc["deck_theme"] = _theme(body.theme, doc)
+    try:
+        _write_deck(doc, body.slides, folder / "images")
+    except deck_ai.DeckError as exc:
+        db.bump("ia_echec")
+        _discard(new_id)
+        raise HTTPException(503, str(exc)) from exc
+    db.update_payload(new_id, {"doc": doc})
+    _persist_inputs(new_id)
+    return view(db.get_order(new_id))
+
+
+DECK_TYPES = {"liste", "grille", "panneau", "schema", "chronologie", "etapes", "comparaison", "chiffres", "graphique", "encadre", "grand", "figure", "tableau", "section"}
+_TEXT_KEYS = ("title", "notes", "part", "highlight", "takeaway", "key", "label", "text", "value", "caption", "chart", "icon", "visual", "art")
+
+
+def _clean_edited(slides: list[dict]) -> list[dict]:
+    """What comes back from the editor: the user writes what they want, but the shape of a slide stays ours."""
+    def line(value, limit: int = 300) -> str:
+        return str(value or "").strip()[:limit]
+
+    def items(values, most: int) -> list[dict]:
+        out = [{"head": line(v.get("head"), 60), "text": line(v.get("text")), "icon": line(v.get("icon"), 30)} for v in (values if isinstance(values, list) else []) if isinstance(v, dict)]
+        return [v for v in out if v["head"] or v["text"]][:most]
+
+    out = []
+    for s in slides[:40]:
+        kind = s.get("type") if isinstance(s, dict) else None
+        if kind not in DECK_TYPES or not line(s.get("title")):
+            continue
+        clean = {k: line(s[k], 1500 if k == "notes" else 300) for k in _TEXT_KEYS if s.get(k)}
+        clean["type"] = kind
+        if kind in ("liste", "grille", "panneau", "schema", "chronologie", "etapes"):
+            clean["items"] = items(s.get("items"), 6)
+            if not clean["items"]:
+                continue
+            if kind == "chronologie" and len(clean["items"]) < 2 or kind in ("liste", "etapes") and len(clean["items"]) > 5 or kind == "panneau" and len(clean["items"]) > 4:
+                clean["type"] = "grille"
+        elif kind == "chiffres":
+            clean["stats"] = [{"value": line(v.get("value"), 20), "label": line(v.get("label"), 90), "icon": line(v.get("icon"), 30)} for v in (s.get("stats") or [])[:4] if isinstance(v, dict) and v.get("value")]
+            if not clean["stats"]:
+                continue
+        elif kind == "comparaison":
+            for side in ("left", "right"):
+                part = s.get(side) if isinstance(s.get(side), dict) else {}
+                clean[side] = {"title": line(part.get("title"), 40), "points": [line(p, 120) for p in (part.get("points") or [])[:5] if line(p)]}
+            if not clean["left"]["points"] or not clean["right"]["points"]:
+                continue
+        elif kind == "graphique":
+            clean["series"] = [{"label": line(v.get("label"), 40), "value": float(v["value"])} for v in (s.get("series") or [])[:6] if isinstance(v, dict) and isinstance(v.get("value"), (int, float))]
+            if len(clean["series"]) < 2:
+                continue
+        elif kind == "figure":
+            if not str(s.get("image", "")).replace(".", "").replace("-", "").isalnum():
+                continue
+            clean["image"] = str(s["image"])
+            clean["points"] = [line(p, 120) for p in (s.get("points") or [])[:3] if line(p)]
+        elif kind == "tableau":
+            clean["rows"] = [[line(c, 200) for c in r][:6] for r in (s.get("rows") or [])[:9] if isinstance(r, list)]
+            if len(clean["rows"]) < 2:
+                continue
+        elif kind in ("encadre", "grand") and not clean.get("text" if kind == "encadre" else "value"):
+            continue
+        out.append(clean)
+    if not out:
+        raise HTTPException(400, "Garde au moins une diapositive")
+    return out
+
+
+class DeckIn(BaseModel):
+    slides: int | None = None  # a new number: the AI writes the slides again
+    theme: str | None = None  # a new look: same words, nothing sent to the AI
+    logo: str | None = None  # the school's or company's logo, base64
+    school: bool | None = None  # a school work (cover like the report) or a plain presentation: no AI needed
+    moving: bool | None = None  # transitions and animations: some juries prefer none
+    colors: dict | None = None  # {"accent": "RRGGBB", "second": "RRGGBB"}; {} goes back to the style's own colours
+    font: str | None = None  # font of the titles: Calibri, Cambria or Arial; "" for the style's own
+    edited: list[dict] | None = None  # the slides as the user changed them: words, order, layout, removals
+
+
+@router.post("/{order_id}/deck")
+def change_deck(order_id: str, body: DeckIn) -> dict:
+    order = _load(order_id)
+    doc = order["payload"]["doc"]
+    if doc.get("convert") != "pptx" or not doc.get("deck"):
+        raise HTTPException(400, "Ce document n'est pas une présentation")
+    if not view(order)["editable"]:
+        raise HTTPException(403, "La période de modification gratuite (7 jours) est terminée")
+    if body.theme:
+        doc["deck_theme"] = _theme(body.theme)
+    if body.school is not None:
+        doc["deck_school"] = body.school
+    if body.moving is not None:
+        doc["deck_moving"] = body.moving
+    if body.colors is not None:
+        doc["deck_colors"] = {k: str(v).lstrip("#").upper() for k, v in body.colors.items() if k in ("accent", "second") and re.fullmatch(r"#?[0-9a-fA-F]{6}", str(v))}
+    if body.font is not None:
+        doc["deck_font"] = body.font if body.font in ("Calibri", "Cambria", "Arial") else ""
+    if body.edited is not None:
+        doc["deck"]["slides"] = _clean_edited(body.edited)
+        doc["deck"]["parts"] = list(dict.fromkeys(s["part"] for s in doc["deck"]["slides"] if s.get("part")))
+    if body.logo:
+        _ensure_inputs(order_id)
+        doc["deck_logo"] = _save_logo(order_id, body.logo)
+    if body.slides is not None:
+        if doc.get("deck_runs", 0) >= MAX_DECK_RUNS:
+            raise HTTPException(429, "Tu as refait cette présentation plusieurs fois : garde celle-ci ou importe à nouveau ton fichier.")
+        try:
+            _write_deck(doc, body.slides, doc_dir(order_id) / "images")
+        except deck_ai.DeckError as exc:
+            db.bump("ia_echec")
+            raise HTTPException(503, str(exc)) from exc
+    db.update_payload(order_id, {"doc": doc})
+    _persist_inputs(order_id)
+    return render(order_id)
+
+
+SHOW_DPI = 80
+_SHOW_LOCK = threading.Lock()  # two calls at once (a double click) must not draw in the same folder
+
+
+@router.post("/{order_id}/show")
+def show(order_id: str) -> dict:
+    """The slideshow on the site: each slide as its things appear, so the customer sees it move before paying."""
+    with _SHOW_LOCK:
+        return _prepare_show(order_id)
+
+
+def _prepare_show(order_id: str) -> dict:
+    order = _load(order_id)
+    doc = order["payload"]["doc"]
+    build = doc_dir(order_id) / "build"
+    if doc.get("convert") != "pptx" or not doc.get("render"):
+        raise HTTPException(400, "Prépare d'abord la présentation")
+    if not (build / "final.pptx").is_file():
+        render(order_id)
+    folder = build / "show"
+    version = str(doc["render"]["version"]) + str(order["status"])
+    plan = show_plan(build / "final.pptx")
+    if (folder / "version").is_file() and (folder / "version").read_text() == version:
+        return {"slides": plan, "version": version}
+    shutil.rmtree(folder, ignore_errors=True)
+    folder.mkdir(parents=True)
+    watermark = order["status"] != "PAID"
+
+    def picture(pdf: Path, page: int, name: str) -> None:
+        subprocess.run(["pdftoppm", "-r", str(SHOW_DPI), "-f", str(page), "-l", str(page), "-singlefile", str(pdf), str(folder / "raw")], check=True, capture_output=True, timeout=60)
+        raw = folder / "raw.ppm"
+        with Image.open(raw) as img:
+            page_img = img.convert("RGB")
+        if watermark:
+            page_img = Image.alpha_composite(page_img.convert("RGBA"), office._watermark_layer(page_img.size)).convert("RGB")
+        page_img.save(folder / f"{name}.webp", "WEBP", quality=78, method=2)
+        raw.unlink()
+
+    try:
+        for frame in range(max(s["frames"] for s in plan) - 1):
+            stage = folder / f"stage{frame}.pptx"
+            stage.write_bytes(frame_deck(build / "final.pptx", frame))
+            office.slides_to_pdf(stage, folder / f"stage{frame}.pdf")
+            for n, slide in enumerate(plan, 1):
+                if frame < slide["frames"] - 1:
+                    picture(folder / f"stage{frame}.pdf", n, f"{n}-{frame}")
+            stage.unlink()
+            (folder / f"stage{frame}.pdf").unlink()
+        for n, slide in enumerate(plan, 1):
+            picture(build / "final.pdf", n, f"{n}-{slide['frames'] - 1}")
+    except (office.OfficeError, subprocess.SubprocessError, OSError) as exc:
+        raise HTTPException(500, "Le diaporama n'a pas pu être préparé, réessaie") from exc
+    (folder / "version").write_text(version)
+    return {"slides": plan, "version": version}
+
+
+@router.get("/{order_id}/show/{slide}-{frame}.webp")
+def show_frame(order_id: str, slide: int, frame: int) -> FileResponse:
+    _load(order_id)
+    path = doc_dir(order_id) / "build" / "show" / f"{slide}-{frame}.webp"
+    if not path.is_file():
+        raise HTTPException(404, "Image introuvable")
+    return FileResponse(path, media_type="image/webp")
+
+
 @router.post("/{order_id}/exam")
 def to_exam(order_id: str) -> dict:
     """The document as an exam paper (the user picked "Épreuve"): header fields + exercises for /epreuve.
@@ -480,6 +746,7 @@ def to_exam(order_id: str) -> dict:
 
 
 class SpellIn(BaseModel):
+    school: bool = True  # a school work: the slides open and close like the report (logos, establishment, supervisors)
     consent: bool = False  # the text is sent to an AI service: the user agreed
 
 
@@ -528,7 +795,13 @@ def render(order_id: str) -> dict:
     build = folder / "build"
     build.mkdir(parents=True, exist_ok=True)
     source_docx = folder / "source.docx"
-    if doc.get("convert") == "pdf" and source_docx.is_file():
+    if doc.get("convert") == "pptx":
+        (build / "final.pptx").write_bytes(build_pptx(doc["deck"], title_info(doc, folder / "images"), doc.get("deck_theme", DEFAULT_THEME), folder / "images", doc.get("deck_moving", True), doc.get("deck_colors"), doc.get("deck_font")))
+        try:
+            office.slides_to_pdf(build / "final.pptx", build / "final.pdf")
+        except office.OfficeError as exc:
+            raise HTTPException(500, "La création des diapositives a échoué, réessaie") from exc
+    elif doc.get("convert") == "pdf" and source_docx.is_file():
         shutil.copy(source_docx, build / "raw.docx")  # a conversion never edits the file
     elif doc.get("mode") == "keep" and source_docx.is_file():
         plan = plan_of(doc)
@@ -540,11 +813,12 @@ def render(order_id: str) -> dict:
                    layout=office.layout(source_docx, folder / "layout.json"))
     else:
         (build / "raw.docx").write_bytes(build_docx(doc, folder / "images"))
-    (build / "final.docx").unlink(missing_ok=True)  # made again from raw.docx when downloaded
-    try:
-        office.finalize(build / "raw.docx", None, build / "final.pdf")
-    except office.OfficeError as exc:
-        raise HTTPException(500, "La mise en page a échoué, réessaie") from exc
+    if doc.get("convert") != "pptx":
+        (build / "final.docx").unlink(missing_ok=True)  # made again from raw.docx when downloaded
+        try:
+            office.finalize(build / "raw.docx", None, build / "final.pdf")
+        except office.OfficeError as exc:
+            raise HTTPException(500, "La mise en page a échoué, réessaie") from exc
     pages = office.page_count(build / "final.pdf")
     db.bump("rendu")
 
@@ -594,7 +868,7 @@ def final_file(order_id: str, fmt: str) -> Path:
     build = doc_dir(order_id) / "build"
     path = build / f"final.{fmt}"
     doc = _load(order_id)["payload"]["doc"]
-    if fmt in ("pdf", "docx") and doc.get("render") and (not (build / "final.pdf").is_file() or doc["render"].get("stale")):
+    if fmt in ("pdf", "docx", "pptx") and doc.get("render") and (not (build / "final.pdf").is_file() or doc["render"].get("stale")):
         render(order_id)  # rebuilt after a restart, or after edits that skipped the full render (cover)
     if fmt == "docx" and not path.is_file() and (build / "raw.docx").is_file() and doc.get("mode") == "keep" and plan_of(doc)["toc"] not in ("add", "redo"):
         shutil.copy(build / "raw.docx", path)  # the user's own file, untouched by LibreOffice, with the numbers added
@@ -603,7 +877,7 @@ def final_file(order_id: str, fmt: str) -> Path:
             office.finalize(build / "raw.docx", path, None)
         except office.OfficeError as exc:
             raise HTTPException(500, "La création du fichier Word a échoué, réessaie") from exc
-    if fmt not in ("pdf", "docx") or not path.is_file():
+    if fmt not in ("pdf", "docx", "pptx") or not path.is_file():
         raise HTTPException(409, "Lance d'abord la mise en page")
     return path
 
