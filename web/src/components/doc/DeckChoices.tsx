@@ -111,6 +111,7 @@ const PALETTES = [
 ];
 const SIMPLE = ["liste", "grille", "schema", "panneau", "chronologie", "etapes"];
 const LAYOUTS: Record<string, string> = { liste: "Liste", grille: "Cartes", schema: "Schéma", panneau: "Bloc de couleur", chronologie: "Chronologie", etapes: "Étapes" };
+const MOTIONS = [["fondu", "Fondu"], ["monter", "Monter"], ["glisser", "Glisser"], ["zoom", "Zoom"], ["balayer", "Balayer"]];
 const field = "w-full rounded-md bg-white px-2.5 py-2 text-[14px] ring-1 ring-black/15 focus:outline-none focus:ring-2 focus:ring-board";
 
 /** The colours of the slides: ready-made pairs, or any colour the user wants. */
@@ -178,6 +179,11 @@ function SlideEditor({ slides, busy, onSave }: { slides: DeckSlide[]; busy: bool
                     <textarea aria-label="Texte de l'élément" rows={2} value={item.text} onChange={(e) => change(i, { items: s.items!.map((x, j) => (j === k ? { ...x, text: e.target.value } : x)) })} className={field} />
                   </div>
                 ))}
+                <select aria-label="Animation de cette diapo" value={s.motion ?? ""} onChange={(e) => change(i, { motion: e.target.value })} className={field}>
+                  <option value="">Animation : comme les autres diapos</option>
+                  {MOTIONS.map(([id, label]) => <option key={id} value={id}>Animation : {label}</option>)}
+                  <option value="aucune">Animation : aucune</option>
+                </select>
                 <input aria-label="À retenir" placeholder="Phrase à retenir (facultatif)" value={s.takeaway ?? ""} onChange={(e) => change(i, { takeaway: e.target.value })} className={field} />
               </div>
             )}
@@ -189,6 +195,32 @@ function SlideEditor({ slides, busy, onSave }: { slides: DeckSlide[]; busy: bool
           {busy ? "Mise à jour…" : "Appliquer mes changements"}
         </button>
       )}
+    </div>
+  );
+}
+
+/** How things appear, for the whole talk: one tap. A slide can have its own in « Modifier les diapos ». */
+function MotionPick({ deck, busy, onChange }: { deck: DeckInfo; busy: boolean; onChange: (patch: DeckPatch) => void }) {
+  const off = deck.moving === false;
+  const chosen = off ? "" : deck.motion ?? "monter";
+  const pill = (on: boolean) => `press rounded-md px-1 py-2 text-[12px] font-bold ring-1 ${on ? "ring-2 ring-board" : "ring-black/15"}`;
+  return (
+    <div>
+      <p className="text-[14px] font-bold">Animations</p>
+      <div role="radiogroup" aria-label="Animations" className="mt-2 grid grid-cols-3 gap-1.5">
+        {MOTIONS.map(([id, label]) => (
+          <button key={id} type="button" role="radio" aria-checked={chosen === id} disabled={busy} onClick={() => chosen !== id && onChange({ moving: true, motion: id })} className={pill(chosen === id)}>{label}</button>
+        ))}
+        <button type="button" role="radio" aria-checked={off} disabled={busy} onClick={() => !off && onChange({ moving: false })} className={pill(off)}>Aucune</button>
+      </div>
+      {!off && (
+        <div className="mt-2 grid grid-cols-2 gap-1.5">
+          {[{ click: false, label: "Toute seule" }, { click: true, label: "À chaque clic" }].map((c) => (
+            <button key={c.label} type="button" disabled={busy} aria-pressed={(deck.click === true) === c.click} onClick={() => (deck.click === true) !== c.click && onChange({ click: c.click })} className={pill((deck.click === true) === c.click)}>{c.label}</button>
+          ))}
+        </div>
+      )}
+      <p className="mt-1.5 text-[12px] text-ink/60">Pour voir l&apos;effet : lance le diaporama. Une diapo peut avoir la sienne dans « Modifier les diapos ».</p>
     </div>
   );
 }
@@ -217,10 +249,7 @@ export function DeckPanel({ deck, busy, onChange }: { deck: DeckInfo; busy: bool
           {busy ? "L'IA refait tes diapos…" : `Refaire en ${count} diapos`}
         </button>
       )}
-      <label className="flex cursor-pointer items-start gap-3 text-[14px] font-semibold">
-        <input type="checkbox" checked={deck.moving !== false} disabled={busy} onChange={(e) => onChange({ moving: e.target.checked })} className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-board)]" />
-        <span>Transitions et animations<span className="block text-[12px] font-normal text-ink/60">Visibles en mode diaporama dans PowerPoint, pas dans cet aperçu.</span></span>
-      </label>
+      <MotionPick deck={deck} busy={busy} onChange={onChange} />
       <label className={`press block cursor-pointer rounded-md px-3 py-3 text-center text-[14px] font-bold ring-1 ring-black/15 hover:bg-ink/5 ${busy ? "pointer-events-none opacity-50" : ""}`}>
         Ajouter le logo de ton école
         <input

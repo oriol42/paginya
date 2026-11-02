@@ -269,6 +269,10 @@ h1, h2, h3 {
 /* Slideshow on the site: the same two transitions as the PowerPoint file */
 @keyframes show-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes show-push { from { opacity: 0.4; transform: translateX(7%); } to { opacity: 1; transform: none; } }
+@keyframes show-zoom { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: none; } }
+@keyframes show-wipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+.show-zoom { animation: show-zoom 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.show-wipe { animation: show-wipe 480ms cubic-bezier(0.4, 0, 0.2, 1) both; }
 .show-fade { animation: show-fade 420ms ease-out both; }
 .show-push { animation: show-push 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
-@media (prefers-reduced-motion: reduce) { .show-fade, .show-push { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .show-fade, .show-push, .show-zoom, .show-wipe { animation: none; } }

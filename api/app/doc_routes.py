@@ -36,7 +36,7 @@ from .doc.exam_scan import AUTO_PROMPT, EXAM_PROMPT, blocks_to_text, exam_signal
 from .doc.exam_scan import finalize as finalize_exam
 from .doc.scan import ScanError, ocr_local, read_text, read_text_with_engine, straighten
 from .doc import deck as deck_ai
-from .doc.slides import DEFAULT_THEME, THEMES as SLIDE_THEMES, build_pptx, choose_theme, frame_deck, show_plan, title_info
+from .doc.slides import DEFAULT_MOTION, DEFAULT_THEME, MOTIONS, THEMES as SLIDE_THEMES, build_pptx, choose_theme, frame_deck, show_plan, title_info
 from .svg_safe import UnsafeSvg, sanitize_svg
 
 router = APIRouter(prefix="/documents")
@@ -171,7 +171,7 @@ def view(order: dict) -> dict:
         "confirmed": doc.get("confirmed", True),  # documents made before the analysis screen existed
         "convert": doc.get("convert"),  # "pdf" | "docx" | "pptx" when the order is a plain conversion
         "deck": {"slides": deck_ai.total(doc["deck"]), "theme": doc.get("deck_theme", DEFAULT_THEME),
-                 "max": deck_ai.max_slides(doc["meta"].get("words", 0)), "file": doc.get("deck_file", ""), "school": doc.get("deck_school", True), "moving": doc.get("deck_moving", True),
+                 "max": deck_ai.max_slides(doc["meta"].get("words", 0)), "file": doc.get("deck_file", ""), "school": doc.get("deck_school", True), "moving": doc.get("deck_moving", True), "motion": doc.get("deck_motion", DEFAULT_MOTION), "click": doc.get("deck_click", False),
                  "colors": doc.get("deck_colors") or {}, "font": doc.get("deck_font") or "", "content": doc["deck"]["slides"]} if doc.get("deck") else None,
         "help": bool(doc.get("help")),  # « J'aide Paginya à s'améliorer » (app/learn.py)
     }
@@ -549,7 +549,7 @@ def present(order_id: str, body: PresentIn) -> dict:
 
 
 DECK_TYPES = {"liste", "grille", "panneau", "schema", "chronologie", "etapes", "comparaison", "chiffres", "graphique", "encadre", "grand", "figure", "tableau", "section"}
-_TEXT_KEYS = ("title", "notes", "part", "highlight", "takeaway", "key", "label", "text", "value", "caption", "chart", "icon", "visual", "art")
+_TEXT_KEYS = ("title", "notes", "part", "highlight", "takeaway", "key", "label", "text", "value", "caption", "chart", "icon", "visual", "art", "motion")
 
 
 def _clean_edited(slides: list[dict]) -> list[dict]:
@@ -611,6 +611,8 @@ class DeckIn(BaseModel):
     logo: str | None = None  # the school's or company's logo, base64
     school: bool | None = None  # a school work (cover like the report) or a plain presentation: no AI needed
     moving: bool | None = None  # transitions and animations: some juries prefer none
+    motion: str | None = None  # how things appear on every slide (a slide can have its own)
+    click: bool | None = None  # things appear at each click of the presenter, not on their own
     colors: dict | None = None  # {"accent": "RRGGBB", "second": "RRGGBB"}; {} goes back to the style's own colours
     font: str | None = None  # font of the titles: Calibri, Cambria or Arial; "" for the style's own
     edited: list[dict] | None = None  # the slides as the user changed them: words, order, layout, removals
@@ -630,6 +632,10 @@ def change_deck(order_id: str, body: DeckIn) -> dict:
         doc["deck_school"] = body.school
     if body.moving is not None:
         doc["deck_moving"] = body.moving
+    if body.motion in MOTIONS:
+        doc["deck_motion"] = body.motion
+    if body.click is not None:
+        doc["deck_click"] = body.click
     if body.colors is not None:
         doc["deck_colors"] = {k: str(v).lstrip("#").upper() for k, v in body.colors.items() if k in ("accent", "second") and re.fullmatch(r"#?[0-9a-fA-F]{6}", str(v))}
     if body.font is not None:
@@ -796,7 +802,7 @@ def render(order_id: str) -> dict:
     build.mkdir(parents=True, exist_ok=True)
     source_docx = folder / "source.docx"
     if doc.get("convert") == "pptx":
-        (build / "final.pptx").write_bytes(build_pptx(doc["deck"], title_info(doc, folder / "images"), doc.get("deck_theme", DEFAULT_THEME), folder / "images", doc.get("deck_moving", True), doc.get("deck_colors"), doc.get("deck_font")))
+        (build / "final.pptx").write_bytes(build_pptx(doc["deck"], title_info(doc, folder / "images"), doc.get("deck_theme", DEFAULT_THEME), folder / "images", doc.get("deck_moving", True), motion=doc.get("deck_motion", DEFAULT_MOTION), click=doc.get("deck_click", False), colors=doc.get("deck_colors"), font=doc.get("deck_font")))
         try:
             office.slides_to_pdf(build / "final.pptx", build / "final.pdf")
         except office.OfficeError as exc:

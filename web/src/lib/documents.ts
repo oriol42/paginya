@@ -132,11 +132,11 @@ export type DocView = {
   help?: boolean;
 };
 
-export type DeckShowPlan = { slides: { frames: number; push: boolean }[]; version: string };
+export type DeckShowPlan = { slides: { frames: number; push: boolean; motion?: string; click?: boolean }[]; version: string };
 export type DeckItem = { head: string; text: string; icon: string };
-export type DeckSlide = { type: string; title: string; items?: DeckItem[]; key?: string; takeaway?: string; value?: string; text?: string; [other: string]: unknown };
-export type DeckInfo = { slides: number; theme: string; max: number; file?: string; school?: boolean; moving?: boolean; colors?: { accent?: string; second?: string }; font?: string; content?: DeckSlide[] };
-export type DeckPatch = { slides?: number; theme?: string; logo?: string; school?: boolean; moving?: boolean; colors?: { accent?: string; second?: string }; font?: string; edited?: DeckSlide[] };
+export type DeckSlide = { type: string; title: string; items?: DeckItem[]; key?: string; takeaway?: string; value?: string; text?: string; motion?: string; [other: string]: unknown };
+export type DeckInfo = { slides: number; theme: string; max: number; file?: string; school?: boolean; moving?: boolean; motion?: string; click?: boolean; colors?: { accent?: string; second?: string }; font?: string; content?: DeckSlide[] };
+export type DeckPatch = { slides?: number; theme?: string; logo?: string; school?: boolean; moving?: boolean; motion?: string; click?: boolean; colors?: { accent?: string; second?: string }; font?: string; edited?: DeckSlide[] };
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;

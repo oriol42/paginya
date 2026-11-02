@@ -1801,8 +1801,41 @@ def _section(prs, theme: dict, title: str, number: int, seed: int = 0):
     return slide
 
 
-def _animate(slide, marks: list[int], end: int) -> None:
-    """Things appear one after the other, on their own, with a soft fade: the presenter has nothing to click."""
+MOTIONS = {"fondu": (10, 0), "monter": (42, 0), "glisser": (2, 8), "zoom": (53, 0), "balayer": (22, 8)}  # PowerPoint's own effect numbers: its panel shows their names
+DEFAULT_MOTION = "monter"
+STEP_MS, EFFECT_MS = 260, 480  # things overlap a little: a flow, not a queue
+
+
+def _effect(kind: str, spid: str, node: str, delay: int, nid) -> str:
+    """One thing appearing: PowerPoint reads this as its own effect, and lets the user change it."""
+    target = f'<p:tgtEl><p:spTgt spid="{spid}"/></p:tgtEl>'
+    fade = f'<p:animEffect transition="in" filter="fade"><p:cBhvr><p:cTn id="{nid()}" dur="{EFFECT_MS}"/>{target}</p:cBhvr></p:animEffect>'
+
+    def move(attr: str, start: str, end: str) -> str:
+        return (f'<p:anim calcmode="lin" valueType="num"><p:cBhvr additive="base"><p:cTn id="{nid()}" dur="{EFFECT_MS}" decel="100000" fill="hold"/>{target}'
+                f'<p:attrNameLst><p:attrName>{attr}</p:attrName></p:attrNameLst></p:cBhvr><p:tavLst><p:tav tm="0"><p:val><p:strVal val="{start}"/></p:val></p:tav>'
+                f'<p:tav tm="100000"><p:val><p:strVal val="{end}"/></p:val></p:tav></p:tavLst></p:anim>')
+
+    preset, subtype = MOTIONS[kind]
+    head = f'<p:par><p:cTn id="{nid()}" presetID="{preset}" presetClass="entr" presetSubtype="{subtype}" fill="hold" nodeType="{node}"><p:stCondLst><p:cond delay="{delay}"/></p:stCondLst><p:childTnLst>'
+    show = (f'<p:set><p:cBhvr><p:cTn id="{nid()}" dur="1" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst></p:cTn>{target}'
+            '<p:attrNameLst><p:attrName>style.visibility</p:attrName></p:attrNameLst></p:cBhvr><p:to><p:strVal val="visible"/></p:to></p:set>')
+    match kind:
+        case "monter":
+            body = fade + move("ppt_y", "#ppt_y+0.05", "#ppt_y")
+        case "glisser":
+            body = fade + move("ppt_x", "#ppt_x-0.06", "#ppt_x")
+        case "zoom":
+            body = fade + move("ppt_w", "#ppt_w*0.82", "#ppt_w") + move("ppt_h", "#ppt_h*0.82", "#ppt_h")
+        case "balayer":
+            body = f'<p:animEffect transition="in" filter="wipe(left)"><p:cBhvr><p:cTn id="{nid()}" dur="{EFFECT_MS}"/>{target}</p:cBhvr></p:animEffect>'
+        case _:
+            body = fade
+    return f"{head}{show}{body}</p:childTnLst></p:cTn></p:par>"
+
+
+def _animate(slide, marks: list[int], end: int, kind: str = DEFAULT_MOTION, click: bool = False) -> None:
+    """Things appear one after the other: on their own, or at each click of the presenter."""
     children = list(slide.shapes._spTree)
     steps = [[str(el.xpath(".//p:cNvPr/@id")[0]) for el in children[a:b]] for a, b in zip(marks, [*marks[1:], end])]
     steps = [s for s in steps if s][:12]
@@ -1814,22 +1847,19 @@ def _animate(slide, marks: list[int], end: int) -> None:
         n[0] += 1
         return n[0]
 
-    pieces = []
-    for k, ids in enumerate(steps):
-        effects = []
-        for j, spid in enumerate(ids):
-            target = f'<p:tgtEl><p:spTgt spid="{spid}"/></p:tgtEl>'
-            kind = "afterEffect" if j == 0 else "withEffect"
-            effects.append(
-                f'<p:par><p:cTn id="{nid()}" presetID="10" presetClass="entr" presetSubtype="0" fill="hold" nodeType="{kind}"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>'
-                f'<p:set><p:cBhvr><p:cTn id="{nid()}" dur="1" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst></p:cTn>{target}<p:attrNameLst><p:attrName>style.visibility</p:attrName></p:attrNameLst></p:cBhvr><p:to><p:strVal val="visible"/></p:to></p:set>'
-                f'<p:animEffect transition="in" filter="fade"><p:cBhvr><p:cTn id="{nid()}" dur="400"/>{target}</p:cBhvr></p:animEffect>'
+    def outer(inner: str, start: str) -> str:
+        return (f'<p:par><p:cTn id="{nid()}" fill="hold"><p:stCondLst>{start}</p:stCondLst><p:childTnLst>'
+                f'<p:par><p:cTn id="{nid()}" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>{inner}</p:childTnLst></p:cTn></p:par>'
                 '</p:childTnLst></p:cTn></p:par>')
-        pieces.append(f'<p:par><p:cTn id="{nid()}" fill="hold"><p:stCondLst><p:cond delay="{k * 400}"/></p:stCondLst><p:childTnLst>{"".join(effects)}</p:childTnLst></p:cTn></p:par>')
+
+    if click:
+        pieces = [outer("".join(_effect(kind, spid, "clickEffect" if j == 0 else "withEffect", 0, nid) for j, spid in enumerate(ids)), '<p:cond delay="indefinite"/>') for ids in steps]
+    else:
+        flow = "".join(_effect(kind, spid, "afterEffect" if k == j == 0 else "withEffect", k * STEP_MS, nid) for k, ids in enumerate(steps) for j, spid in enumerate(ids))
+        pieces = [outer(flow, '<p:cond delay="indefinite"/><p:cond evt="onBegin" delay="0"><p:tn val="2"/></p:cond>')]
     xml = ('<p:timing xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:tnLst><p:par><p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot"><p:childTnLst>'
-           '<p:seq concurrent="1" nextAc="seek"><p:cTn id="2" dur="indefinite" nodeType="mainSeq"><p:childTnLst>'
-           f'<p:par><p:cTn id="{nid()}" fill="hold"><p:stCondLst><p:cond delay="indefinite"/><p:cond evt="onBegin" delay="0"><p:tn val="2"/></p:cond></p:stCondLst><p:childTnLst>{"".join(pieces)}</p:childTnLst></p:cTn></p:par>'
-           '</p:childTnLst></p:cTn><p:prevCondLst><p:cond evt="onPrev" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:prevCondLst>'
+           f'<p:seq concurrent="1" nextAc="seek"><p:cTn id="2" dur="indefinite" nodeType="mainSeq"><p:childTnLst>{"".join(pieces)}</p:childTnLst></p:cTn>'
+           '<p:prevCondLst><p:cond evt="onPrev" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:prevCondLst>'
            '<p:nextCondLst><p:cond evt="onNext" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:nextCondLst></p:seq></p:childTnLst></p:cTn></p:par></p:tnLst></p:timing>')
     _after_cover(slide, xml)
 
@@ -1844,8 +1874,11 @@ def _after_cover(slide, xml: str) -> None:
     anchor.addnext(element)
 
 
+TRANSITIONS = {"push": '<p:push dir="l"/>', "fade": "<p:fade/>", "zoom": '<p:zoom dir="in"/>', "balayer": '<p:wipe dir="r"/>'}
+
+
 def _transition(slide, kind: str = "fade") -> None:
-    effect = '<p:push dir="l"/>' if kind == "push" else "<p:fade/>"
+    effect = TRANSITIONS.get(kind, TRANSITIONS["fade"])
     _after_cover(slide, f'<p:transition xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" spd="med">{effect}</p:transition>')
 
 
@@ -1894,7 +1927,15 @@ def _customised(theme: dict, colors: dict | None, font: str | None) -> dict:
     return out
 
 
-def build_pptx(deck: dict, info: dict, theme_name: str, images_dir: Path, moving: bool = True, colors: dict | None = None, font: str | None = None) -> bytes:
+def _passage(motion: str, same_part: bool) -> str:
+    """How the slide arrives: its animation's cousin; a new part of the talk is felt, a slide of the same part stays quiet."""
+    if motion in ("zoom", "balayer"):
+        return motion
+    return "fade" if same_part and motion != "glisser" else "push"
+
+
+def build_pptx(deck: dict, info: dict, theme_name: str, images_dir: Path, moving: bool = True, colors: dict | None = None, font: str | None = None,
+               motion: str = DEFAULT_MOTION, click: bool = False) -> bytes:
     theme = _customised(THEMES.get(theme_name) or THEMES[DEFAULT_THEME], colors, font)
     prs = Presentation()
     _prepare(prs)
@@ -1911,9 +1952,10 @@ def build_pptx(deck: dict, info: dict, theme_name: str, images_dir: Path, moving
     _plan(plan, parts)
     end = len(plan.slide.shapes._spTree)
     _progress(plan, parts, None, 2, total)
+    motion = motion if motion in MOTIONS else DEFAULT_MOTION
     if moving:
-        _transition(plan.slide)
-        _animate(plan.slide, plan.marks, end)
+        _transition(plan.slide, _passage(motion, False))
+        _animate(plan.slide, plan.marks, end, motion, click)
     number, sections = 2, 0
     previous_part = None
     for s in deck["slides"]:
@@ -1923,7 +1965,7 @@ def build_pptx(deck: dict, info: dict, theme_name: str, images_dir: Path, moving
             opener = _section(prs, theme, s["title"], sections, seed)
             _notes(opener, s.get("notes", ""))
             if moving:
-                _transition(opener, "push")
+                _transition(opener, _passage(motion, False))
             continue
         style = _night(theme) if theme["alt"] and s["type"] in ("encadre", "grand", "chiffres", "etapes") else theme
         pen = _standard(prs, style, s["title"], s.get("part"), s.get("highlight", ""), SIDED.get(s["type"], 0.0), seed + number // 3, parts)
@@ -1943,10 +1985,10 @@ def build_pptx(deck: dict, info: dict, theme_name: str, images_dir: Path, moving
             _takeaway(pen, takeaway)
         end = len(pen.slide.shapes._spTree)
         _progress(pen, parts, s.get("part"), number, total)
-        if moving:
-            same_part = previous_part == s.get("part")
-            _transition(pen.slide, "fade" if same_part else "push")
-            _animate(pen.slide, pen.marks if pen.marks and pen.marks[0] == base else [base, *pen.marks], end)
+        own = s.get("motion") if s.get("motion") in (*MOTIONS, "aucune") else motion
+        if moving and own != "aucune":
+            _transition(pen.slide, _passage(own, previous_part == s.get("part")))
+            _animate(pen.slide, pen.marks if pen.marks and pen.marks[0] == base else [base, *pen.marks], end, own, click)
         previous_part = s.get("part")
         _notes(pen.slide, s.get("notes", ""))
     last = _end_page(prs, theme, deck.get("thanks") or "Merci de votre attention", info, images_dir, seed)
@@ -1962,12 +2004,16 @@ def build_pptx(deck: dict, info: dict, theme_name: str, images_dir: Path, moving
 # --- the slideshow on the site: pictures of each slide as its things appear ------
 
 def _groups(slide) -> list[list[str]]:
+    """What appears together: at the same click, or at the same moment of the flow."""
     groups: list[list[str]] = []
+    moment = None
     for effect in slide._element.xpath(".//p:timing//p:cTn[@presetID]"):
         target = next(effect.iter(qn("p:spTgt")), None)
         if target is not None:
-            if effect.get("nodeType") == "afterEffect" or not groups:
+            delay = effect.find(qn("p:stCondLst"))[0].get("delay")
+            if effect.get("nodeType") == "clickEffect" or delay != moment or not groups:
                 groups.append([])
+            moment = delay
             groups[-1].append(target.get("spid"))
     return groups
 
@@ -1986,7 +2032,9 @@ def show_plan(path: Path) -> list[dict]:
     for slide in Presentation(path).slides:
         moved = slide._element.find(qn("p:transition"))
         push = moved is not None and moved.find(qn("p:push")) is not None
-        plan.append({"frames": len(_counts(_groups(slide))), "push": push})
+        first = next(iter(slide._element.xpath(".//p:timing//p:cTn[@presetID]")), None)
+        motion = next((k for k, v in MOTIONS.items() if first is not None and str(v[0]) == first.get("presetID")), "")
+        plan.append({"frames": len(_counts(_groups(slide))), "push": push, "motion": motion, "click": first is not None and first.get("nodeType") == "clickEffect"})
     return plan
 
 

@@ -685,6 +685,27 @@ def test_slides_carry_their_transition_and_animation_in_the_order_powerpoint_wan
     assert [c.tag.rsplit("}", 1)[1] for c in Presentation(saved).slides[2]._element] == ["cSld", "clrMapOvr"]
 
 
+@pytest.mark.parametrize("motion", ["fondu", "monter", "glisser", "zoom", "balayer"])
+@pytest.mark.parametrize("click", [False, True])
+def test_every_animation_is_valid_for_powerpoint_and_can_change_per_slide(tmp_path, motion, click):
+    from pptx import Presentation
+    from app.doc.slides import MOTIONS, build_pptx, show_plan, title_info
+    items = [{"head": "Stock", "text": "Suivi", "icon": "layers"}, {"head": "Vente", "text": "Mois", "icon": "coins"}, {"head": "Clients", "text": "Accueil", "icon": "users"}]
+    slides = [{"type": "liste", "title": "Le contexte", "items": items, "part": "A"}, {"type": "liste", "title": "La suite", "items": items, "part": "A", "motion": "aucune"}, {"type": "liste", "title": "Autre", "items": items, "part": "B", "motion": "fondu"}]
+    saved = tmp_path / "s.pptx"
+    saved.write_bytes(build_pptx({"slides": slides, "parts": ["A", "B"]}, title_info({"blocks": [], "meta": {"title": "Mon rapport"}}, tmp_path), "halo", tmp_path, motion=motion, click=click))
+    prs = Presentation(saved)
+    timing = prs.slides[2]._element.find("{http://schemas.openxmlformats.org/presentationml/2006/main}timing")
+    ids = timing.xpath(".//p:cTn/@id")
+    assert len(ids) == len(set(ids)) and set(timing.xpath(".//p:spTgt/@spid")) <= {str(s.shape_id) for s in prs.slides[2].shapes}
+    assert timing.xpath(".//p:cTn[@presetID]/@presetID")[0] == str(MOTIONS[motion][0])
+    assert ("clickEffect" in timing.xpath(".//p:cTn/@nodeType")) == click
+    plan = show_plan(saved)
+    assert plan[2]["motion"] == motion and plan[2]["click"] == click and plan[2]["frames"] > 2
+    assert [c.tag.rsplit("}", 1)[1] for c in prs.slides[3]._element] == ["cSld", "clrMapOvr"]  # « aucune » on this slide
+    assert plan[4]["motion"] == "fondu"
+
+
 def test_the_style_follows_the_subject():
     from app.doc.slides import choose_theme
     health = {"blocks": [{"text": "Les soins infirmiers en réanimation : patient, hôpital, médicaments."}], "meta": {"kind": "cours"}}

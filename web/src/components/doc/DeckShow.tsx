@@ -29,20 +29,21 @@ export function DeckShow({ docId, onClose }: { docId: string; onClose: () => voi
   const total = plan?.slides.length ?? 0;
   const current = plan?.slides[slide];
 
-  // things appear on their own, one step every half second
+  // things appear on their own, or wait for the presenter's click
   useEffect(() => {
-    if (!current || frame >= current.frames - 1) return;
-    const timer = setTimeout(() => setFrame(frame + 1), frame === 0 ? 650 : 480);
+    if (!current || current.click || frame >= current.frames - 1) return;
+    const timer = setTimeout(() => setFrame(frame + 1), frame === 0 ? 450 : 320);
     return () => clearTimeout(timer);
   }, [current, frame]);
 
   const go = useCallback((to: number) => {
     if (!plan) return;
+    if (to === slide + 1 && current?.click && frame < current.frames - 1) return setFrame(frame + 1);
     if (to >= total) return onClose();
     if (to < 0) return;
     setFrame(0);
     setSlide(to);
-  }, [plan, total, onClose]);
+  }, [plan, total, onClose, slide, current, frame]);
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -64,7 +65,7 @@ export function DeckShow({ docId, onClose }: { docId: string; onClose: () => voi
         {!plan && !error && <p className="flex items-center gap-2 text-[16px]"><Icon name="loader-circle" size={20} className="animate-spin" />Préparation du diaporama… (20 secondes environ)</p>}
         {error && !plan && <p className="text-[16px]">{error}</p>}
         {plan && current && (
-          <div key={slide} className={`relative aspect-video max-h-full w-full max-w-[calc((100dvh-7rem)*16/9)] ${current.push ? "show-push" : "show-fade"}`}>
+          <div key={slide} className={`relative aspect-video max-h-full w-full max-w-[calc((100dvh-7rem)*16/9)] ${current.motion === "zoom" ? "show-zoom" : current.motion === "balayer" ? "show-wipe" : current.push ? "show-push" : "show-fade"}`}>
             {Array.from({ length: current.frames }, (_, f) => (
               // eslint-disable-next-line @next/next/no-img-element
               <img key={f} src={docs.showUrl(docId, slide + 1, f, plan.version)} alt={f === current.frames - 1 ? `Diapositive ${slide + 1}` : ""}
