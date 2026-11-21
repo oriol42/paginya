@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from . import slots
 from .extract import Raw, body_size
 
 # --- helpers ---------------------------------------------------------------
@@ -378,7 +379,9 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
         if special == "toc":
             skip_toc = True
             stats["toc_lines"] += 1
+            stats["toc_titles"] = stats.get("toc_titles", 0) + 1
             dropped.append(idx)
+            slots.note(stats, _clean_special(text), idx)  # Paginya's own sommaire / list goes right here
             if _PLAN_TITLE.match(text):
                 stats["plan_title_at"] = idx  # "Sommaire": what follows may be a plan typed without page numbers
             continue
@@ -394,6 +397,8 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
             dropped.append(idx)
             continue  # stray table-of-contents line
 
+        if special == "annexes" and re.match(r"(?i)^\W*liste des annexes", text) and slots.in_front_matter(items):
+            special = "liste_annexes"  # a page of the front matter listing the appendices, not the appendices themselves
         if special:
             items.append({"type": "heading", "kind": "special", "special": special, "text": _clean_special(text), "_src": idx})
             continue
@@ -436,6 +441,9 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
     stats.update(clean(items))
     stats["not_titles"] = _not_titles(items)
     stats["typed_lists"] = sum(1 for it in items if it.pop("_typed", False))
+    slots.titles_before_front_matter(items)
+    stats["slots"] = slots.place(items, stats)  # where the author planned the sommaire and the lists
+    items, stats["empty_pages"] = slots.settle_empty_pages(items)  # planned pages left empty: filled or removed
     stats["text_tables"] = sum(1 for it in items if it.pop("_from_text", False))
     blocks = []
     for i, it in enumerate(items):
@@ -455,6 +463,8 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
         meta["cover"] = cover
     if stats.get("typed_plan"):
         meta["typed_plan"] = True  # replaced by a real sommaire (render.options_for)
+    if stats["slots"]:
+        meta["slots"] = stats["slots"]  # read by render.build_docx and render.options_for
     meta["changes"] = _changes(blocks, stats)
     out = {"blocks": blocks, "meta": meta}
     if trace:
@@ -466,6 +476,7 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
         it.pop("_explicit", None)
         it.pop("_ranked", None)
         it.pop("_repeat", None)
+        it.pop("_filled", None)
     return out
 
 
@@ -668,11 +679,15 @@ def _changes(blocks: list[dict], stats: dict) -> list[str]:
         out.append(f"{captions} légende{'s' if captions > 1 else ''} numérotée{'s' if captions > 1 else ''} automatiquement")
     if stats["captions_moved"]:
         out.append(f"{stats['captions_moved']} légende{'s' if stats['captions_moved'] > 1 else ''} replacée{'s' if stats['captions_moved'] > 1 else ''} selon les normes")
-    sigles = sum(b.get("role") == "sigle" for b in blocks)
+    sigles = sum(b.get("role") == "sigle" and not b.get("_filled") for b in blocks)
     if sigles:
         out.append(f"Liste de {sigles} sigles mise en tableau")
-    if stats["toc_lines"]:
+    if stats["toc_lines"] > stats.get("toc_titles", 0):
         out.append("Ancien sommaire tapé à la main remplacé par un sommaire automatique")
+    elif stats["toc_lines"]:
+        out.append("Sommaire automatique mis à l'emplacement que tu avais laissé vide")
+    out.extend(slots.words_for(stats.get("slots") or {}, blocks))
+    out.extend(stats.get("empty_pages") or [])
     if stats.get("cover_lines"):
         out.append("Ta page de garde lue : école, titre, noms et année remplis automatiquement")
     links = sum(len(LINKS.findall(b.get("text", ""))) for b in blocks)

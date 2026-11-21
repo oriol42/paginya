@@ -48,7 +48,16 @@ def finalize(src_docx: Path, out_docx: Path | None, out_pdf: Path | None, out_la
 
 
 def to_docx(src: Path, dst: Path) -> None:
-    """An old Word (.doc), OpenDocument (.odt) or RTF file saved as .docx by LibreOffice, so the rest works as usual."""
+    """An old Word (.doc), OpenDocument (.odt) or RTF file saved as .docx by LibreOffice, so the rest works as usual.
+
+    The LibreOffice already running for the layouts does it (no second start, no second copy in memory; a second
+    instance started while the first one listens can also crash on recent LibreOffice). The command line is the fallback."""
+    try:
+        finalize(src, dst, None)
+        if dst.is_file() and dst.stat().st_size:
+            return
+    except (OfficeError, subprocess.TimeoutExpired, OSError):
+        pass
     profile = DATA_DIR / "lo-convert"  # its own profile: the layout worker keeps the other one open
     profile.mkdir(parents=True, exist_ok=True)
     out_dir = dst.parent / "converted"

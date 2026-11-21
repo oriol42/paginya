@@ -3,7 +3,7 @@
     python3 uno_worker.py <pipe_name> <profile_dir> <in.docx> <out.docx> <out.pdf> [<layout.json>]
 
 - Reuses a running headless soffice listening on a named pipe (starts it if needed).
-- Replaces [[TOC:n]], [[LOT]], [[LOF]] markers with real indexes, updates them
+- Replaces [[TOC:n]] (n = 2, 3 or 4), [[LOT]], [[LOF]], [[LOI:<caption name>]] markers with real indexes, updates them
   (twice, so page numbers settle) and exports the final .docx and .pdf.
 - With <layout.json>: also writes the real page of every top-level paragraph, as LibreOffice lays the file out.
 """
@@ -45,24 +45,28 @@ def connect(pipe, profile):
     raise RuntimeError("LibreOffice ne démarre pas")
 
 
-def insert_index(doc, marker, service, setup):
-    search = doc.createSearchDescriptor()
-    search.SearchString = marker
-    found = doc.findFirst(search)
-    if found is None:
-        return
-    found.setString("")
-    index = doc.createInstance(service)
-    setup(index)
-    doc.getText().insertTextContent(found, index, False)
-    try:
-        # the marker's paragraph stays, empty, after the index: make it take no room (it pushed a blank page out)
-        cur = found.getText().createTextCursorByRange(found)
-        cur.CharHeight = 1
-        cur.ParaTopMargin = 0
-        cur.ParaBottomMargin = 0
-    except Exception:  # noqa: BLE001 - only cosmetic
-        pass
+def insert_index(doc, marker, service, setup, regex=False):
+    """Every [[MARKER]] becomes an index (a sommaire at the start and a table des matières at the end can share one)."""
+    for _ in range(6):
+        search = doc.createSearchDescriptor()
+        search.SearchString = marker
+        search.SearchRegularExpression = regex
+        found = doc.findFirst(search)
+        if found is None:
+            return
+        what = found.getString()
+        found.setString("")
+        index = doc.createInstance(service)
+        setup(index, what) if regex else setup(index)
+        doc.getText().insertTextContent(found, index, False)
+        try:
+            # the marker's paragraph stays, empty, after the index: make it take no room (it pushed a blank page out)
+            cur = found.getText().createTextCursorByRange(found)
+            cur.CharHeight = 1
+            cur.ParaTopMargin = 0
+            cur.ParaBottomMargin = 0
+        except Exception:  # noqa: BLE001 - only cosmetic
+            pass
 
 
 def tidy_index_styles(doc):
@@ -125,11 +129,19 @@ def main():
 
         for marker, service, setup in (
             ("[[TOC:2]]", "com.sun.star.text.ContentIndex", toc(2)),
+            ("[[TOC:3]]", "com.sun.star.text.ContentIndex", toc(3)),
             ("[[TOC:4]]", "com.sun.star.text.ContentIndex", toc(4)),
             ("[[LOT]]", "com.sun.star.text.IllustrationsIndex", illus("Tableau")),
             ("[[LOF]]", "com.sun.star.text.IllustrationsIndex", illus("Figure")),
         ):
             insert_index(doc, marker, service, setup)
+
+        def labelled(ix, what):  # [[LOI:Tableau]]: a list built from the caption numbers the author's Word file has
+            ix.Title = ""
+            ix.CreateFromLabels = True
+            ix.LabelCategory = what[6:-2]
+
+        insert_index(doc, r"\[\[LOI:[^\]]{1,40}\]\]", "com.sun.star.text.IllustrationsIndex", labelled, regex=True)
         tidy_index_styles(doc)
         indexes = doc.getDocumentIndexes()
         # Page numbers in the indexes settle after a second pass; without indexes one field refresh is enough.

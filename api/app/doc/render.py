@@ -19,13 +19,14 @@ from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import qn
 from docx.shared import Cm, Emu, Mm, Pt, RGBColor
 
+from . import slots
 from .clean import typo_fr
 from .extract import MATH_MARK
 from PIL import Image
 
 from .. import render as cover_render
 
-PRELIM_SPECIALS = {"dedicace", "epigraphe", "remerciements", "avant_propos", "sigles", "resume", "abstract", "glossaire"}
+PRELIM_SPECIALS = slots.PRELIM  # dédicace, remerciements, sigles, résumé… and the list of appendices
 NO_TOC_SPECIALS = {"dedicace", "epigraphe"}  # never listed in the table of contents
 
 THEMES: dict[str, dict] = {
@@ -90,13 +91,22 @@ KINDS = {
 }
 
 
-def options_for(kind: str, words: int = 0, typed_plan: bool = False) -> dict:
+def options_for(kind: str, words: int = 0, typed_plan: bool = False, planned: dict | None = None) -> dict:
+    """`planned`: meta["slots"], the sommaire and lists the author left room for (see slots.py)."""
     opts = dict(KINDS.get(kind, KINDS["document"]))
     if kind == "document" and words < 600:
         opts["page_numbers"] = False  # a one-page text needs no "1"
     if typed_plan:
         opts["toc"] = True  # the student's own plan typed at the start was taken out: a real sommaire stands in its place
-    return opts
+    return slots.options(opts, planned)
+
+
+def _toc_title(planned: dict | None, default: str) -> tuple[str, int]:
+    """The author's own title for the sommaire ("Table des matières", "Contents") and how deep it goes."""
+    title = ((planned or {}).get("title") or "").strip()
+    if not title:
+        return default, 2
+    return title[0].upper() + title[1:].lower(), 3 if slots.DETAILED_TOC.match(title) else 2
 
 
 def resolved_style(style: dict | None) -> dict:
@@ -939,34 +949,83 @@ def build_docx(document: dict, images_dir: Path) -> bytes:
         prelim, body = [], prelim + body
     number = opts["page_numbers"]
 
+    planned = (document.get("meta") or {}).get("slots") or {}
     if want_prelim:
         if started:
             b.new_section("lowerRoman" if number else None, 1)
         elif number:
             _page_numbers(b.doc.sections[0], "lowerRoman", 1, st["page_number"], st["font"], "555555")
         started = True
+        # Generated pages go where the author left room for them (after the remerciements…), else at their usual place:
+        # the sommaire first, the lists before the résumé (or at the end of the front matter).
+        names = {x.get("special") for x in prelim if x.get("type") == "heading"}
+        anchored: list[tuple[str, object]] = []
+        free_lists: list[object] = []
         if opts["toc"]:
-            b.liminal_title("Sommaire")
-            b.marker("TOC:2")
-        lists_done = False
+            slot = planned.get("toc") or {}
+            title, levels = _toc_title(slot, "Sommaire")
+            anchored.append((slot.get("after") if slot.get("after") in names else "", lambda t=title, n=levels: (b.liminal_title(t), b.marker(f"TOC:{n}"))))
+        if opts["lists"]:
+            for key, has, default, mark in (("lot", has_tables, "Liste des tableaux", "LOT"), ("lof", has_figures, "Liste des figures", "LOF")):
+                slot = planned.get(key) or {}
+                if not has or slot.get("end"):
+                    continue  # nothing to list (the planned page is dropped), or planned at the end of the document
+                page = (lambda t=(slot.get("title") or default), m=mark: (b.liminal_title(t[0].upper() + t[1:].lower()), b.marker(m)))
+                if "after" in slot and (slot["after"] in names or slot["after"] == ""):
+                    anchored.append((slot["after"], page))
+                else:
+                    free_lists.append(page)
+
+        def pages_after(name: str) -> None:
+            for anchor, page in [a for a in anchored if a[0] == name]:
+                anchored.remove((anchor, page))
+                page()
+
+        pages_after("")
+        current, lists_done = "", False
         for x in _group_sigles(prelim):
-            if not lists_done and x.get("type") == "heading" and x.get("special") in ("resume", "abstract"):
-                _lists(b, opts, has_tables, has_figures)
-                lists_done = True
+            if x.get("type") == "heading" and x.get("special"):
+                pages_after(current)
+                if not lists_done and x.get("special") in ("resume", "abstract"):
+                    for page in free_lists:
+                        page()
+                    lists_done = True
+                current = x["special"]
             _emit(b, x, prelim)
+        pages_after(current)
+        for _anchor, page in anchored:  # a page planned after one that is gone
+            page()
         if not lists_done:
-            _lists(b, opts, has_tables, has_figures)
+            for page in free_lists:
+                page()
 
     if started:
         b.new_section("decimal" if number else None, 1)
     elif number:
         _page_numbers(b.doc.sections[0], "decimal", 1, st["page_number"], st["font"], "555555")
-    for x in _group_sigles(body):
-        _emit(b, x, body)
 
-    if opts["toc_end"]:
-        b.liminal_title("Table des matières")
-        b.marker("TOC:4")
+    end_slot = planned.get("toc_end") or {}
+    end_title, _ = _toc_title(end_slot, "Table des matières")
+    end_lists = [(m, t) for key, has, t, m in (("lot", has_tables, "Liste des tableaux", "LOT"), ("lof", has_figures, "Liste des figures", "LOF"))
+                 if opts["lists"] and has and (planned.get(key) or {}).get("end")]
+
+    def closing_pages() -> None:
+        for mark, title in end_lists:
+            b.liminal_title(title)
+            b.marker(mark)
+        if opts["toc_end"]:
+            b.liminal_title(end_title)
+            b.marker("TOC:4")
+
+    closed = False
+    for x in _group_sigles(body):
+        if not closed and end_slot.get("before") and x.get("type") == "heading" and x.get("special") == end_slot["before"]:
+            b.end_list()
+            closing_pages()  # "Table des matières" planned before the annexes
+            closed = True
+        _emit(b, x, body)
+    if not closed:
+        closing_pages()
 
     buf = io.BytesIO()
     b.doc.save(buf)
@@ -988,17 +1047,6 @@ def _letterhead_data(h: dict) -> dict:
         except Exception:  # noqa: BLE001 - a broken logo must not break the document
             pass
     return out
-
-
-def _lists(b: Builder, opts: dict, has_tables: bool, has_figures: bool) -> None:
-    if not opts["lists"]:
-        return
-    if has_tables:
-        b.liminal_title("Liste des tableaux")
-        b.marker("LOT")
-    if has_figures:
-        b.liminal_title("Liste des figures")
-        b.marker("LOF")
 
 
 def _group_sigles(blocks: list[dict]) -> list[dict]:

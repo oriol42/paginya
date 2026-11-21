@@ -374,14 +374,89 @@ def _typed_toc_line(el) -> bool:
     return el.tag == qn("w:p") and bool(_TYPED_TOC.match(_paragraph_text(el).strip()))
 
 
-def _empty_toc_title(doc, cover_end: int | None):
-    """The "SOMMAIRE" written above a page left empty (to be filled by hand), or None."""
+def _empty_toc_titles(doc, cover_end: int | None) -> list:
+    """Every "SOMMAIRE" / "TABLE DES MATIÈRES" written above a page left empty (to be filled by hand)."""
+    out = []
     paragraphs = list(doc.element.body.iterchildren(qn("w:p")))
     for p in paragraphs[cover_end or 0:]:
         if _TOC_TITLE.match(_own_text(p).strip()):
             nxt = p.getnext()
-            return None if nxt is not None and _paragraph_text(nxt).startswith("[[TOC") else p
-    return None
+            if not (nxt is not None and _paragraph_text(nxt).startswith("[[")):
+                out.append(p)
+    return out
+
+
+def _empty_toc_title(doc, cover_end: int | None):
+    """The first "SOMMAIRE" written above a page left empty, or None."""
+    found = _empty_toc_titles(doc, cover_end)
+    return found[0] if found else None
+
+
+_LIST_TITLE = re.compile(
+    r"(?i)^\W*((liste|table|index)s?\s+des\s+(?P<fr>tableaux|figures|illustrations|graphiques|images|sch[ée]mas)|list\s+of\s+(?P<en>tables|figures))\W*$"
+)
+_TABLE_SEQS = ("tableau", "table", "tab")
+_FIGURE_SEQS = ("figure", "fig", "illustration", "image", "graphique", "schema", "photo")
+
+
+def _seq_names(doc) -> dict[str, str]:
+    """The caption numbers Word keeps ("SEQ Tableau", "SEQ Figure"): folded name → name as written."""
+    body = doc.element.body
+    instrs = [i.text or "" for i in body.iter(qn("w:instrText"))] + [f.get(qn("w:instr")) or "" for f in body.iter(qn("w:fldSimple"))]
+    out = {}
+    for instr in instrs:
+        m = re.match(r"\s*SEQ\s+([^\s\\]+)", instr)
+        if m:
+            out.setdefault(_norm(m.group(1)), m.group(1))
+    return out
+
+
+def _left_empty(doc, p) -> bool:
+    """Nothing written under this title before the next title or the next page."""
+    nxt = p.getnext()
+    while nxt is not None and _is_blank(nxt):
+        nxt = nxt.getnext()
+    if nxt is None or nxt.tag == qn("w:sectPr"):
+        return True
+    if nxt.tag != qn("w:p"):
+        return False  # a table
+    text = _own_text(nxt).strip()
+    if not text:
+        return _has_page_break(nxt)  # only a page break: the page ends there
+    from docx.text.paragraph import Paragraph
+
+    return _starts_page(nxt) or bool(_TITLE_WORDS.match(text)) or _is_heading(Paragraph(nxt, doc._body))
+
+
+def _empty_list_titles(doc, cover_end: int | None) -> list[tuple[object, str]]:
+    """"LISTE DES TABLEAUX" / "LISTE DES FIGURES" left empty: [(paragraph, "lot" | "lof")]."""
+    out = []
+    for p in list(doc.element.body.iterchildren(qn("w:p")))[cover_end or 0:]:
+        m = _LIST_TITLE.match(_own_text(p).strip())
+        if not m or not _left_empty(doc, p):
+            continue
+        nxt = p.getnext()
+        if nxt is not None and _paragraph_text(nxt).startswith("[["):
+            continue
+        word = _norm(m.group("fr") or m.group("en") or "")
+        out.append((p, "lot" if word in ("tableaux", "tables") else "lof"))
+    return out
+
+
+def _fill_under(doc, holder, marker_text: str) -> None:
+    """Puts an index marker right under a title left empty; what follows starts a new page."""
+    while holder.getnext() is not None and (_is_blank(holder.getnext()) or _typed_toc_line(holder.getnext())):
+        holder.getparent().remove(holder.getnext())
+    following = holder.getnext()
+    marker = OxmlElement("w:p")
+    run = OxmlElement("w:r")
+    text = OxmlElement("w:t")
+    text.text = marker_text
+    run.append(text)
+    marker.append(run)
+    holder.addnext(marker)
+    if following is not None and following.tag == qn("w:p") and not _starts_page(following) and _own_text(following).strip():
+        _page_break_before(doc, following)
 
 
 def inspect(path: Path, layout: list | None = None) -> dict:
@@ -832,19 +907,16 @@ def touch(
                 el.getparent().remove(el)
         _mark_outline(titles)
         done.append("sommaire refait")
-    elif toc in ("add", "redo") and not had_toc and titles and _empty_toc_title(doc, cover_end) is not None:
-        # the page is there, with its title: the sommaire goes under it, and what follows starts a new page
+    elif toc in ("add", "redo") and not had_toc and titles and _empty_toc_titles(doc, cover_end):
+        # the pages are there, with their titles: the sommaire goes under each one, and what follows starts a new page.
+        # "Sommaire" lists 2 levels; a "Table des matières" lists 3 at the start, every level once the body has started.
         _mark_outline(titles)
-        holder = _empty_toc_title(doc, cover_end)
-        while holder.getnext() is not None and (_is_blank(holder.getnext()) or _typed_toc_line(holder.getnext())):
-            holder.getparent().remove(holder.getnext())
-        following = holder.getnext()
-        marker = OxmlElement("w:p")
-        holder.addnext(marker)
-        _insert_marker_paragraphs(marker, with_title=False, levels=2)
-        marker.getparent().remove(marker)
-        if following is not None and following.tag == qn("w:p") and not _starts_page(following):
-            _page_break_before(doc, following)
+        body_at = next((t._p for t, lv in titles if lv == 1 and _INTRO.match((t.text or "").strip())), None)
+        order = {el: i for i, el in enumerate(doc.element.body.iterchildren())}
+        for holder in _empty_toc_titles(doc, cover_end):
+            detailed = not re.match(r"(?i)^\W*sommaire", _own_text(holder).strip())
+            late = body_at is not None and order.get(holder, 0) > order.get(body_at, 0)
+            _fill_under(doc, holder, f"[[TOC:{4 if late else 3 if detailed else 2}]]")
         done.append("sommaire")
     elif toc in ("add", "redo") and not had_toc and titles and not any(p.text.startswith("[[TOC") for p in doc.paragraphs):
         _mark_outline(titles)
@@ -858,6 +930,15 @@ def touch(
         br.append(run)
         first._p.addprevious(br)
         done.append("sommaire")
+
+    if toc != "none":
+        # "LISTE DES TABLEAUX" left empty by the author: filled from Word's own caption numbers (SEQ fields)
+        seqs = _seq_names(doc)
+        for holder, kind in _empty_list_titles(doc, cover_end):
+            category = next((seqs[k] for k in (_TABLE_SEQS if kind == "lot" else _FIGURE_SEQS) if k in seqs), None)
+            if category:
+                _fill_under(doc, holder, f"[[LOI:{category}]]")
+                done.append("liste des tableaux" if kind == "lot" else "liste des figures")
 
     if numbers in ("add", "redo"):
         if _apply_numbers(doc, cover_end, redo=numbers == "redo"):
