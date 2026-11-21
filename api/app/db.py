@@ -142,7 +142,7 @@ def settle(order_id: str, status: str) -> bool:
 
 def _extend_pass(c, sub: str, plan: str, now: float, days: int = pricing.PASS_DAYS) -> None:
     """Adds days to an account's pass. Days left on another plan are kept, converted at their value
-    (10 Essentiel days left become 6 Pro days): changing plan never loses nor gains money."""
+    (10 Essentiel days left become 15 Pro days): changing plan never loses nor gains money."""
     acc = c.execute("SELECT pass_until, plan FROM accounts WHERE sub = ?", (sub,)).fetchone()
     if acc is None:
         return

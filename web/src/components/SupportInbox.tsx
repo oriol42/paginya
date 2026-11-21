@@ -37,7 +37,7 @@ export function SupportInbox({ onWaiting }: { onWaiting?: (n: number) => void })
   const [filter, setFilter] = useState<"open" | "all">("open");
   const [thread, setThread] = useState<Thread | null>(null);
   const [reply, setReply] = useState("");
-  const [gift, setGift] = useState<{ plan: Plan; days: number }>({ plan: "essentiel", days: 30 });
+  const [gift, setGift] = useState<{ plan: Plan; days: number }>({ plan: "pro", days: 30 });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 

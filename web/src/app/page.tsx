@@ -44,9 +44,8 @@ const CONTENTS: [string, string][] = [
 ];
 
 const PRICES: [string, string, string][] = [
-  ["Un document", "n'importe lequel, toutes les pages", "550"],
-  ["Pass Essentiel · 30 jours", "10 documents par jour", "3 000"],
-  ["Pass Pro · 30 jours", "illimité · imprimeries, entreprises", "5 000"],
+  ["Un document", "n'importe lequel, toutes les pages", "100"],
+  ["Pass Pro · 30 jours", "illimité · entreprises, imprimeries", "2 000"],
 ];
 
 const FAQ: [string, string][] = [
@@ -93,7 +92,7 @@ export default function Home() {
                 Mettre mon document au propre
                 <Icon name="arrow-right" size={22} stroke={2.6} />
               </Link>
-              <p className="text-[14px] font-semibold text-white/70">Aperçu gratuit · 550 F le document · MTN MoMo et Orange Money</p>
+              <p className="text-[14px] font-semibold text-white/70">Aperçu gratuit · 100 F le document · MTN MoMo et Orange Money</p>
               <a href="#outils" className="press flex items-center gap-2 rounded-md py-1 text-[16px] font-bold text-white underline underline-offset-4">
                 PowerPoint, page de garde, Word ↔ PDF…<Icon name="arrow-down" size={18} />
               </a>
@@ -233,7 +232,7 @@ export default function Home() {
           <div className="lg:order-2">
             <h2 className="font-display text-[2.6rem] leading-[0.95] font-black uppercase sm:text-[3.4rem]">Tu paies seulement si ça te plaît.</h2>
             <p className="mt-4 max-w-md text-[17px] leading-relaxed text-white/75">
-              Importe, regarde toutes tes pages, change le style autant que tu veux : c&apos;est gratuit. Tu paies par Mobile Money quand tu télécharges : 550 F le document, ou un pass 30 jours si tu en as plusieurs.
+              Importe, regarde toutes tes pages, change le style autant que tu veux : c&apos;est gratuit. Tu paies par Mobile Money quand tu télécharges : 100 F le document, ou 2 000 F le mois en illimité pour les entreprises.
             </p>
           </div>
           <div className="relative pb-24 lg:order-1 lg:pr-10">

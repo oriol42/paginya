@@ -29,18 +29,25 @@ def new_doc(client):  # noqa: F811
     return client.post("/orders", json={"svg": SVG, "form": {}}).json()["id"]
 
 
-def test_prices_one_document_and_two_passes(client):  # noqa: F811
+def test_prices_one_document_and_the_pro_pass(client):  # noqa: F811
     prices = client.get("/prices").json()
-    assert {prices[k]["amount"] for k in ("page_de_garde", "lettre", "epreuve", "memoire", "rapport")} == {550}
-    assert prices["pass_essentiel"] == {"label": "Pass Essentiel 30 jours", "amount": 3000, "per_day": 10}
-    assert prices["pass_pro"]["amount"] == 5000 and "pass_30j" not in prices
+    assert {prices[k]["amount"] for k in ("page_de_garde", "lettre", "epreuve", "memoire", "rapport")} == {100}
+    assert prices["pass_pro"] == {"label": "Pass Pro 30 jours", "amount": 2000, "per_day": 0}
+    assert "pass_essentiel" not in prices and "pass_30j" not in prices  # Essentiel is no longer sold
     # a pass is bought from an account only, never as a document
     assert client.post("/orders", json={"svg": SVG, "product": "pass_pro"}).status_code == 400
 
 
-def test_essentiel_pass_has_a_daily_limit_and_never_counts_a_download_twice(client, signed, monkeypatch):  # noqa: F811
+def test_essentiel_is_no_longer_sold(client, signed):  # noqa: F811
     token = signed("t-client")
-    me = buy(client, token, "essentiel")
+    r = client.post("/account/pass", json={"token": token, "plan": "essentiel"})
+    assert r.status_code == 400 and "plus proposée" in r.json()["detail"]
+
+
+def test_an_essentiel_pass_already_bought_keeps_its_daily_limit(client, signed, monkeypatch):  # noqa: F811
+    token = signed("t-client")
+    db.give_pass("g-1", "essentiel", 30)  # bought before 22/11/2026
+    me = client.post("/account/me", json={"token": token}).json()
     assert (me["plan"], me["per_day"], me["used_today"], me["pass_days"]) == ("essentiel", 10, 0, 30)
     docs = [new_doc(client) for _ in range(11)]
     for d in docs[:10]:
@@ -57,16 +64,15 @@ def test_essentiel_pass_has_a_daily_limit_and_never_counts_a_download_twice(clie
     assert client.post("/account/me", json={"token": token}).json()["plan"] == ""
 
 
-def test_changing_plan_keeps_the_value_of_the_days_left(client, signed):  # noqa: F811
+def test_moving_to_pro_keeps_the_value_of_the_days_left(client, signed):  # noqa: F811
     token = signed("t-client")
-    buy(client, token, "essentiel")
-    me = buy(client, token, "essentiel")
-    assert me["pass_days"] == 60  # same plan: 30 more days
+    db.give_pass("g-1", "essentiel", 60)  # 60 Essentiel days = 6 000 F
     me = buy(client, token, "pro")
     assert me["plan"] == "pro" and me["per_day"] == 0  # unlimited
     for _ in range(60):
         assert client.post(f"/orders/{new_doc(client)}/unlock", json={"token": token}).json()["status"] == "PAID"
-    assert me["pass_days"] == 30 + 36  # 60 Essentiel days (6 000 F) = 36 Pro days
+    assert me["pass_days"] == 30 + 90  # 6 000 F of Essentiel = 90 Pro days at 2 000 F
+    assert buy(client, token, "pro")["pass_days"] == 150  # same plan: 30 more days
 
 
 def test_both_team_members_never_pay_and_have_no_limit(client, signed):  # noqa: F811

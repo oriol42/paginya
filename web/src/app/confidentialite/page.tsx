@@ -15,7 +15,7 @@ export default function Confidentialite() {
       <ul>
         <li><b>Tes documents</b> : textes, fichiers et photos que tu envoies, et les informations de ta page de garde (nom, matricule, établissement, encadreurs).</li>
         <li><b>Ton numéro de téléphone</b>, uniquement quand tu paies.</li>
-        <li><b>Ton adresse Gmail</b>, seulement si tu prends un pass 30 jours (Essentiel ou Pro) : il est gardé sur ton compte Google pour que tu le retrouves sur un autre téléphone.</li>
+        <li><b>Ton adresse Gmail</b>, seulement si tu prends un pass 30 jours : il est gardé sur ton compte Google pour que tu le retrouves sur un autre téléphone.</li>
         <li><b>Le texte de ton document, si tu demandes la correction des fautes</b> : il est envoyé, après ton accord, à un service d&apos;intelligence artificielle (Google Gemini, ou Groq s&apos;il est indisponible) qui propose les corrections et ne le garde pas pour nous.</li>
         <li><b>Tes messages au support</b> : ce que tu nous écris, ton nom et le WhatsApp ou l&apos;e-mail que tu laisses pour qu&apos;on te réponde. Seule l&apos;équipe Paginya les lit.</li>
         <li><b>Des données techniques</b> (adresse IP, type d&apos;appareil) pour la sécurité et le bon fonctionnement.</li>

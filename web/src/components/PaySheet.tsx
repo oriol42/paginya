@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ADMIN_KEY, api, formatXaf, operatorOf, type OrderStatus } from "@/lib/api";
 import { track } from "@/lib/track";
 import { canUnlock, hasPass, keepAccount, refreshAccount, savedAccount, type Account } from "@/lib/account";
-import { perDayText, PLANS, type Plan } from "@/lib/plans";
+import { perDayText, PLANS, SOLD_PLANS, type Plan } from "@/lib/plans";
 import { GoogleButton } from "./GoogleButton";
 import { Icon } from "./Icon";
 import { PinLabel } from "./ui";
@@ -56,8 +56,8 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, p
   // The 30-day pass lives on a Google account (never lost with the phone); a team account never pays.
   const [account, setAccount] = useState<Account | null>(() => savedAccount());
   const [accountsOn, setAccountsOn] = useState(false);
-  // The Essentiel pass is offered first: most customers come back for another document.
-  const [choice, setChoice] = useState<Plan | "doc">(() => (hasPass(savedAccount()) ? "doc" : "essentiel"));
+  // A document costs 100 F: it is offered first; the unlimited pass is for companies and print shops.
+  const [choice, setChoice] = useState<Plan | "doc">("doc");
   const [showSignIn, setShowSignIn] = useState(false);
   // What is being paid right now: this document, or a pass order (the document is unlocked right after).
   const [paying, setPaying] = useState<{ id: string; amount: number }>({ id: orderId, amount });
@@ -137,9 +137,8 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, p
 
   const operator = operatorOf(phone);
   const options: [Plan | "doc", string, number, string][] = [
-    ["essentiel", `Pass ${PLANS.essentiel.name} · 30 jours`, PLANS.essentiel.price, `${perDayText(PLANS.essentiel.perDay)} · moins de 100 F par jour`],
-    ["pro", `Pass ${PLANS.pro.name} · 30 jours`, PLANS.pro.price, `${perDayText(PLANS.pro.perDay)} · ${PLANS.pro.who.toLowerCase()}`],
     ["doc", "Ce document seulement", amount, "Sans compte, n'importe quel document"],
+    ...SOLD_PLANS.map((id): [Plan, string, number, string] => [id, `Pass ${PLANS[id].name} · 30 jours`, PLANS[id].price, `${perDayText(PLANS[id].perDay)} · ${PLANS[id].who.toLowerCase()}`]),
   ].filter(([id]) => !(hasPass(account) && id === account!.plan)) as [Plan | "doc", string, number, string][]; // the current pass: renewed from the account page
 
   async function pay() {
@@ -244,7 +243,6 @@ export function PaySheet({ orderId, amount, status, heading, bullets, formats, p
               <div className="mt-5 space-y-2 border-t border-dashed border-ink/25 pt-4">
                 {options.map(([id, label, price, note]) => (
                   <button key={id} type="button" onClick={() => setChoice(id)} className={`relative flex w-full items-center justify-between gap-3 rounded-md px-3.5 py-3 text-left ring-1 ${choice === id ? "bg-hi/30 ring-2 ring-ink" : "ring-black/10"}`}>
-                    {id === "essentiel" && <span className="absolute -top-2.5 right-3 rounded bg-board px-2 py-0.5 text-[11px] font-bold tracking-wide text-white uppercase">Conseillé</span>}
                     <span>
                       <span className="block text-[16px] font-bold">{label}</span>
                       <span className="text-[13px] text-ink/65">{note}</span>

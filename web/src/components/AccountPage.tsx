@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api, formatXaf, operatorOf, type TicketStatus } from "@/lib/api";
 import { hasPass, keepAccount, refreshAccount, savedAccount, type Account } from "@/lib/account";
-import { perDayText, PLANS, type Plan } from "@/lib/plans";
+import { DOC_PRICE, perDayCost, perDayText, PLANS, SOLD_PLANS, type Plan } from "@/lib/plans";
 import { GoogleButton } from "./GoogleButton";
 import { Icon } from "./Icon";
 import { PHONE_KEY } from "./PaySheet";
@@ -20,7 +20,7 @@ export function AccountPage() {
   const wanted = useSearchParams().get("formule");
   const [account, setAccount] = useState<Account | null>(() => savedAccount());
   const [loaded, setLoaded] = useState(false);
-  const [plan, setPlan] = useState<Plan>(wanted === "pro" ? "pro" : "essentiel");
+  const [plan, setPlan] = useState<Plan>(SOLD_PLANS.includes(wanted as Plan) ? (wanted as Plan) : SOLD_PLANS[0]);
   const [phone, setPhone] = useState(() => {
     try { return localStorage.getItem(PHONE_KEY) ?? ""; } catch { return ""; }
   });
@@ -97,7 +97,7 @@ export function AccountPage() {
         <p>Ton compte garde ton pass : tu le retrouves sur n&apos;importe quel téléphone ou ordinateur. Pas de mot de passe, tu te connectes avec Google.</p>
         <GoogleButton onCredential={signIn} />
         {error && <p className="text-[14px] text-pin">{error}</p>}
-        <p className="text-[14px] text-ink/60">Pour un seul document, pas besoin de compte : tu paies {formatXaf(550)} au moment de télécharger.</p>
+        <p className="text-[14px] text-ink/60">Pour un seul document, pas besoin de compte : tu paies {formatXaf(DOC_PRICE)} au moment de télécharger.</p>
       </>
     );
   }
@@ -125,16 +125,15 @@ export function AccountPage() {
 
       {!account.team && phase === "idle" && (
         <>
-          <h2>{active ? "Prolonger ou changer" : "Prendre un pass"}</h2>
+          <h2>{active ? (account.plan === "pro" ? "Prolonger" : "Passer au Pro") : "Prendre un pass"}</h2>
           <div className="grid gap-3 sm:grid-cols-2">
-            {(Object.keys(PLANS) as Plan[]).map((id) => (
+            {SOLD_PLANS.map((id) => (
               <button key={id} type="button" onClick={() => setPlan(id)}
                 className={`relative rounded-md p-4 text-left ring-1 ${plan === id ? "bg-hi/30 ring-2 ring-ink" : "ring-black/10"}`}>
-                {id === "essentiel" && <span className="absolute -top-2.5 right-3 rounded bg-board px-2 py-0.5 text-[11px] font-bold tracking-wide text-white uppercase">Conseillé</span>}
                 <span className="block text-[17px] font-bold text-ink">{PLANS[id].name}</span>
                 <span className="block font-display text-[28px] leading-tight font-black text-ink">{formatXaf(PLANS[id].price)}<span className="text-[15px] font-semibold text-ink/60"> / 30 jours</span></span>
                 <span className="block text-[14px]">{perDayText(PLANS[id].perDay)}</span>
-                <span className="block text-[13px] text-ink/60">{PLANS[id].who}</span>
+                <span className="block text-[13px] text-ink/60">{PLANS[id].who} · {perDayCost(PLANS[id].price).toLowerCase()}</span>
               </button>
             ))}
           </div>

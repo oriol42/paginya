@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "Conditions générales" };
 
 export default function Cgu() {
   return (
-    <LegalPage title="Conditions générales d'utilisation et de vente" updated="23 septembre 2026">
+    <LegalPage title="Conditions générales d'utilisation et de vente" updated="22 novembre 2026">
       <p>
         Ces conditions encadrent l&apos;utilisation de Paginya (le « Service »), édité par l&apos;entité décrite dans les{" "}
         <Link href="/mentions-legales" className="text-brand-700 underline">mentions légales</Link>. Utiliser le Service, c&apos;est les accepter.
@@ -33,9 +33,10 @@ export default function Cgu() {
         La commande est conclue quand l&apos;utilisateur confirme le paiement sur son téléphone.
       </p>
       <p>
-        Un document seul coûte 550 F, quel que soit son type ou son nombre de pages. Les <b>pass 30 jours</b> (Essentiel, Pro) sont liés à un compte Google et permettent
-        de télécharger des documents chaque jour (10 par jour pour Essentiel, sans limite pour Pro), comme affiché avant le paiement. Ils <b>ne se renouvellent jamais automatiquement</b> : à la fin des 30 jours,
-        l&apos;utilisateur repaie seulement s&apos;il veut continuer. Les jours restants sont gardés lors d&apos;un changement de formule, convertis à leur valeur.
+        Un document seul coûte 100 F, quel que soit son type ou son nombre de pages. Le <b>pass Pro 30 jours</b> (2 000 F) est lié à un compte Google et permet
+        de télécharger des documents sans limite pendant 30 jours, comme affiché avant le paiement. Il <b>ne se renouvelle jamais automatiquement</b> : à la fin des 30 jours,
+        l&apos;utilisateur repaie seulement s&apos;il veut continuer. Les pass Essentiel achetés avant le 22 novembre 2026 restent valables jusqu&apos;à leur fin (10 documents par jour) ;
+        leurs jours restants sont gardés lors d&apos;un passage au Pro, convertis à leur valeur.
       </p>
 
       <h2>4. Livraison, modifications et remboursement</h2>

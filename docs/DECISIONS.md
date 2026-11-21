@@ -34,15 +34,16 @@ Décisions prises le 22/09/2026. **Ce fichier fait foi** quand il contredit PLAN
 
 ### Grille de prix
 
+Décidée le 22/11/2026 (remplace la grille du 24/10/2026 : 550 F le document, pass Essentiel 3 000 F, pass Pro 5 000 F).
+
 | Produit | Prix |
 |---|---|
-| Page de garde seule | 300 F |
-| Lettre / demande | 300 F |
-| CV | 500 F |
-| Document ≤ 15 pages | 1 000 F |
-| Rapport / exposé | 2 000 F |
-| Mémoire (> 40 pages) | 3 000 F |
-| Pass 30 jours illimité | 5 000 F |
+| N'importe quel document (mémoire, rapport, PowerPoint, page de garde, lettre, CV, épreuve), quel que soit le nombre de pages | 100 F |
+| Pass Pro 30 jours, illimité (entreprises, imprimeries, secrétariats) | 2 000 F |
+
+- 100 F est aussi le plus petit paiement accepté par Fapshi.
+- Le pass Essentiel n'est plus vendu. Ceux déjà achetés restent valables jusqu'à leur fin (10 documents par jour) ; en passant au Pro, leurs jours restants sont convertis à leur valeur.
+- Source de vérité dans le code : `api/app/pricing.py` (serveur) et `web/src/lib/plans.ts` (affichage).
 
 ## Questions encore ouvertes
 

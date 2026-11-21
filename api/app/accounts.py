@@ -121,6 +121,8 @@ def buy_pass(body: PassIn) -> dict:
     account = _account_or_401(body.token)
     if body.plan not in pricing.PLANS:
         raise HTTPException(400, "Formule inconnue")
+    if body.plan not in pricing.SOLD_PLANS:
+        raise HTTPException(400, "Cette formule n'est plus proposée : prends le pass Pro")
     product = f"pass_{body.plan}"
     order_id = db.create_order(product, pricing.price_for(product), {"pass_for": account["sub"], "plan": body.plan})
     order = db.get_order(order_id)

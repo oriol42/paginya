@@ -48,7 +48,7 @@ def test_sanitizer_rejects_entities():
 def test_price_is_set_by_server(client):
     r = client.post("/orders", json={"product": "page_de_garde", "svg": SVG, "amount": 1})
     assert r.status_code == 200
-    assert r.json()["amount"] == 550  # one price for any document
+    assert r.json()["amount"] == 100  # one price for any document
 
 
 def test_download_requires_payment(client):
@@ -145,7 +145,7 @@ def test_pass_account_and_team(client, monkeypatch):
     assert client.post(f"/orders/{doc['id']}/unlock", json={"token": token}).status_code == 402  # no pass yet
 
     p = client.post("/account/pass", json={"token": token, "plan": "pro"}).json()
-    assert p["amount"] == 5000
+    assert p["amount"] == 2000
     client.post(f"/orders/{p['id']}/pay", json={"phone": "670000000"})
     assert client.get(f"/orders/{p['id']}").json()["status"] == "PAID"
     assert client.get(f"/orders/{p['id']}").json()["status"] == "PAID"  # credited once

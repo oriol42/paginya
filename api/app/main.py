@@ -153,9 +153,11 @@ def health() -> dict:
 @app.get("/prices")
 def prices() -> dict:
     """Every product with its price; the passes also say how many documents they unlock per day."""
-    out = {k: {"label": pricing.LABELS[k], "amount": v} for k, v in pricing.PRICES_XAF.items() if k != "pass_30j"}
-    for plan, p in pricing.PLANS.items():
-        out[f"pass_{plan}"]["per_day"] = p["per_day"]
+    passes = {f"pass_{k}" for k in pricing.PLANS}
+    out = {k: {"label": pricing.LABELS[k], "amount": v} for k, v in pricing.PRICES_XAF.items() if k not in passes and k != "pass_30j"}
+    for plan in pricing.SOLD_PLANS:  # only the passes still sold
+        p = pricing.PLANS[plan]
+        out[f"pass_{plan}"] = {"label": p["label"], "amount": p["amount"], "per_day": p["per_day"]}
     return out
 
 
