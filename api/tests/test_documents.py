@@ -526,7 +526,7 @@ def test_big_tables_are_left_to_the_ai_to_tell():
     assert [t["rows"] for t in tables.values()] == [small]
 
 
-@pytest.mark.parametrize("theme", ["academique", "sorbonne", "campus", "savane", "ocean", "medical", "royal", "corail", "soleil", "ardoise", "nuit", "neon", "contraste", "vitamine", "terre", "foret", "prairie", "horizon", "azur", "graphite", "ambre", "citron", "halo", "iris", "brume"])
+@pytest.mark.parametrize("theme", ["academique", "sorbonne", "campus", "savane", "ocean", "medical", "royal", "corail", "soleil", "ardoise", "nuit", "neon", "contraste", "vitamine", "terre", "foret", "prairie", "horizon", "azur", "graphite", "ambre", "citron", "halo", "iris", "brume", "studio", "studio_encre", "studio_corail", "studio_foret", "studio_prune", "studio_nuit"])
 def test_every_theme_draws_every_kind_of_slide(tmp_path, theme):
     from pptx import Presentation
     from app.doc.slides import build_pptx, title_info
@@ -639,7 +639,7 @@ def audit_slides(path) -> list[str]:
     return faults
 
 
-@pytest.mark.parametrize("theme", ["academique", "sorbonne", "campus", "savane", "ocean", "medical", "royal", "corail", "soleil", "ardoise", "nuit", "neon", "contraste", "vitamine", "terre", "foret", "aurora", "braise", "lagon", "minuit", "perle", "menthe", "prairie", "horizon", "azur", "graphite", "ambre", "citron", "halo", "iris", "brume"])
+@pytest.mark.parametrize("theme", ["academique", "sorbonne", "campus", "savane", "ocean", "medical", "royal", "corail", "soleil", "ardoise", "nuit", "neon", "contraste", "vitamine", "terre", "foret", "aurora", "braise", "lagon", "minuit", "perle", "menthe", "prairie", "horizon", "azur", "graphite", "ambre", "citron", "halo", "iris", "brume", "studio", "studio_encre", "studio_corail", "studio_foret", "studio_prune", "studio_nuit"])
 def test_nothing_overflows_even_with_the_longest_text_allowed(tmp_path, theme):
     """The worst case the AI can send: every limit reached, for every layout."""
     from app.doc.slides import build_pptx, title_info
@@ -711,7 +711,7 @@ def test_the_style_follows_the_subject():
     from app.doc.slides import choose_theme
     health = {"blocks": [{"text": "Les soins infirmiers en réanimation : patient, hôpital, médicaments."}], "meta": {"kind": "cours"}}
     farm = {"blocks": [{"text": "Agriculture et élevage : la plantation de cacao, agronomie."}], "meta": {"kind": "rapport"}}
-    assert choose_theme(health) in ("medical", "brume", "horizon", "menthe") and choose_theme(farm) in ("prairie", "citron", "halo", "horizon", "menthe")
+    assert choose_theme(health) in ("studio", "studio_foret") and choose_theme(farm) == "studio_foret"
 
 
 def test_the_user_changes_words_order_colours_and_font(client, tmp_path, monkeypatch):
@@ -821,3 +821,30 @@ def test_content_slides_glide_into_each_other_with_morph_and_charts_draw_themsel
     assert [p["push"] for p in show_plan(saved)][2:6] == [True, False, False, False]
     saved.write_bytes(build_pptx({"slides": slides, "parts": ["A", "B"]}, info, "savane", tmp_path, motion="fondu"))
     assert 'presetID="53"' not in etree.tostring(Presentation(saved).slides[5]._element).decode()  # a quiet fade stays quiet
+
+
+def test_studio_is_the_premium_default_with_one_panel_cards_and_a_growing_progress_bar(tmp_path):
+    """Studio (after Gamma, Pitch, Beautiful.ai): off-white page, white rounded cards, one colour panel kept from slide
+    to slide by Morph, a thin progress bar that grows; no theme shadow left for LibreOffice or WPS to draw."""
+    from pptx import Presentation
+    from app.doc.slides import DEFAULT_THEME, THEMES, build_pptx, choose_theme, title_info
+    assert DEFAULT_THEME == "studio" and all(THEMES[k]["studio"] for k in THEMES if k.startswith("studio"))
+    assert choose_theme({"blocks": [{"text": "Rapport de stage"}], "meta": {"kind": "rapport_stage"}}).startswith("studio")
+    items = [{"head": "Stock", "text": "Suivi quotidien", "icon": "layers"}, {"head": "Vente", "text": "Par mois", "icon": "coins"}]
+    slides = [{"type": "liste", "title": "Le contexte", "items": items, "part": "A"},
+              {"type": "grille", "title": "Les objectifs", "items": items * 2, "part": "A"},
+              {"type": "grand", "title": "Ce que je retiens", "value": "3 mois", "text": "Le stage", "icon": "clock", "part": "B"}]
+    info = title_info({"blocks": [], "meta": {"title": "Mon rapport", "cover": {"doc_label": "Rapport de stage", "authors": [{"name": "KAMGA Paul"}]}}}, tmp_path)
+    saved = tmp_path / "s.pptx"
+    saved.write_bytes(build_pptx({"slides": slides, "parts": ["A", "B"]}, info, "studio", tmp_path))
+    prs = Presentation(saved)
+    names = [[s.name for s in slide.shapes] for slide in prs.slides]
+    assert "!!Panneau" in names[0] and "!!Panneau" in names[2] and "!!Panneau" in names[4]  # cover, list, big number
+    assert "!!Panneau" not in names[3] and names[3].count("Carte") + names[3].count("Carte en couleur") == 4
+    share = lambda slide: next(s for s in slide.shapes if s.name == "!!Progression").width / next(s for s in slide.shapes if s.name == "Piste").width  # noqa: E731
+    shares = [share(slide) for slide in list(prs.slides)[1:5]]
+    assert shares == sorted(shares) and shares[0] < shares[-1]  # it fills along the talk
+    assert prs.slides[2].shapes.title.text == "Le contexte"
+    for slide in prs.slides:
+        for ref in slide._element.iter("{http://schemas.openxmlformats.org/drawingml/2006/main}effectRef"):
+            assert ref.get("idx") == "0"

@@ -5,6 +5,12 @@ import type { DeckInfo, DeckItem, DeckPatch, DeckSlide } from "@/lib/documents";
 
 /** Same colours as the themes of api/app/doc/slides.py. */
 const THEMES = [
+  { id: "studio", label: "Studio", bg: "linear-gradient(90deg,#F5F4F0 68%,#2F5BD3 68%)", accent: "#16181D", second: "#2F5BD3" },
+  { id: "studio_encre", label: "Studio encre", bg: "linear-gradient(90deg,#0D0E12 68%,#4F67D8 68%)", accent: "#F3F4F6", second: "#8AA4FF" },
+  { id: "studio_corail", label: "Studio corail", bg: "linear-gradient(90deg,#FBF5F0 68%,#D04A26 68%)", accent: "#2A1813", second: "#D04A26" },
+  { id: "studio_foret", label: "Studio forêt", bg: "linear-gradient(90deg,#F2F5F0 68%,#1E7A4C 68%)", accent: "#13211A", second: "#1E7A4C" },
+  { id: "studio_prune", label: "Studio prune", bg: "linear-gradient(90deg,#F6F3F9 68%,#6B2FD6 68%)", accent: "#23162F", second: "#6B2FD6" },
+  { id: "studio_nuit", label: "Studio nuit", bg: "linear-gradient(90deg,#0A1222 68%,#2272C3 68%)", accent: "#EEF3FA", second: "#4FB3F6" },
   { id: "halo", label: "Halo", bg: "linear-gradient(180deg,#BBD5A6,#FFFFFF 38%)", accent: "#2F6B1F", second: "#8BBF5A" },
   { id: "iris", label: "Iris", bg: "linear-gradient(180deg,#C6BBE9,#FFFFFF 38%)", accent: "#4C2AB0", second: "#E0245E" },
   { id: "brume", label: "Brume", bg: "linear-gradient(180deg,#B3D6E0,#FFFFFF 38%)", accent: "#12708C", second: "#F08A5D" },

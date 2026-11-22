@@ -116,19 +116,20 @@ HALO = {
 for name, theme in (CURVES | HALO).items():
     theme.update(badge=MSO_SHAPE.OVAL, corner=MSO_SHAPE.ROUNDED_RECTANGLE, frame="box", caps=False, foot="line", kicker=True, alt=False, lean=name in HALO)
 THEMES.update(CURVES | HALO)
-DEFAULT_THEME = "academique"
-# The style that suits the subject, when the user lets Paginya choose ("auto").
+DEFAULT_THEME = "studio"
+# The style that suits the subject, when the user lets Paginya choose ("auto"): the Studio family (22/11/2026), the
+# closest to Gamma or Pitch; the 31 older styles stay available in the editor.
 SUBJECTS = (
-    (r"infirm|sant[eé]\b|m[eé]dic|h[oô]pital|soins|pharma|patient|maladie|clinique|health", ("medical", "brume", "horizon", "menthe")),
-    (r"informatique|logiciel|d[eé]veloppement web|plateforme|algorithm|r[eé]seau|donn[eé]es|software|machine learning|intelligence artificielle", ("aurora", "minuit", "azur", "iris", "graphite")),
-    (r"agricul|agronom|for[eê]t|environnement|[eé]colog|climat|[eé]levage|plantation", ("prairie", "citron", "halo", "horizon", "menthe")),
-    (r"droit|juridi|justice|\bloi\b|administration publique|politique", ("minuit", "ambre", "sorbonne", "graphite")),
-    (r"gestion|comptab|financ|banque|marketing|commerce|entreprise|microfinance|[eé]conomi", ("azur", "ambre", "minuit", "graphite", "iris")),
-    (r"histoire|lettres|litt[eé]rature|philosoph|sociolog|anthropolog|culture", ("ambre", "iris", "sorbonne", "terre")),
-    (r"p[eé]dagog|[eé]ducation|enseignement|[eé]cole\b|apprentissage", ("halo", "iris", "perle", "citron")),
+    (r"infirm|sant[eé]\b|m[eé]dic|h[oô]pital|soins|pharma|patient|maladie|clinique|health", ("studio", "studio_foret")),
+    (r"informatique|logiciel|d[eé]veloppement web|plateforme|algorithm|r[eé]seau|donn[eé]es|software|machine learning|intelligence artificielle", ("studio_encre", "studio_nuit", "studio")),
+    (r"agricul|agronom|for[eê]t|environnement|[eé]colog|climat|[eé]levage|plantation", ("studio_foret",)),
+    (r"droit|juridi|justice|\bloi\b|administration publique|politique", ("studio_nuit", "studio")),
+    (r"gestion|comptab|financ|banque|marketing|commerce|entreprise|microfinance|[eé]conomi", ("studio", "studio_corail", "studio_nuit")),
+    (r"histoire|lettres|litt[eé]rature|philosoph|sociolog|anthropolog|culture", ("studio_corail", "studio_prune")),
+    (r"p[eé]dagog|[eé]ducation|enseignement|[eé]cole\b|apprentissage", ("studio_prune", "studio_foret")),
 )
-BY_KIND = {"memoire": ("azur", "ambre", "academique"), "rapport_stage": ("prairie", "azur", "horizon"), "rapport": ("azur", "horizon", "brume"),
-           "expose": ("halo", "iris", "citron", "aurora"), "cours": ("brume", "halo", "perle")}
+BY_KIND = {"memoire": ("studio", "studio_nuit"), "rapport_stage": ("studio", "studio_foret", "studio_corail"), "rapport": ("studio", "studio_encre"),
+           "expose": ("studio_prune", "studio_corail", "studio"), "cours": ("studio", "studio_foret", "studio_prune")}
 
 
 def choose_theme(document: dict) -> str:
@@ -140,7 +141,7 @@ def choose_theme(document: dict) -> str:
         found = len(re.findall(pattern, text))
         if found > hits:
             best, hits = themes, found
-    choices = best or BY_KIND.get((document.get("meta") or {}).get("kind"), ("halo", "iris", "azur", "prairie"))
+    choices = best or BY_KIND.get((document.get("meta") or {}).get("kind"), ("studio", "studio_corail", "studio_prune"))
     return choices[zlib.crc32(text[:400].encode()) % len(choices)]
 BODY_FONT = "Calibri"
 
@@ -262,6 +263,7 @@ class Painter:
         sp.fill.fore_color.rgb = _rgb(fill)
         sp.line.fill.background()
         sp.shadow.inherit = False
+        _no_style_effect(sp)
         if self.t.get("glass") and fill == self.t["panel"]:  # frosted glass: the colours of the background show through
             _alpha(sp.fill._xPr.find(qn("a:solidFill")), 13 if self.t["dark"] else 62)
             sp.line.color.rgb = _rgb("FFFFFF")
@@ -378,6 +380,14 @@ class Painter:
         """Several colours of one family, for a diagram: every step its own, as on a real infographic."""
         t = self.t
         return (t["accent"], t["second"], t["deep"], _mix(t["accent"], t["second"], 0.5), _mix(t["second"], t["deep"], 0.45), _mix(t["accent"], t["bg"], 0.3))[i % 6]
+
+
+def _no_style_effect(sp) -> None:
+    """The shape's default style asks for the theme's shadow: PowerPoint drops it (empty effect list), LibreOffice and
+    WPS still draw it. Pointing the style at no effect makes every program, and the preview, show the same thing."""
+    ref = sp._element.find(f"{qn('p:style')}/{qn('a:effectRef')}")
+    if ref is not None:
+        ref.set("idx", "0")
 
 
 def _alpha(fill, percent: float) -> None:
@@ -1986,21 +1996,26 @@ def _passage(motion: str, same_part: bool, morph: bool = False) -> str:
 def build_pptx(deck: dict, info: dict, theme_name: str, images_dir: Path, moving: bool = True, colors: dict | None = None, font: str | None = None,
                motion: str = DEFAULT_MOTION, click: bool = False) -> bytes:
     theme = _customised(THEMES.get(theme_name) or THEMES[DEFAULT_THEME], colors, font)
+    premium = studio if theme.get("studio") else None  # the Studio family has its own pages and layouts
     prs = Presentation()
     _prepare(prs)
     parts = deck.get("parts") or []
     total = len(deck["slides"]) + 3
     seed = zlib.crc32(info["title"].encode())
-    first = _title_page(prs, theme, info, images_dir, deck.get("art", ""), seed)
+    if premium:
+        first = premium.cover(prs, theme, info, images_dir, seed)
+    else:
+        first = _title_page(prs, theme, info, images_dir, deck.get("art", ""), seed)
     _notes(first, deck.get("notes", ""))
     if moving:
         _transition(first)
     used = Counter()
-    plan = _standard(prs, theme, "Outline" if info["english"] else "Plan de la présentation", seed=seed, parts=parts)
+    outline = "Outline" if info["english"] else "Plan de la présentation"
+    plan = premium.standard(prs, theme, outline, None, "", {"type": "plan"}) if premium else _standard(prs, theme, outline, seed=seed, parts=parts)
     plan.seed, plan.used = seed, used
-    _plan(plan, parts)
+    (premium.plan if premium else _plan)(plan, parts)
     end = len(plan.slide.shapes._spTree)
-    _progress(plan, parts, None, 2, total)
+    (premium.footer if premium else _progress)(plan, parts, None, 2, total)
     motion = motion if motion in MOTIONS else DEFAULT_MOTION
     if moving:
         _transition(plan.slide, _passage(motion, False))
@@ -2011,30 +2026,35 @@ def build_pptx(deck: dict, info: dict, theme_name: str, images_dir: Path, moving
         number += 1
         if s["type"] == "section":
             sections += 1
-            opener = _section(prs, theme, s["title"], sections, seed)
+            opener = (premium.section if premium else _section)(prs, theme, s["title"], sections, seed)
             _notes(opener, s.get("notes", ""))
             if moving:
                 _transition(opener, _passage(motion, False))
             after_content = False
             continue
         style = _night(theme) if theme["alt"] and s["type"] in ("encadre", "grand", "chiffres", "etapes") else theme
-        pen = _standard(prs, style, s["title"], s.get("part"), s.get("highlight", ""), SIDED.get(s["type"], 0.0), seed + number // 3, parts)
+        if premium:
+            pen = premium.standard(prs, style, s["title"], s.get("part"), s.get("highlight", ""), s)
+        else:
+            pen = _standard(prs, style, s["title"], s.get("part"), s.get("highlight", ""), SIDED.get(s["type"], 0.0), seed + number // 3, parts)
         pen.images, pen.art = images_dir, s.get("art", "")
         pen.seed, pen.used = seed, used
         base = len(pen.slide.shapes._spTree)  # what a layout draws without steps of its own still appears as one
         takeaway = s.get("takeaway") if s["type"] in BANDED else ""
         if takeaway:
             pen.bottom = BOTTOM - 0.72
+        if premium:
+            pen.bottom = (premium.BOTTOM - 0.8) if takeaway else premium.BOTTOM
         if s["type"] == "figure":
-            _figure(pen, s, images_dir)
+            (premium._figure if premium else _figure)(pen, s, images_dir)
         else:
-            DRAW.get(s["type"], _liste)(pen, s)
+            (premium.DRAW if premium else DRAW).get(s["type"], premium._liste if premium else _liste)(pen, s)
         if takeaway:
-            pen.bottom = BOTTOM - 0.72
+            pen.bottom = (premium.BOTTOM - 0.8) if premium else BOTTOM - 0.72
             pen.step()
-            _takeaway(pen, takeaway)
+            (premium.takeaway if premium else _takeaway)(pen, takeaway)
         end = len(pen.slide.shapes._spTree)
-        _progress(pen, parts, s.get("part"), number, total)
+        (premium.footer if premium else _progress)(pen, parts, s.get("part"), number, total)
         own = s.get("motion") if s.get("motion") in (*MOTIONS, "aucune") else motion
         if moving and own != "aucune":
             _transition(pen.slide, _passage(own, previous_part == s.get("part"), after_content))
@@ -2042,7 +2062,7 @@ def build_pptx(deck: dict, info: dict, theme_name: str, images_dir: Path, moving
             _animate(pen.slide, pen.marks if pen.marks and pen.marks[0] == base else [base, *pen.marks], end, own, click, effects)
         previous_part, after_content = s.get("part"), True
         _notes(pen.slide, s.get("notes", ""))
-    last = _end_page(prs, theme, deck.get("thanks") or "Merci de votre attention", info, images_dir, seed)
+    last = (premium.end if premium else _end_page)(prs, theme, deck.get("thanks") or "Merci de votre attention", info, images_dir, seed)
     if moving:
         _transition(last)
     prs.core_properties.title = info["title"][:200]
@@ -2146,3 +2166,8 @@ def title_info(document: dict, images_dir: Path) -> dict:
             "authors": authors, "supervisors": supervisors, "author_lines": with_info, "supervisor_lines": supervisors,
             "specialty": str(cover.get("specialty") or "").strip(), "year": str(cover.get("year") or "").strip(),
             "english": english, "by_label": "Presented by" if english else "Présenté par", "under_label": "Supervised by" if english else "Sous la direction de"}
+
+
+from . import studio  # noqa: E402  (the premium family draws with the helpers above)
+
+THEMES.update(studio.themes())
