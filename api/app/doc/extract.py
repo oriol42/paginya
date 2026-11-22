@@ -351,7 +351,10 @@ def fix_shifted_fonts(text: str) -> tuple[str, int]:
 _LEADERS = re.compile(r"(\.\s?){6,}\s*([0-9ivxlc]+)?\s*$|…{3,}\s*\d*\s*$", re.I)
 _LABEL = re.compile(r"^(\d+(\.\d+)*|[a-zA-Z]|[ivxlcIVXLC]{1,6})\s*[.)\-–]$")
 _PAGE_NO = re.compile(r"^(page\s*)?[-–]?\s*([0-9]{1,3}|[ivxlc]{1,6})\s*[-–]?$", re.I)
-_BULLET = re.compile(r"^[-–—•*➢►▪❖◆■●○➤✓✔]$")
+# a bullet alone on its line; Word's own bullets come out of a PDF as private-use glyphs of the Symbol and
+# Wingdings fonts (\uf0b7 •, \uf0a7 ▪, \uf0d8 ➢, \uf076 ❖, \uf0fc ✓…), or as "·" / "o" (Courier New, level 2)
+_BULLET = re.compile(r"^(?:[-–—•*➢►▪❖◆■●○➤✓✔·\uf000-\uf0ff]|o)$")
+_BULLET_RUN = re.compile(r"^\s*((?:[•▪●■◆❖➢►·\uf000-\uf0ff]\s+){2,})(\S.*)$")  # "  ·  ·  la mise à jour…"
 
 
 def _bare(line: str) -> bool:
@@ -378,6 +381,9 @@ def _label_column(lines: list[str], i: int) -> tuple[list[str], int] | None:
         else:
             items.append(lines[j].strip())
         j += 1
+    if len(items) == len(labels) + 1 and _END.search(items[-2]):
+        items.pop()  # the line after the list, with no blank line between: it is not an item
+        j -= 1
     if len(items) != len(labels):
         return None
     return [f"{a} {b}" for a, b in zip(labels, items)], j
@@ -396,12 +402,32 @@ def pdf_cleanup(text: str, keep_toc: bool = False) -> str:
             edges[ln] += 1
     # a section number at the top of several pages ("#.") is not a running header
     repeated = {ln for ln, n in edges.items() if n >= max(3, len(pages) * 0.3) and len(ln) < 160 and not re.fullmatch(r"(#\.)*#[.)]", ln)}
+    # a book's running header names the current section ("4.5 L'évolution des processus"): the same line first
+    # (or last) on a few pages only, too few for the rule above, but never text of the page itself
+    def outer(body: list[int], lines: list[str]) -> list[int]:
+        ends = []
+        for seq in (body[:2], body[::-1][:2]):
+            for i in seq:
+                ends.append(i)
+                if not _PAGE_NO.match(lines[i].strip()):
+                    break  # the line after a page number is still the header line
+        return ends
+
+    heads = Counter()
+    for lines in pages:
+        body = [i for i, ln in enumerate(lines) if ln.strip()]
+        for ln in {norm(lines[i]) for i in outer(body, lines)}:
+            heads[ln] += 1
+    running = {ln for ln, n in heads.items() if n >= 3 and 8 <= len(ln) <= 140 and len(pages) >= 8 and not _PAGE_NO.match(ln)}
     out: list[str] = []
     for lines in pages:
         body_idx = [i for i, ln in enumerate(lines) if ln.strip()]
         edge = set(body_idx[:3] + body_idx[-3:])
+        outermost = set(outer(body_idx, lines))
         for i, ln in enumerate(lines):
             if i in edge and (norm(ln) in repeated or _PAGE_NO.match(ln.strip())):
+                continue
+            if i in outermost and norm(ln) in running:
                 continue
             out.append(ln)
         out.append("\f")  # the page change stays known (a title at the top of a page); blank for the steps below
@@ -420,7 +446,15 @@ def pdf_cleanup(text: str, keep_toc: bool = False) -> str:
             drop.add(j)
     if keep_toc:
         drop = set()  # a conversion keeps the author's sommaire (detect sets it apart, the conversion puts it back)
-    lines = [ln for i, ln in enumerate(out) if i not in drop]
+    lines = []
+    for i, ln in enumerate(out):
+        if i in drop:
+            continue
+        if m := _BULLET_RUN.match(ln):  # the bullets of a list all on one line, then its first item: one per line
+            lines.extend(m.group(1).split())
+            lines.append(m.group(2))
+            continue
+        lines.append(ln)
     # 3. "2." or "-" alone on its line, the title or the item on the next one
     merged: list[str] = []
     i = 0

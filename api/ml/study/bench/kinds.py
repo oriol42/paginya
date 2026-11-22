@@ -1,7 +1,7 @@
 """Does changing the document type break anything? Every type on several real documents, in both orders."""
 import base64, os, sys, time
 from pathlib import Path
-sys.path.insert(0, "/home/oriol/Documents/propre/api")
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # api/
 from fastapi.testclient import TestClient
 from app import guard
 from app.main import app

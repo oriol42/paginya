@@ -1,11 +1,13 @@
 """LibreOffice finisher, run with the *system* python (the one that ships `uno`).
 
     python3 uno_worker.py <pipe_name> <profile_dir> <in.docx> <out.docx> <out.pdf> [<layout.json>]
+    python3 uno_worker.py <pipe_name> <profile_dir> -          (only starts LibreOffice)
 
 - Reuses a running headless soffice listening on a named pipe (starts it if needed).
 - Replaces [[TOC:n]] (n = 2, 3 or 4), [[LOT]], [[LOF]], [[LOI:<caption name>]] markers with real indexes, updates them
   (twice, so page numbers settle) and exports the final .docx and .pdf.
 - With <layout.json>: also writes the real page of every top-level paragraph, as LibreOffice lays the file out.
+- A presentation (.pptx) is only printed to <out.pdf> with Impress.
 """
 import json
 import os
@@ -110,9 +112,24 @@ def main():
     pipe, profile, src, out_docx, out_pdf = sys.argv[1:6]
     out_layout = sys.argv[6] if len(sys.argv) > 6 else "-"
     ctx = connect(pipe, profile)
+    if src == "-":
+        return  # only started, ready for the next document (office.warm)
     desktop = ctx.ServiceManager.createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
-    doc = desktop.loadComponentFromURL(uno.systemPathToFileUrl(os.path.abspath(src)), "_blank", 0, (pv("Hidden", True),))
+    doc = None
+    for _ in range(10):  # a LibreOffice just started answers before it can open files
+        doc = desktop.loadComponentFromURL(uno.systemPathToFileUrl(os.path.abspath(src)), "_blank", 0, (pv("Hidden", True),))
+        if doc is not None:
+            break
+        time.sleep(0.5)
+    if doc is None:
+        raise RuntimeError("LibreOffice n'ouvre pas le fichier")
     try:
+        show = doc.supportsService("com.sun.star.presentation.PresentationDocument")
+        if show:  # a PowerPoint: only printed (the preview of the slides)
+            if out_pdf != "-":
+                doc.storeToURL(uno.systemPathToFileUrl(os.path.abspath(out_pdf)), (pv("FilterName", "impress_pdf_Export"),))
+            return
+
         def toc(levels):
             def setup(ix):
                 ix.Title = ""

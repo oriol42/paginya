@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import subprocess
 import threading
 import time
@@ -17,7 +18,13 @@ UNO_PYTHON = os.getenv("PROPRE_UNO_PYTHON", "/usr/bin/python3")
 PIPE = os.getenv("PROPRE_LO_PIPE", "propre_lo")
 SOFFICE = os.getenv("PROPRE_SOFFICE", "soffice")
 WORKER = Path(__file__).with_name("uno_worker.py")
-_lock = threading.Lock()  # one LibreOffice instance: one document at a time
+_lock = threading.Lock()  # the command-line conversions (fallback): one at a time
+# Several LibreOffice kept open, each with its own pipe and profile: as many documents laid out at the same time
+# (~200 Mo of memory each). 1 on a small machine; the VPS (4 cœurs, 8 Go) runs 3 (Dockerfile).
+WORKERS = max(1, int(os.getenv("PROPRE_LO_WORKERS", "1")))
+_slots: queue.Queue[int] = queue.Queue()
+for _i in range(WORKERS):
+    _slots.put(_i)
 
 PREVIEW_DPI = 120  # sharp enough to read on a phone or a desktop screen, still light as WebP
 FIRST_PAGES = 3  # rendered before answering; the rest follow in the background
@@ -27,24 +34,48 @@ class OfficeError(RuntimeError):
     pass
 
 
-def finalize(src_docx: Path, out_docx: Path | None, out_pdf: Path | None, out_layout: Path | None = None) -> None:
-    """Real indexes + exports. Pass None to skip an output (previews only need the PDF)."""
-    profile = DATA_DIR / "lo-profile"
+def _slot_paths(slot: int) -> tuple[str, Path]:
+    pipe = PIPE if slot == 0 else f"{PIPE}_{slot}"
+    profile = DATA_DIR / ("lo-profile" if slot == 0 else f"lo-profile-{slot}")
     profile.mkdir(parents=True, exist_ok=True)
+    return pipe, profile
+
+
+def warm() -> None:
+    """Starts the LibreOffice instances one after the other, before the first customers: a cold start next to an
+    instance at work is slow, and on some versions fails."""
+    for _ in range(WORKERS):
+        slot = _slots.get()
+        try:
+            pipe, profile = _slot_paths(slot)
+            subprocess.run([UNO_PYTHON, str(WORKER), pipe, str(profile), "-", "-", "-"], capture_output=True, timeout=120)
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+        finally:
+            _slots.put(slot)
+
+
+def finalize(src_docx: Path, out_docx: Path | None, out_pdf: Path | None, out_layout: Path | None = None) -> None:
+    """Real indexes + exports. Pass None to skip an output (previews only need the PDF).
+    A PowerPoint goes through too: it is printed to PDF (the preview of the slides)."""
     expected = out_pdf or out_docx or out_layout
-    with _lock:
+    slot = _slots.get()  # waits for a free LibreOffice
+    try:
+        pipe, profile = _slot_paths(slot)
         for attempt in range(2):
             proc = subprocess.run(
-                [UNO_PYTHON, str(WORKER), PIPE, str(profile), str(src_docx), str(out_docx or "-"), str(out_pdf or "-"),
+                [UNO_PYTHON, str(WORKER), pipe, str(profile), str(src_docx), str(out_docx or "-"), str(out_pdf or "-"),
                  str(out_layout or "-")],
                 capture_output=True, timeout=240,
             )
             if proc.returncode == 0 and expected is not None and expected.is_file():
                 return
             if attempt == 0:
-                # A crashed soffice leaves a dead pipe: kill it and retry once.
-                subprocess.run(["pkill", "-f", f"pipe,name={PIPE}"], capture_output=True)
+                # A crashed soffice leaves a dead pipe: kill it (this one only: ";" ends its name) and retry once.
+                subprocess.run(["pkill", "-f", f"pipe,name={pipe};"], capture_output=True)
         raise OfficeError(proc.stderr.decode("utf-8", "replace")[-800:] or "Échec de la mise en page")
+    finally:
+        _slots.put(slot)
 
 
 def to_docx(src: Path, dst: Path) -> None:
@@ -77,7 +108,14 @@ def to_docx(src: Path, dst: Path) -> None:
 
 
 def slides_to_pdf(src: Path, dst: Path) -> None:
-    """A PowerPoint printed to PDF by LibreOffice Impress: the preview of the slides."""
+    """A PowerPoint printed to PDF by LibreOffice Impress: the preview of the slides. An open LibreOffice does it
+    (a slideshow needs one PDF per step: starting LibreOffice each time cost ~2 s); the command line is the fallback."""
+    try:
+        finalize(src, None, dst)
+        if dst.is_file() and dst.stat().st_size:
+            return
+    except (OfficeError, subprocess.TimeoutExpired, OSError):
+        pass
     profile = DATA_DIR / "lo-convert"
     profile.mkdir(parents=True, exist_ok=True)
     out_dir = dst.parent / "slides-pdf"

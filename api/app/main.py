@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from . import accounts, admin, config, db, doc_routes, fapshi, forms_routes, guard, learn, pricing, storage, support
 from .render import render_cover
+from .doc import office
 from .svg_safe import UnsafeSvg, sanitize_svg
 
 log = logging.getLogger("propre")
@@ -43,6 +44,8 @@ async def lifespan(_app: FastAPI):
     threading.Thread(target=janitor, daemon=True).start()
     if config.LEARN_NIGHTLY:
         learn.start_nightly()
+    if office.WORKERS > 1:  # the server: its LibreOffice instances ready before the first documents
+        threading.Thread(target=office.warm, daemon=True).start()
     yield
     stop.set()
 

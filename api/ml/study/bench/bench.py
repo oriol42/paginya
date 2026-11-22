@@ -5,7 +5,7 @@ Usage: PROPRE_DATA_DIR=<tmp> python bench.py <corpus dir> <out dir> [name filter
 import base64, json, os, re, shutil, sys, time, traceback, collections
 from pathlib import Path
 
-sys.path.insert(0, "/home/oriol/Documents/propre/api")
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # api/
 os.environ.setdefault("FAPSHI_MODE", "mock")
 from fastapi.testclient import TestClient
 from app import config, guard

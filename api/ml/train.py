@@ -1,8 +1,10 @@
 """Train the structure model on synthetic messy documents and compare with the rules.
 
-    .venv/bin/python -m ml.train 2500        # docs for training (validation: 300 other seeds)
+    .venv/bin/python -m ml.train 2500                          # docs for training (validation: 300 other seeds)
+    SYNTH_PDF=800 PROPRE_LO_PIPE=synth_lo python -m ml.train 2500   # + 800 of them read back from a PDF (ml/synth_pdf.py)
 
-Writes app/doc/structure_model.npz only if rules + model beat the rules alone on validation.
+Writes app/doc/structure_model.npz only if rules + model beat the rules alone on validation (and, with PDFs,
+are not worse than the rules on the PDF validation either).
 """
 from __future__ import annotations
 
@@ -19,14 +21,12 @@ from ml.evaluate import label_of, report
 from ml.synth import sample  # noqa: F401  (reloaded for the generalisation check)
 
 
-def dataset(seeds: range) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[tuple[int, int]]]:
+def dataset(seeds: range, made: list | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[tuple[int, int]]]:
+    """Features, true labels and the rules' labels; `made`: [(raws, labels)] already made (the PDF ones)."""
     xs, ys, rs, spans = [], [], [], []
     k = 0
-    for seed in seeds:
-        s = globals()["sample"](seed)
-        if s is None:
-            continue
-        raws, labels, _ = s
+    pairs = made if made is not None else ((s[0], s[1]) for s in map(globals()["sample"], seeds) if s is not None)
+    for raws, labels in pairs:
         tr = detect(raws, trace=True, refine=False)["trace"]
         xs.append(features(raws, tr, body_size(raws)))
         ys.append(np.array(labels))
@@ -111,6 +111,15 @@ if __name__ == "__main__":
         importlib.reload(ml.synth)
         globals()["sample"] = ml.synth.sample
     xva, yva, rva, _ = dataset(range(100_000, 100_300))
+    n_pdf = int(os.environ.get("SYNTH_PDF", "0"))
+    xpv = None
+    if n_pdf:
+        from ml.synth_pdf import samples as pdf_samples
+
+        xp, yp, _, _ = dataset(range(0), pdf_samples(range(300_000, 300_000 + n_pdf)))
+        xpv, ypv, rpv, _ = dataset(range(0), pdf_samples(range(200_000, 200_000 + max(60, n_pdf // 8))))
+        print(f"PDF : {len(yp)} paragraphes d'entraînement, {len(ypv)} de validation")
+        xtr, ytr = np.concatenate([xtr, xp]), np.concatenate([ytr, yp])
     print(f"données : {len(ytr)} paragraphes d'entraînement, {len(yva)} de validation ({time.time() - t0:.0f} s)")
     params = train(xtr, ytr)
     pr = Model(params).proba(xva)
@@ -125,6 +134,13 @@ if __name__ == "__main__":
             best = (r["acc"], th)
     # prudence: real documents differ from synthetic ones → the most cautious threshold within 0.2 pt of the best
     ths = [th for th in (0.95, 0.9, 0.8, 0.7, 0.6) if best[1] is not None and report_cache[th] >= best[0] - 0.002]
+    if xpv is not None:
+        ppv = Model(params).proba(xpv)
+        base_pdf = report(ypv, rpv, "PDF : règles seules")["acc"]
+        ok = [th for th in ths if report(ypv, hybrid(ppv, rpv, th), f"PDF : règles + modèle (seuil {th})")["acc"] >= base_pdf]
+        ths = ok
+        if not ok:
+            best = (best[0], None)
     if ths:
         best = (best[0], ths[0])
     if os.environ.get("SYNTH_SPLIT"):

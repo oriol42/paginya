@@ -61,6 +61,8 @@ SPECIALS: dict[str, tuple[str, ...]] = {
 }
 SPECIAL_LOOKUP = {v: k for k, vals in SPECIALS.items() for v in vals}
 
+TAB_PAGE = re.compile(r"\t\s*([ivxlcdm]{1,6}|\d{1,3})\s*$", re.I)  # "DEDICACE<tab>I": the page after a tab
+LEADERS = re.compile(r"[\s.…_·-]{3,}")
 TOC_ENTRY = re.compile(r"^(.{2,}?)(?:[\s.…_·-]{3,}\s*|\s+(?:p\.?|pp\.?|page)\s*)([ivxlcdm]+|\d+)\s*$", re.I)
 CAPTION = re.compile(
     r"^(tableau|table|tab\.|figure|fig\.?|graphique|graphe|graph\.|image|photo|sch[ée]ma|carte|illustration|diagramme)"
@@ -102,11 +104,19 @@ FENCE = re.compile(r"^`{3,}\s*\w*$")
 WHOLE_BOLD = re.compile(r"^(?:\*\*|__)(?=\S)([^*]+?)(?<=\S)(?:\*\*|__)\s*[.:;]?$")
 
 
+def _front_page_entry(text: str) -> bool:
+    """"REMERCIEMENTS II" in a sommaire read from a PDF (the tab became a space): a front page and its roman page."""
+    m = re.match(r"^(.*\S)\s+([ivxlcdm]{1,6})$", text, re.I)
+    return bool(m and _special_of(m.group(1)))
+
+
 def _special_of(text: str) -> str | None:
     if len(text) > 70:
         return None
     t = re.sub(r"^([ivx]+|\d+)\s*[.\-–)]\s*", "", plain(text).rstrip(" :"))
     t = re.sub(r"\s+", " ", t)
+    if re.match(r"^tables? d(e|es|u) mati[e]res?$", t):
+        return "toc"  # "Table de matieres", "Tables des matière": the usual typos
     if re.match(r"^(liste|table|index)s? des (figures|tableaux|illustrations|graphiques|images|schemas)\b", t):
         return "toc"  # "Liste des figures & tableaux", "Liste des tableaux et figures"…: rebuilt automatically
     if re.match(r"^(liste des |table des )?(sigles|abreviations|acronymes|symboles|notations)\b[\w ,/&-]*$", t) and len(t) < 70:
@@ -376,6 +386,11 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
                 items.append({**item, "_src": idx, "_explicit": True})
                 continue
         special = _special_of(text)
+        if special == "toc" and (TAB_PAGE.search(r.text) or TOC_ENTRY.match(text)):
+            skip_toc = True  # "LISTE DES FIGURES<tab>VI": a line of the old sommaire, not a page planned here
+            stats["toc_lines"] += 1
+            dropped.append(idx)
+            continue
         if special == "toc":
             skip_toc = True
             stats["toc_lines"] += 1
@@ -386,13 +401,15 @@ def detect(raws: list[Raw], trace: bool = False, refine: bool = True) -> dict:
                 stats["plan_title_at"] = idx  # "Sommaire": what follows may be a plan typed without page numbers
             continue
         if skip_toc:
-            # a typed list of figures often has no page numbers: "Figure 1 : Architecture générale"
-            if TOC_ENTRY.match(text) or (len(text) < 120 and re.search(r"\s\d{1,3}$", text)) or (len(text) < 200 and CAPTION.match(text)):
+            # a typed list of figures often has no page numbers: "Figure 1 : Architecture générale"; a sommaire typed
+            # with a tab before the page: "DEDICACE<tab>I", "CHAPITRE 1 : INSERTION EN ENTREPRISE<tab>11"
+            if (TOC_ENTRY.match(text) or (len(text) < 120 and re.search(r"\s\d{1,3}$", text)) or (len(text) < 200 and CAPTION.match(text))
+                    or (len(text) < 160 and TAB_PAGE.search(r.text)) or _front_page_entry(text)):
                 stats["toc_lines"] += 1
                 dropped.append(idx)
                 continue
             skip_toc = False
-        if TOC_ENTRY.match(text) and len(text) < 160:
+        if TOC_ENTRY.match(text) and len(LEADERS.sub(" ", text)) < 160:  # two entries on one PDF line are longer
             stats["toc_lines"] += 1
             dropped.append(idx)
             continue  # stray table-of-contents line
@@ -717,13 +734,17 @@ def _classify_explicit(r: Raw) -> dict | None:
     return {"type": "paragraph", "text": r.text.strip()}
 
 
+# "chapitre 5, La dimension humaine d'un projet.": the end of a sentence cut by the page ("…voir le") , not a chapter
+_CHAPTER_IN_SENTENCE = re.compile(r"^(chapitre|chapter)\s+\S+\s*[,)]|^[a-z].*[.;,]$")
+
+
 def _classify_text(r: Raw, nxt: Raw | None, base: float) -> dict:
     text = r.text.strip()
 
     # (a line Word shows with a bullet is an item, even when it reads "Chapitre 1 : …": the plan announced in the introduction)
     if PARTIE.match(text) and len(text) < 160 and r.list_kind != "bullet":
         return {"type": "heading", "kind": "partie", "text": text}
-    if CHAPITRE.match(text) and len(text) < 160 and r.list_kind != "bullet":
+    if CHAPITRE.match(text) and len(text) < 160 and r.list_kind != "bullet" and not _CHAPTER_IN_SENTENCE.match(text):
         return {"type": "heading", "kind": "chapitre", "text": text}
     # a charter or a regulation: "Article 3. Encadrement" is its chapter, "Alinéa 1.2. Rédaction" its section
     if ARTICLE.match(text) and len(text) < 140 and not re.search(r"[.;]$", text):

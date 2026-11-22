@@ -10,7 +10,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-sys.path.insert(0, "/home/oriol/Documents/propre/api")
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # api/
 os.environ.setdefault("FAPSHI_MODE", "mock")
 from fastapi.testclient import TestClient  # noqa: E402
 from app import guard  # noqa: E402

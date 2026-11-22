@@ -141,8 +141,14 @@ def truth_doc(rng: random.Random) -> list[El]:
     if add_toc:
         els.append(El(H1, rng.choice(["SOMMAIRE", "TABLE DES MATIÈRES", "Sommaire"]), 1, "special"))
         els[-1].label = TOC  # the TOC title itself is dropped by Paginya (it rebuilds the table)
-        for t in ["Introduction", "Chapitre I", "Chapitre II", "Conclusion", "Bibliographie"][: rng.randint(3, 5)]:
-            els.append(El(TOC, f"{t} {'.' * rng.randint(8, 40)} {rng.randint(1, 60)}"))
+        # dot leaders, or Word's tab before the page ("DEDICACE<tab>I", seen on real reports), or underscores
+        how = rng.choice(["dots", "dots", "tab", "under"])
+        front = ["DÉDICACE", "REMERCIEMENTS", "RÉSUMÉ", "ABSTRACT"][: rng.randint(2, 4)] if rng.random() < 0.4 else []
+        body = ["Introduction", "Chapitre I", "Chapitre II", "Conclusion", "Bibliographie"][: rng.randint(3, 5)]
+        for k, t in enumerate(front + body):
+            page = ROMAN[k].lower() if k < len(front) and rng.random() < 0.5 else ROMAN[k] if k < len(front) else str(rng.randint(1, 60))
+            sep = {"dots": f" {'.' * rng.randint(8, 40)} ", "tab": "\t", "under": f" {'_' * rng.randint(10, 50)} "}[how]
+            els.append(El(TOC, f"{t}{sep}{page}"))
     special(rng.choice(["INTRODUCTION GÉNÉRALE", "INTRODUCTION", "Introduction générale"]))
     for _ in range(rng.randint(1, 4)):
         els.append(El(PARA, paragraph(rng)))
@@ -321,8 +327,8 @@ def mess(lines: list[tuple[El, str]], rng: random.Random) -> list[tuple[El, str]
     return out
 
 
-def render(els: list[El], h: Habit, rng: random.Random, tmp: Path) -> list[Raw] | None:
-    """Writes the messy document and reads it back with the production extractor."""
+def messy_lines(els: list[El], h: Habit, rng: random.Random) -> list[tuple[El, str]]:
+    """The text of each element as the author typed it (numbers, bullets, capitals…)."""
     counters = Counter4()
     chapter_depth = 1
     lines: list[tuple[El, str]] = []
@@ -345,38 +351,48 @@ def render(els: list[El], h: Habit, rng: random.Random, tmp: Path) -> list[Raw] 
             lines.append((e, e.text.upper()))
         else:
             lines.append((e, e.text))
-
     if h.extreme:
         lines = mess(lines, rng)
+    return lines
+
+
+def write_docx(lines: list[tuple[El, str]], h: Habit, rng: random.Random, path: Path) -> None:
+    """The messy document as the author's Word file (styles, or bold and sizes by hand)."""
+    doc = Document()
+    doc.styles["Normal"].font.size = Pt(h.body)
+    for e, t in lines:
+        if e.label in (H1, H2, H3, H4) and h.mode == "styles" and rng.random() > h.miss_format:
+            doc.add_heading(t, level=min(e.depth, 4))
+            continue
+        if e.label == LIST and h.word_lists and e.kind != "nomark":
+            doc.add_paragraph(t, style="List Number" if e.ordered else "List Bullet")
+            continue
+        p = doc.add_paragraph()
+        run = p.add_run(t)
+        if e.label in (H1, H2, H3, H4) and h.mode in ("manual", "styles") and rng.random() > h.miss_format:
+            run.bold = e.depth <= h.bold_levels
+            run.font.size = Pt(h.body + h.size_bonus[min(e.depth, 4) - 1])
+            if e.depth == 1 and h.center_l1:
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            if e.depth >= 3 and rng.random() < 0.3:
+                run.italic = True
+        elif e.label == PARA and rng.random() < h.body_bold:
+            run.bold = True
+        elif e.label == CAPTION and rng.random() < 0.5:
+            run.italic = True
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.save(path)
+
+
+def render(els: list[El], h: Habit, rng: random.Random, tmp: Path) -> list[Raw] | None:
+    """Writes the messy document and reads it back with the production extractor."""
+    lines = messy_lines(els, h, rng)
     if h.mode == "text":
         sep = "\n\n" if rng.random() < 0.5 else "\n"
         raws = from_text(sep.join(t for _, t in lines))
     else:
-        doc = Document()
-        doc.styles["Normal"].font.size = Pt(h.body)
-        for e, t in lines:
-            if e.label in (H1, H2, H3, H4) and h.mode == "styles" and rng.random() > h.miss_format:
-                doc.add_heading(t, level=min(e.depth, 4))
-                continue
-            if e.label == LIST and h.word_lists and e.kind != "nomark":
-                doc.add_paragraph(t, style="List Number" if e.ordered else "List Bullet")
-                continue
-            p = doc.add_paragraph()
-            run = p.add_run(t)
-            if e.label in (H1, H2, H3, H4) and h.mode in ("manual", "styles") and rng.random() > h.miss_format:
-                run.bold = e.depth <= h.bold_levels
-                run.font.size = Pt(h.body + h.size_bonus[min(e.depth, 4) - 1])
-                if e.depth == 1 and h.center_l1:
-                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                if e.depth >= 3 and rng.random() < 0.3:
-                    run.italic = True
-            elif e.label == PARA and rng.random() < h.body_bold:
-                run.bold = True
-            elif e.label == CAPTION and rng.random() < 0.5:
-                run.italic = True
-                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         path = tmp / "d.docx"
-        doc.save(path)
+        write_docx(lines, h, rng, path)
         raws = from_docx(path, tmp)
     raws = [r for r in raws if r.text.strip()]
     if len(raws) != len(lines):
