@@ -241,6 +241,7 @@ class Painter:
         self.bottom = BOTTOM  # where the content stops (higher when a « à retenir » band closes the slide)
         self.side = 0.0  # width of a colour block against the right edge
         self.marks: list[int] = []  # where each thing that appears on its own starts (animations)
+        self.effects: dict[int, str] = {}  # a step with an effect of its own (a chart that draws itself, a number that pops)
         self.seed, self.used = 0, Counter()
         self.images, self.art = Path("."), ""
 
@@ -249,8 +250,10 @@ class Painter:
         self.used[name] += 1
         return (self.seed + self.used[name] - 1) % count
 
-    def step(self) -> None:
+    def step(self, effect: str = "") -> None:
         self.marks.append(len(self.slide.shapes._spTree))
+        if effect:
+            self.effects[self.marks[-1]] = effect
 
     def shape(self, kind, x: float, y: float, w: float, h: float, fill: str, name: str = "Forme"):
         sp = self.slide.shapes.add_shape(kind, Inches(x), Inches(y), Inches(w), Inches(h))
@@ -972,7 +975,7 @@ def _grand(pen: Painter, s: dict) -> None:
     t = pen.t
     pen.step()
     _block(pen, s.get("icon") or "target")
-    pen.step()
+    pen.step("zoom")
     value = s["value"]
     room = WIDTH - pen.side - LEFT - 0.4
     size = _fit(len(value), [(5, 130), (9, 96), (14, 72), (10_000, 50)])
@@ -986,14 +989,17 @@ def _chronologie(pen: Painter, s: dict) -> None:
     w = CONTENT_WIDTH / n
     line = TOP + 2.45
     pen.shape(MSO_SHAPE.RECTANGLE, LEFT, line - 0.04, CONTENT_WIDTH, 0.08, _mix(t["bg"], t["accent"], 0.45), "Ligne")
+    mark = 1.0 if n <= 4 else 0.76
     for i, item in enumerate(items):
         pen.step()
         cx = LEFT + i * w + w / 2
-        pen.badge(item["icon"], cx - 0.38, line - 0.38, 0.76, pen.tone(i))
         up = i % 2 == 0
-        y = TOP if up else line + 0.55
+        if n <= 4:  # room to spare: a thread from the mark to its text
+            pen.shape(MSO_SHAPE.RECTANGLE, cx - 0.015, line - 0.62 if up else line, 0.03, 0.62, _mix(t["bg"], pen.tone(i), 0.6), "Fil")
+        pen.badge(item["icon"], cx - mark / 2, line - mark / 2, mark, pen.tone(i))
+        y = TOP - 0.1 if up else line + 0.62
         pen.stack(cx - w / 2 + 0.08, y, w - 0.16, 1.9, item["head"], item["text"],
-                  22 if n <= 4 else 19, 18 if n <= 4 else 16, PP_ALIGN.CENTER, anchor=MSO_ANCHOR.BOTTOM if up else MSO_ANCHOR.TOP)
+                  26 if n <= 3 else 22 if n <= 4 else 19, 19 if n <= 4 else 16, PP_ALIGN.CENTER, anchor=MSO_ANCHOR.BOTTOM if up else MSO_ANCHOR.TOP)
 
 
 def _etapes_stairs(pen: Painter, s: dict) -> None:
@@ -1110,20 +1116,24 @@ def _comparaison(pen: Painter, s: dict) -> None:
         return _comparaison_rows(pen, s)
     gap = 0.5
     w = (CONTENT_WIDTH - gap) / 2
-    size = 23
-    need = max(sum(text_height(p, size, w - 0.92) + 0.17 for p in side["points"]) for side in (s["left"], s["right"]))
-    h = min(max(need + 1.45, 3.4), pen.bottom - TOP)
+    avail = pen.bottom - TOP
+    for size in (27, 25, 23, 21):  # as big as the points allow: few points must not float in an empty column
+        need = max(sum(text_height(p, size, w - 0.92) + 0.17 for p in side["points"]) for side in (s["left"], s["right"]))
+        if need + 1.45 <= avail * 0.86:
+            break
+    h = min(max(need + 1.6, avail * 0.78), avail)
+    top = TOP + (avail - h) * 0.4
     for i, side in enumerate((s["left"], s["right"])):
         pen.step()
         x = LEFT + i * (w + gap)
         fill = t["accent"] if i == 0 else t["second"]
-        pen.shape(MSO_SHAPE.RECTANGLE, x, TOP, w, h, t["panel"], "Colonne")
-        pen.gradient(MSO_SHAPE.RECTANGLE, x, TOP, w, 0.9, fill, _mix(fill, DARK, 0.2), 0, "Titre de colonne")
-        pen.text(x + 0.3, TOP, w - 0.6, 0.9, side["title"] or " ", 22, _readable(fill, t), True, t["title_font"], anchor=MSO_ANCHOR.MIDDLE)
-        pen.bullets(x + 0.3, TOP + 1.15, w - 0.6, h - 1.3, side["points"], size, gap=10, mark=fill if not t["dark"] else t["accent"])
-    pen.step()
-    pen.shape(MSO_SHAPE.OVAL, LEFT + w - 0.2, TOP + 0.05, 0.9, 0.9, t["bg"], "VS")
-    pen.text(LEFT + w - 0.2, TOP + 0.05, 0.9, 0.9, "VS", 19, t["ink"], True, t["title_font"], PP_ALIGN.CENTER, MSO_ANCHOR.MIDDLE)
+        pen.shape(MSO_SHAPE.RECTANGLE, x, top, w, h, t["panel"], "Colonne")
+        pen.gradient(MSO_SHAPE.RECTANGLE, x, top, w, 0.9, fill, _mix(fill, DARK, 0.2), 0, "Titre de colonne")
+        pen.text(x + 0.3, top, w - 0.6, 0.9, side["title"] or " ", 24, _readable(fill, t), True, t["title_font"], anchor=MSO_ANCHOR.MIDDLE)
+        pen.bullets(x + 0.3, top + 1.2, w - 0.6, h - 1.35, side["points"], size, gap=14, mark=fill if not t["dark"] else t["accent"])
+    pen.step("zoom")
+    pen.shape(MSO_SHAPE.OVAL, LEFT + w - 0.2, top + 0.05, 0.9, 0.9, t["bg"], "VS")
+    pen.text(LEFT + w - 0.2, top + 0.05, 0.9, 0.9, "VS", 19, t["ink"], True, t["title_font"], PP_ALIGN.CENTER, MSO_ANCHOR.MIDDLE)
 
 
 def _comparaison_rows(pen: Painter, s: dict) -> None:
@@ -1163,7 +1173,7 @@ def _chiffres_band(pen: Painter, s: dict) -> None:
     on = _readable(t["accent"], t)
     w = CONTENT_WIDTH / len(stats)
     for i, stat in enumerate(stats):
-        pen.step()
+        pen.step("zoom")
         x = LEFT + i * w
         pen.icon(stat["icon"], x + w / 2 - 0.3, y + 0.3, 0.6, on)
         pen.text(x + 0.1, y + 1.0, w - 0.2, 1.25, stat["value"], 56, on, True, t["title_font"], PP_ALIGN.CENTER, MSO_ANCHOR.MIDDLE)
@@ -1182,7 +1192,7 @@ def _chiffres(pen: Painter, s: dict) -> None:
     longest = max(len(x["value"]) for x in stats)
     size = _fit(int(longest * 4 / len(stats)), [(6, 62), (9, 50), (13, 40), (10_000, 30)])
     for i, stat in enumerate(stats):
-        pen.step()
+        pen.step("zoom")
         x = LEFT + i * (w + gap)
         strong = i == 0
         if strong:
@@ -1204,7 +1214,7 @@ def _graphique(pen: Painter, s: dict) -> None:
     donut = s.get("chart") == "donut"
     key = s.get("key") or ""
     w = 7.4 if key else CONTENT_WIDTH
-    pen.step()
+    pen.step("roue" if donut else "trace")  # the ring turns, the bars grow
     frame = pen.slide.shapes.add_chart(XL_CHART_TYPE.DOUGHNUT if donut else XL_CHART_TYPE.BAR_CLUSTERED, Inches(LEFT), Inches(TOP), Inches(w), Inches(pen.bottom - TOP), data)
     chart = frame.chart
     chart.font.size, chart.font.name = Pt(15), BODY_FONT
@@ -1239,9 +1249,20 @@ def _graphique(pen: Painter, s: dict) -> None:
     pen.step()
     x = LEFT + w + 0.3
     room = CONTENT_WIDTH - w - 0.3
-    pen.card(x, TOP + 0.2, room, pen.bottom - TOP - 0.4, 1)
-    pen.icon(s.get("icon") or "chart-pie", x + 0.3, TOP + 0.5, 0.7, t["accent"] if not t["dark"] else t["second"])
-    pen.text(x + 0.3, TOP + 1.4, room - 0.6, 3.0, key, _fit(len(key), [(70, 24), (120, 21), (10_000, 18)]), t["ink"], True, t["title_font"])
+    tint = t["accent"] if not t["dark"] else t["second"]
+    top = max(s["series"], key=lambda v: v["value"])  # the chart's own figure: never invented
+    figure = f"{top['value']:g}".replace(".", ",")
+    size = _fit(len(key), [(70, 24), (120, 21), (10_000, 18)])
+    key_h = text_height(key, size, room - 0.6, t["title_font"], True)
+    big = 50 if len(figure) <= 4 else 38
+    h = min(pen.bottom - TOP - 0.2, 0.45 + 0.65 + 0.95 + 0.45 + 0.35 + key_h + 0.35)
+    y = TOP + (pen.bottom - TOP - h) / 2
+    pen.card(x, y, room, h, 1)
+    pen.icon(s.get("icon") or "chart-pie", x + 0.3, y + 0.4, 0.6, tint)
+    pen.text(x + 0.3, y + 1.05, room - 0.6, 0.95, figure, big, tint, True, t["title_font"], anchor=MSO_ANCHOR.MIDDLE)
+    pen.text(x + 0.3, y + 2.0, room - 0.6, 0.45, top["label"], 15, t["muted"], True, anchor=MSO_ANCHOR.TOP)
+    pen.shape(MSO_SHAPE.RECTANGLE, x + 0.3, y + 2.5, 0.8, 0.05, tint, "Filet")
+    pen.text(x + 0.3, y + 2.75, room - 0.6, key_h + 0.2, key, size, t["ink"], True, t["title_font"])
 
 
 def _encadre(pen: Painter, s: dict) -> None:
@@ -1387,7 +1408,7 @@ def _progress(pen: Painter, parts: list[str], current: str | None, number: int, 
     if t["foot"] == "line":
         end = WIDTH - LEFT if not pen.side else WIDTH - pen.side - 0.4
         label = (current or "").upper()
-        pen.text(LEFT, 7.0, 3.2, 0.3, label, 11, t["ink"], True, anchor=MSO_ANCHOR.MIDDLE)
+        pen.text(LEFT, 7.0, 3.2, 0.3, label, 11, t["ink"], True, anchor=MSO_ANCHOR.MIDDLE).name = "!!Partie"
         start = LEFT + 0.12 * len(label) + 0.3
         pen.shape(MSO_SHAPE.RECTANGLE, start, 7.145, max(end - start - 0.6, 0.1), 0.02, t["accent"], "Filet")
         pen.text(end - 0.5, 7.0, 0.5, 0.3, str(number), 12, t["ink"], True, align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
@@ -1400,7 +1421,7 @@ def _progress(pen: Painter, parts: list[str], current: str | None, number: int, 
     for i, part in enumerate(parts):
         lit = part == current
         if lit:
-            pen.shape(MSO_SHAPE.RECTANGLE, start + i * width + 0.04, STRIP + 0.07, width - 0.08, HEIGHT - STRIP - 0.14, t["second"], "Partie en cours")
+            pen.shape(MSO_SHAPE.RECTANGLE, start + i * width + 0.04, STRIP + 0.07, width - 0.08, HEIGHT - STRIP - 0.14, t["second"], "!!Partie en cours")  # glides with Morph
         pen.text(start + i * width + 0.08, STRIP, width - 0.16, HEIGHT - STRIP, part, 11.5, _readable(t["second"], t) if lit else _mix(on_strip, strip, 0.3), lit,
                  align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
     pen.text(WIDTH - 1.05, STRIP, 0.8, HEIGHT - STRIP, f"{number} / {total}", 12, on_strip, True, align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
@@ -1802,8 +1823,10 @@ def _section(prs, theme: dict, title: str, number: int, seed: int = 0):
 
 
 MOTIONS = {"fondu": (10, 0), "monter": (42, 0), "glisser": (2, 8), "zoom": (53, 0), "balayer": (22, 8)}  # PowerPoint's own effect numbers: its panel shows their names
+OWN = {"roue": (21, 1), "trace": (22, 8)}  # chosen by a layout for one thing: a ring that turns (Roue), bars that grow (Balayer)
 DEFAULT_MOTION = "monter"
 STEP_MS, EFFECT_MS = 260, 480  # things overlap a little: a flow, not a queue
+SLOW_MS = {"roue": 1100, "trace": 900}  # a chart takes the time to be read as it draws
 
 
 def _effect(kind: str, spid: str, node: str, delay: int, nid) -> str:
@@ -1816,7 +1839,7 @@ def _effect(kind: str, spid: str, node: str, delay: int, nid) -> str:
                 f'<p:attrNameLst><p:attrName>{attr}</p:attrName></p:attrNameLst></p:cBhvr><p:tavLst><p:tav tm="0"><p:val><p:strVal val="{start}"/></p:val></p:tav>'
                 f'<p:tav tm="100000"><p:val><p:strVal val="{end}"/></p:val></p:tav></p:tavLst></p:anim>')
 
-    preset, subtype = MOTIONS[kind]
+    preset, subtype = {**MOTIONS, **OWN}[kind]
     head = f'<p:par><p:cTn id="{nid()}" presetID="{preset}" presetClass="entr" presetSubtype="{subtype}" fill="hold" nodeType="{node}"><p:stCondLst><p:cond delay="{delay}"/></p:stCondLst><p:childTnLst>'
     show = (f'<p:set><p:cBhvr><p:cTn id="{nid()}" dur="1" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst></p:cTn>{target}'
             '<p:attrNameLst><p:attrName>style.visibility</p:attrName></p:attrNameLst></p:cBhvr><p:to><p:strVal val="visible"/></p:to></p:set>')
@@ -1827,18 +1850,22 @@ def _effect(kind: str, spid: str, node: str, delay: int, nid) -> str:
             body = fade + move("ppt_x", "#ppt_x-0.06", "#ppt_x")
         case "zoom":
             body = fade + move("ppt_w", "#ppt_w*0.82", "#ppt_w") + move("ppt_h", "#ppt_h*0.82", "#ppt_h")
-        case "balayer":
-            body = f'<p:animEffect transition="in" filter="wipe(left)"><p:cBhvr><p:cTn id="{nid()}" dur="{EFFECT_MS}"/>{target}</p:cBhvr></p:animEffect>'
+        case "balayer" | "trace":
+            body = f'<p:animEffect transition="in" filter="wipe(left)"><p:cBhvr><p:cTn id="{nid()}" dur="{SLOW_MS.get(kind, EFFECT_MS)}"/>{target}</p:cBhvr></p:animEffect>'
+        case "roue":
+            body = f'<p:animEffect transition="in" filter="wheel(1)"><p:cBhvr><p:cTn id="{nid()}" dur="{SLOW_MS[kind]}"/>{target}</p:cBhvr></p:animEffect>'
         case _:
             body = fade
     return f"{head}{show}{body}</p:childTnLst></p:cTn></p:par>"
 
 
-def _animate(slide, marks: list[int], end: int, kind: str = DEFAULT_MOTION, click: bool = False) -> None:
-    """Things appear one after the other: on their own, or at each click of the presenter."""
+def _animate(slide, marks: list[int], end: int, kind: str = DEFAULT_MOTION, click: bool = False, effects: dict[int, str] | None = None) -> None:
+    """Things appear one after the other: on their own, or at each click of the presenter.
+    `effects`: steps (by their mark) that have an effect of their own instead of `kind`."""
     children = list(slide.shapes._spTree)
-    steps = [[str(el.xpath(".//p:cNvPr/@id")[0]) for el in children[a:b]] for a, b in zip(marks, [*marks[1:], end])]
-    steps = [s for s in steps if s][:12]
+    own = effects or {}
+    steps = [([str(el.xpath(".//p:cNvPr/@id")[0]) for el in children[a:b]], own.get(a, kind)) for a, b in zip(marks, [*marks[1:], end])]
+    steps = [s for s in steps if s[0]][:12]
     if not steps:
         return
     n = [2]
@@ -1853,9 +1880,9 @@ def _animate(slide, marks: list[int], end: int, kind: str = DEFAULT_MOTION, clic
                 '</p:childTnLst></p:cTn></p:par>')
 
     if click:
-        pieces = [outer("".join(_effect(kind, spid, "clickEffect" if j == 0 else "withEffect", 0, nid) for j, spid in enumerate(ids)), '<p:cond delay="indefinite"/>') for ids in steps]
+        pieces = [outer("".join(_effect(how, spid, "clickEffect" if j == 0 else "withEffect", 0, nid) for j, spid in enumerate(ids)), '<p:cond delay="indefinite"/>') for ids, how in steps]
     else:
-        flow = "".join(_effect(kind, spid, "afterEffect" if k == j == 0 else "withEffect", k * STEP_MS, nid) for k, ids in enumerate(steps) for j, spid in enumerate(ids))
+        flow = "".join(_effect(how, spid, "afterEffect" if k == j == 0 else "withEffect", k * STEP_MS, nid) for k, (ids, how) in enumerate(steps) for j, spid in enumerate(ids))
         pieces = [outer(flow, '<p:cond delay="indefinite"/><p:cond evt="onBegin" delay="0"><p:tn val="2"/></p:cond>')]
     xml = ('<p:timing xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:tnLst><p:par><p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot"><p:childTnLst>'
            f'<p:seq concurrent="1" nextAc="seek"><p:cTn id="2" dur="indefinite" nodeType="mainSeq"><p:childTnLst>{"".join(pieces)}</p:childTnLst></p:cTn>'
@@ -1864,13 +1891,25 @@ def _animate(slide, marks: list[int], end: int, kind: str = DEFAULT_MOTION, clic
     _after_cover(slide, xml)
 
 
+MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+
+
+def _transition_of(sld):
+    """The slide's transition element: itself, or the one PowerPoint wraps for Morph (with its fallback)."""
+    for child in sld:
+        if child.tag == qn("p:transition") or child.tag == f"{{{MC}}}AlternateContent":
+            return child
+    return None
+
+
 def _after_cover(slide, xml: str) -> None:
     """transition, then timing: PowerPoint refuses any other order."""
     element = etree.fromstring(xml)
     sld = slide._element
     anchor = sld.find(qn("p:clrMapOvr"))
-    if element.tag == qn("p:timing"):
-        anchor = sld.find(qn("p:transition")) if sld.find(qn("p:transition")) is not None else anchor
+    if element.tag == qn("p:timing") and _transition_of(sld) is not None:
+        anchor = _transition_of(sld)
     anchor.addnext(element)
 
 
@@ -1878,8 +1917,15 @@ TRANSITIONS = {"push": '<p:push dir="l"/>', "fade": "<p:fade/>", "zoom": '<p:zoo
 
 
 def _transition(slide, kind: str = "fade") -> None:
+    if kind == "morph":
+        # PowerPoint 2019 / 365 « Morphose »: what both slides share (title, part marker, decor) glides to its new place,
+        # the rest fades. Older PowerPoint, WPS and LibreOffice read the fallback: a plain fade.
+        _after_cover(slide, f'<mc:AlternateContent xmlns:mc="{MC}"><mc:Choice xmlns:p159="http://schemas.microsoft.com/office/powerpoint/2015/09/main" Requires="p159">'
+                            f'<p:transition xmlns:p="{P}" spd="slow"><p159:morph option="byObject"/></p:transition></mc:Choice>'
+                            f'<mc:Fallback><p:transition xmlns:p="{P}" spd="med"><p:fade/></p:transition></mc:Fallback></mc:AlternateContent>')
+        return
     effect = TRANSITIONS.get(kind, TRANSITIONS["fade"])
-    _after_cover(slide, f'<p:transition xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" spd="med">{effect}</p:transition>')
+    _after_cover(slide, f'<p:transition xmlns:p="{P}" spd="med">{effect}</p:transition>')
 
 
 def _notes(slide, text: str) -> None:
@@ -1927,10 +1973,13 @@ def _customised(theme: dict, colors: dict | None, font: str | None) -> dict:
     return out
 
 
-def _passage(motion: str, same_part: bool) -> str:
-    """How the slide arrives: its animation's cousin; a new part of the talk is felt, a slide of the same part stays quiet."""
+def _passage(motion: str, same_part: bool, morph: bool = False) -> str:
+    """How the slide arrives: its animation's cousin; a new part of the talk is felt, a slide of the same part stays quiet.
+    `morph`: the slide before was a content slide too: they share their title, part marker and decor, which glide."""
     if motion in ("zoom", "balayer"):
         return motion
+    if morph:
+        return "morph"
     return "fade" if same_part and motion != "glisser" else "push"
 
 
@@ -1957,7 +2006,7 @@ def build_pptx(deck: dict, info: dict, theme_name: str, images_dir: Path, moving
         _transition(plan.slide, _passage(motion, False))
         _animate(plan.slide, plan.marks, end, motion, click)
     number, sections = 2, 0
-    previous_part = None
+    previous_part, after_content = None, False
     for s in deck["slides"]:
         number += 1
         if s["type"] == "section":
@@ -1966,6 +2015,7 @@ def build_pptx(deck: dict, info: dict, theme_name: str, images_dir: Path, moving
             _notes(opener, s.get("notes", ""))
             if moving:
                 _transition(opener, _passage(motion, False))
+            after_content = False
             continue
         style = _night(theme) if theme["alt"] and s["type"] in ("encadre", "grand", "chiffres", "etapes") else theme
         pen = _standard(prs, style, s["title"], s.get("part"), s.get("highlight", ""), SIDED.get(s["type"], 0.0), seed + number // 3, parts)
@@ -1987,9 +2037,10 @@ def build_pptx(deck: dict, info: dict, theme_name: str, images_dir: Path, moving
         _progress(pen, parts, s.get("part"), number, total)
         own = s.get("motion") if s.get("motion") in (*MOTIONS, "aucune") else motion
         if moving and own != "aucune":
-            _transition(pen.slide, _passage(own, previous_part == s.get("part")))
-            _animate(pen.slide, pen.marks if pen.marks and pen.marks[0] == base else [base, *pen.marks], end, own, click)
-        previous_part = s.get("part")
+            _transition(pen.slide, _passage(own, previous_part == s.get("part"), after_content))
+            effects = {at: how for at, how in pen.effects.items() if how != "zoom" or own in ("monter", "zoom")}  # a quiet fade stays quiet
+            _animate(pen.slide, pen.marks if pen.marks and pen.marks[0] == base else [base, *pen.marks], end, own, click, effects)
+        previous_part, after_content = s.get("part"), True
         _notes(pen.slide, s.get("notes", ""))
     last = _end_page(prs, theme, deck.get("thanks") or "Merci de votre attention", info, images_dir, seed)
     if moving:
@@ -2030,8 +2081,8 @@ def _counts(groups: list) -> list[int]:
 def show_plan(path: Path) -> list[dict]:
     plan = []
     for slide in Presentation(path).slides:
-        moved = slide._element.find(qn("p:transition"))
-        push = moved is not None and moved.find(qn("p:push")) is not None
+        moved = _transition_of(slide._element)
+        push = moved is not None and next(moved.iter(qn("p:push")), None) is not None
         first = next(iter(slide._element.xpath(".//p:timing//p:cTn[@presetID]")), None)
         motion = next((k for k, v in MOTIONS.items() if first is not None and str(v[0]) == first.get("presetID")), "")
         plan.append({"frames": len(_counts(_groups(slide))), "push": push, "motion": motion, "click": first is not None and first.get("nodeType") == "clickEffect"})

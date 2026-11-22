@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from docx import Document
 from docx.shared import Pt
+from lxml import etree
 from fastapi.testclient import TestClient
 from PIL import Image
 
@@ -786,3 +787,37 @@ def test_the_slideshow_on_the_site_builds_up_step_by_step(client, tmp_path, monk
     n, last = moving + 1, plan[moving]["frames"] - 1
     assert client.get(f"/documents/{view['id']}/show/{n}-0.webp").status_code == 200
     assert client.get(f"/documents/{view['id']}/show/{n}-{last}.webp").status_code == 200
+
+
+def test_content_slides_glide_into_each_other_with_morph_and_charts_draw_themselves(tmp_path):
+    """PowerPoint 2019/365 plays Morph between two content slides (the part marker glides along the bar); older
+    software reads the fade beside it. A chart draws itself (bars grow, the ring turns), big numbers pop."""
+    from pptx import Presentation
+    from app.doc.slides import build_pptx, show_plan, title_info
+    mc = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
+    items = [{"head": "Stock", "text": "Suivi", "icon": "layers"}, {"head": "Vente", "text": "Mois", "icon": "coins"}]
+    series = [{"label": "A", "value": 40}, {"label": "B", "value": 60}]
+    slides = [{"type": "liste", "title": "Le contexte", "items": items, "part": "A"},
+              {"type": "graphique", "title": "Barres", "chart": "barres", "series": series, "key": "B domine", "part": "B"},
+              {"type": "graphique", "title": "Anneau", "chart": "donut", "series": series, "part": "B"},
+              {"type": "chiffres", "title": "Chiffres", "stats": [{"value": "3", "label": "mois", "icon": "clock"}, {"value": "12", "label": "agents", "icon": "users"}], "part": "B"}]
+    info = title_info({"blocks": [], "meta": {"title": "Mon rapport"}}, tmp_path)
+    saved = tmp_path / "s.pptx"
+    saved.write_bytes(build_pptx({"slides": slides, "parts": ["A", "B"]}, info, "savane", tmp_path))
+    prs = Presentation(saved)
+    first, bars, ring, stats = (prs.slides[i]._element for i in (2, 3, 4, 5))
+    assert [c.tag.rsplit("}", 1)[1] for c in first] == ["cSld", "clrMapOvr", "transition", "timing"]  # after the plan: a plain push
+    for sld in (bars, ring, stats):
+        assert [c.tag.rsplit("}", 1)[1] for c in sld] == ["cSld", "clrMapOvr", "AlternateContent", "timing"]
+        wrap = sld.find(f"{mc}AlternateContent")
+        assert wrap.find(f"{mc}Choice").get("Requires") == "p159" and "morph" in etree.tostring(wrap).decode()
+        assert wrap.find(f"{mc}Fallback")[0].tag.endswith("transition")
+    lit = [s.name for s in prs.slides[3].shapes if s.name.startswith("!!")]
+    assert "!!Partie en cours" in lit  # the same object on every slide: Morph moves it to the new part
+    xml = etree.tostring(bars).decode()
+    assert 'presetID="22"' in xml and 'filter="wipe(left)"' in xml and 'dur="900"' in xml
+    assert 'filter="wheel(1)"' in etree.tostring(ring).decode()
+    assert 'presetID="53"' in etree.tostring(stats).decode()  # the figures pop
+    assert [p["push"] for p in show_plan(saved)][2:6] == [True, False, False, False]
+    saved.write_bytes(build_pptx({"slides": slides, "parts": ["A", "B"]}, info, "savane", tmp_path, motion="fondu"))
+    assert 'presetID="53"' not in etree.tostring(Presentation(saved).slides[5]._element).decode()  # a quiet fade stays quiet

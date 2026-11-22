@@ -221,6 +221,9 @@ function MotionPick({ deck, busy, onChange }: { deck: DeckInfo; busy: boolean; o
         </div>
       )}
       <p className="mt-1.5 text-[12px] text-ink/60">Pour voir l&apos;effet : lance le diaporama. Une diapo peut avoir la sienne dans « Modifier les diapos ».</p>
+      {(chosen === "fondu" || chosen === "monter" || chosen === "glisser") && (
+        <p className="mt-1 text-[12px] text-ink/60">Dans PowerPoint 2019 ou 365, les diapos s&apos;enchaînent en Morphose : le titre et la partie en cours glissent d&apos;une diapo à l&apos;autre.</p>
+      )}
     </div>
   );
 }
