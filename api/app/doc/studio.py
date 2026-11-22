@@ -5,8 +5,11 @@ What makes those decks look expensive, and what this module keeps to:
 - big tight titles (Arial bold, 36 pt, a little letter spacing removed), body text never under 15 pt;
 - content laid on white cards with large rounded corners and a soft shadow, on an off-white page (or dark cards on
   a dark page);
-- one strong visual per slide instead of many small decorations: a colour panel at the right edge (Gamma's
-  "accent image", drawn here: no photo, no AI picture), with a big icon and a grid of dots;
+- one strong visual per slide instead of many small decorations: a real photo found on the internet for the subject
+  (art.illustrate: free photo banks, credited in the notes and on the last slide) in a panel at the right edge (Gamma's
+  "accent image"), full-bleed on the cover, the part openers and the last slide; a colour panel when there is none;
+- no icons: they are what makes generated slides look generated (asked by Oriol, 22/11/2026). Words, numbers and
+  photos carry the slides;
 - one layout logic repeated through the deck, so the eye knows where to look;
 - motion that serves: things rise one after the other, and with Morph the progress bar grows and the panel stays.
 Deliberately absent (the marks of generated slides): spaced capital kickers, coloured bars before a text, serif
@@ -54,6 +57,89 @@ def themes() -> dict:
     return out
 
 
+# --- photos -----------------------------------------------------------------------------------------
+
+class Photos:
+    """The real photos of a presentation (found by art.illustrate), handed out so that two slides in a row never
+    show the same one. The cover keeps its own."""
+
+    def __init__(self, images_dir: Path, deck: dict):
+        self.dir = images_dir
+        self.items: list[tuple[str, str]] = []
+        for owner in [deck, *deck.get("slides", [])]:
+            name = owner.get("art") or ""
+            if name.startswith("deck-photo") and (images_dir / name).is_file() and name not in (n for n, _ in self.items):
+                self.items.append((name, owner.get("credit") or ""))
+        self.own_cover = bool(deck.get("art")) and bool(self.items) and self.items[0][0] == deck.get("art")
+        self.k, self.last = 0, ""
+        self.used: list[str] = []
+
+    def cover(self) -> tuple[str, str] | None:
+        return self.items[0] if self.items else None
+
+    def pick(self, own: str = "") -> tuple[str, str] | None:
+        for name, credit in self.items:
+            if own and name == own:
+                self.last = name
+                return name, credit
+        # the cover's photo opens and closes the talk: the slides between take the others (if there are others)
+        rest = self.items[1:] if self.own_cover and len(self.items) > 1 else self.items
+        if not rest:
+            return None
+        for _ in range(len(rest)):
+            item = rest[self.k % len(rest)]
+            self.k += 1
+            if item[0] != self.last or len(self.items) == 1:
+                self.last = item[0]
+                return item
+        return None
+
+    def note(self, credit: str) -> None:
+        if credit and credit not in self.used:
+            self.used.append(credit)
+
+
+def photo(pen: S.Painter, entry: tuple[str, str] | None, x: float, y: float, w: float, h: float, radius: float = 0.0, name: str = "Photo") -> bool:
+    """A photo cut to fill its place (still a picture PowerPoint can swap), with rounded corners if asked."""
+    photos = getattr(pen, "photos", None)
+    if not entry or photos is None:
+        return False
+    path = photos.dir / entry[0]
+    if not path.is_file():
+        return False
+    from PIL import Image
+
+    with Image.open(path) as img:
+        ratio = img.width / img.height
+    pic = pen.slide.shapes.add_picture(str(path), Inches(x), Inches(y), Inches(w), Inches(h))
+    pic.name = name
+    target = w / h
+    if ratio > target:
+        pic.crop_left = pic.crop_right = (1 - target / ratio) / 2
+    else:
+        pic.crop_top = pic.crop_bottom = (1 - ratio / target) * 0.4  # keep a little more of the top: faces, skies
+        pic.crop_bottom = (1 - ratio / target) * 0.6
+    if radius:
+        pic.auto_shape_type = MSO_SHAPE.ROUNDED_RECTANGLE
+        geom = pic._element.spPr.find(qn("a:prstGeom"))
+        av = geom.find(qn("a:avLst"))
+        if av is None:
+            av = geom.makeelement(qn("a:avLst"), {})
+            geom.append(av)
+        av.append(av.makeelement(qn("a:gd"), {"name": "adj", "fmla": f"val {int(min(0.5, radius / min(w, h)) * 100000)}"}))
+    photos.note(entry[1])
+    pen.credits = [*getattr(pen, "credits", []), entry[1]] if entry[1] else getattr(pen, "credits", [])
+    return True
+
+
+def veil(pen: S.Painter, x: float, y: float, w: float, h: float, strength: float = 72, angle: float = 0) -> None:
+    """A dark veil over a photo, so white words read on it (stronger on the side of the text)."""
+    sp = pen.gradient(MSO_SHAPE.RECTANGLE, x, y, w, h, "0B0C10", "0B0C10", angle, "Voile")
+    stops = sp.fill._xPr.find(qn("a:gradFill")).find(qn("a:gsLst"))
+    for stop, part in zip(stops, (strength, strength * 0.35)):
+        S._alpha(stop, part)
+
+
 # --- drawing helpers ------------------------------------------------------------------------------
 
 def _round(sp, radius: float) -> None:
@@ -92,16 +178,6 @@ def gradient_card(pen: S.Painter, x: float, y: float, w: float, h: float, name: 
     return sp
 
 
-def chip(pen: S.Painter, icon: str, x: float, y: float, size: float, on_colour: bool = False) -> None:
-    """An icon in a soft rounded square: tinted on a card, translucent white on a colour."""
-    t = pen.t
-    sp = pen.shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, y, size, size, "FFFFFF" if on_colour else t["tint"], "Pastille")
-    _round(sp, size * 0.28)
-    if on_colour:
-        S._alpha(sp.fill._xPr.find(qn("a:solidFill")), 18)
-    pen.icon(icon, x + size * 0.22, y + size * 0.22, size * 0.56, "FFFFFF" if on_colour else t["accent"])
-
-
 def hairline(pen: S.Painter, x: float, y: float, w: float) -> None:
     pen.shape(MSO_SHAPE.RECTANGLE, x, y, w, 0.014, pen.t["line"], "Filet")
 
@@ -137,8 +213,10 @@ def points(pen: S.Painter, x: float, y: float, w: float, h: float, items: list[s
         S._run(p, text, size, color or pen.t["ink"])
 
 
-def panel(pen: S.Painter, icon: str, x: float = PANEL_X, y: float = INSET, w: float = PANEL, h: float = H - 2 * INSET) -> None:
-    """The slide's one strong visual: a colour panel, a grid of dots, a big icon in a soft circle."""
+def panel(pen: S.Painter, entry: tuple[str, str] | None = None, x: float = PANEL_X, y: float = INSET, w: float = PANEL, h: float = H - 2 * INSET) -> None:
+    """The slide's one strong visual: a real photo; without one, a colour panel with a grid of dots."""
+    if photo(pen, entry, x, y, w, h, 0.26, "!!Panneau"):
+        return
     t = pen.t
     sp = pen.gradient(MSO_SHAPE.ROUNDED_RECTANGLE, x, y, w, h, *_colours(t), 300, "!!Panneau")
     _round(sp, 0.26)
@@ -147,12 +225,11 @@ def panel(pen: S.Painter, icon: str, x: float = PANEL_X, y: float = INSET, w: fl
             dot = pen.shape(MSO_SHAPE.OVAL, x + 0.42 + c * 0.24, y + 0.42 + r * 0.24, 0.06, 0.06, "FFFFFF", "Décor")
             S._alpha(dot.fill._xPr.find(qn("a:solidFill")), 45)
     d = min(w - 1.0, 2.9)
-    cx, cy = x + w / 2, y + h * 0.58
+    cx, cy = x + w / 2, y + h * 0.6
     ring = pen.shape(MSO_SHAPE.OVAL, cx - d / 2, cy - d / 2, d, d, "FFFFFF", "Décor")
-    S._alpha(ring.fill._xPr.find(qn("a:solidFill")), 14)
-    small = pen.shape(MSO_SHAPE.OVAL, cx + d * 0.22, cy - d * 0.62, d * 0.34, d * 0.34, t["second"], "Décor")
-    S._alpha(small.fill._xPr.find(qn("a:solidFill")), 85)
-    pen.icon(icon, cx - d * 0.24, cy - d * 0.24, d * 0.48, "FFFFFF")
+    S._alpha(ring.fill._xPr.find(qn("a:solidFill")), 12)
+    small = pen.shape(MSO_SHAPE.OVAL, cx + d * 0.18, cy - d * 0.58, d * 0.4, d * 0.4, t["second"], "Décor")
+    S._alpha(small.fill._xPr.find(qn("a:solidFill")), 80)
 
 
 def _fit(n: int, pairs: list[tuple[int, float]]) -> float:
@@ -227,18 +304,18 @@ def takeaway(pen: S.Painter, text: str) -> None:
     right = getattr(pen, "right", W - M)
     band = pen.shape(MSO_SHAPE.ROUNDED_RECTANGLE, M, y, right - M, 0.6, t["tint"], "À retenir")
     _round(band, 0.3)
-    pen.icon("lightbulb", M + 0.22, y + 0.14, 0.32, t["accent"])
-    pen.text(M + 0.7, y, right - M - 1.0, 0.6, text, 17, t["ink"], True, anchor=MSO_ANCHOR.MIDDLE)
+    pen.text(M + 0.3, y, right - M - 0.6, 0.6, text, 17, t["ink"], True, anchor=MSO_ANCHOR.MIDDLE)
 
 
 # --- pages ----------------------------------------------------------------------------------------
 
-def cover(prs, t: dict, info: dict, images_dir: Path, seed: int = 0):
+def cover(prs, t: dict, info: dict, images_dir: Path, seed: int = 0, photos: Photos | None = None):
     slide = prs.slides.add_slide(prs.slide_layouts[5])
     S._background(slide, t["bg"])
     pen = S.Painter(slide, t)
+    pen.photos = photos
     big = 5.0
-    panel(pen, "graduation-cap" if info.get("school") else "lightbulb", W - INSET - big, INSET, big, H - 2 * INSET)
+    panel(pen, photos.cover() if photos else None, W - INSET - big, INSET, big, H - 2 * INSET)
     right = W - INSET - big - 0.6
     room = right - M
     y = 0.62
@@ -277,13 +354,19 @@ def cover(prs, t: dict, info: dict, images_dir: Path, seed: int = 0):
         pen.text(x, 5.55, col - 0.2, 0.9, "\n".join(names[:3]), 15 if len(names) <= 2 else 13, t["ink"], True)
     if info.get("year"):
         pen.text(M, 6.72, room, 0.3, info["year"], 13, t["muted"])
+    slide.credits = getattr(pen, "credits", [])
     return slide
 
 
-def _colour_page(prs, t: dict):
+def _colour_page(prs, t: dict, photos: Photos | None = None, entry: tuple[str, str] | None = None):
     slide = prs.slides.add_slide(prs.slide_layouts[5])
     S._background(slide, t["deep"])
     pen = S.Painter(slide, t)
+    pen.photos = photos
+    if photo(pen, entry, 0, 0, W, H, 0, "Photo de fond"):
+        veil(pen, 0, 0, W, H, 78, 0)  # darker on the left, where the words are
+        slide.credits = getattr(pen, "credits", [])
+        return slide, pen
     pen.gradient(MSO_SHAPE.RECTANGLE, 0, 0, W, H, *_colours(t), 300, "Fond")
     for r in range(5):
         for c in range(8):
@@ -291,25 +374,31 @@ def _colour_page(prs, t: dict):
             S._alpha(dot.fill._xPr.find(qn("a:solidFill")), 40)
     circle = pen.shape(MSO_SHAPE.OVAL, W - 5.2, H - 4.6, 6.2, 6.2, "FFFFFF", "Décor")
     S._alpha(circle.fill._xPr.find(qn("a:solidFill")), 8)
+    slide.credits = []
     return slide, pen
 
 
-def section(prs, t: dict, text: str, number: int, seed: int = 0):
-    slide, pen = _colour_page(prs, t)
+def section(prs, t: dict, text: str, number: int, seed: int = 0, photos: Photos | None = None, own: str = ""):
+    slide, pen = _colour_page(prs, t, photos, photos.pick(own) if photos else None)
     pen.text(M, 1.6, 5, 1.8, f"{number:02d}", 120, "FFFFFF", True, TITLE_FONT).name = "Numéro"
     S._set_title(slide, text, "FFFFFF", TITLE_FONT, 46 if len(text) <= 40 else 38, M, 3.75, 9.6, 2.2, MSO_ANCHOR.TOP)
     tight(slide.shapes.title)
     return slide
 
 
-def end(prs, t: dict, thanks: str, info: dict, images_dir: Path, seed: int = 0):
-    slide, pen = _colour_page(prs, t)
+def end(prs, t: dict, thanks: str, info: dict, images_dir: Path, seed: int = 0, photos: Photos | None = None):
+    credits = list(photos.used) if photos else []  # every photo shown before: their authors and licences
+    slide, pen = _colour_page(prs, t, photos, photos.cover() if photos else None)
     S._set_title(slide, thanks, "FFFFFF", TITLE_FONT, 52 if len(thanks) <= 28 else 42, M, 2.35, W - 2 * M, 1.7, MSO_ANCHOR.BOTTOM, PP_ALIGN.CENTER)
     tight(slide.shapes.title)
     pen.text(M + 1.0, 4.3, W - 2 * M - 2.0, 0.9, info["title"], 18, S._mix("FFFFFF", t["accent"], 0.2), align=PP_ALIGN.CENTER)
     who = ", ".join((info.get("authors") or [])[:3])
     if who:
         pen.text(M, 5.35, W - 2 * M, 0.4, who, 15, "FFFFFF", True, align=PP_ALIGN.CENTER)
+    if photos:
+        credits += [c for c in photos.used if c not in credits]
+    if credits:
+        pen.text(M, 6.55, W - 2 * M, 0.7, "Photos : " + " ; ".join(c.removeprefix("Photo : ") for c in credits[:8]), 9, "FFFFFF", align=PP_ALIGN.CENTER).name = "Crédits des photos"
     return slide
 
 
@@ -325,7 +414,7 @@ def plan(pen: S.Painter, parts: list[str]) -> None:
         pen.text(M + 1.05, y, pen.right - M - 1.05, row - 0.1, name, 24, t["ink"], True, TITLE_FONT, anchor=MSO_ANCHOR.MIDDLE)
         if i < n - 1:
             hairline(pen, M, y + row - 0.04, pen.right - M)
-    panel(pen, "compass")
+    panel(pen, pen.photos.pick() if getattr(pen, "photos", None) else None)
 
 
 # --- content layouts ------------------------------------------------------------------------------
@@ -340,12 +429,11 @@ def _liste(pen: S.Painter, s: dict) -> None:
     for i, it in enumerate(items):
         pen.step()
         y = y0 + i * row
-        chip(pen, it["icon"], M, y + 0.06, 0.62)
-        pen.stack(M + 0.95, y + 0.02, right - M - 0.95, row - 0.2, it["head"], it["text"], 22, 17)
+        pen.stack(M, y + 0.02, right - M, row - 0.2, it["head"], it["text"], 23, 17.5)
         if i < n - 1:
-            hairline(pen, M + 0.95, y + row - 0.1, right - M - 0.95)
+            hairline(pen, M, y + row - 0.1, right - M)
     if pen.side:
-        panel(pen, s.get("icon") or items[0]["icon"])
+        panel(pen, pen.photos.pick(s.get("art", "")) if getattr(pen, "photos", None) else None)
 
 
 def _card_sizes(cols: int) -> tuple[float, float]:
@@ -355,7 +443,7 @@ def _card_sizes(cols: int) -> tuple[float, float]:
 def _cards_height(items: list[dict], cols: int, width: float = W - 2 * M) -> float:
     w = (width - 0.3 * (cols - 1)) / cols
     hs, bs = _card_sizes(cols)
-    return max(need(it["head"], it["text"], w - 0.64, word_fit(it["head"], hs, w - 0.64), bs) for it in items) + 1.2 + 0.45
+    return max(need(it["head"], it["text"], w - 0.64, word_fit(it["head"], hs, w - 0.64), bs) for it in items) + 0.45 + 0.45
 
 
 def _cards_row(pen: S.Painter, items: list[dict], y: float, h: float, cols: int, first_strong: bool, x0: float = M, width: float | None = None) -> None:
@@ -372,13 +460,7 @@ def _cards_row(pen: S.Painter, items: list[dict], y: float, h: float, cols: int,
             gradient_card(pen, x, y, w, h)
         else:
             card(pen, x, y, w, h)
-        if h < 2.4:  # two rows of short cards: the icon beside the text
-            chip(pen, it["icon"], x + 0.26, y + 0.26, 0.56, on_colour=strong)
-            pen.stack(x + 1.0, y + 0.2, w - 1.24, h - 0.4, it["head"], it["text"], word_fit(it["head"], hs - 2, w - 1.24), bs - 1,
-                      head_color="FFFFFF" if strong else None, body_color=S._mix("FFFFFF", t["accent"], 0.15) if strong else None)
-            continue
-        chip(pen, it["icon"], x + 0.32, y + 0.32, 0.64, on_colour=strong)
-        pen.stack(x + 0.32, y + 1.2, w - 0.64, h - 1.45, it["head"], it["text"], word_fit(it["head"], hs, w - 0.64), bs,
+        pen.stack(x + 0.34, y + 0.38, w - 0.68, h - 0.66, it["head"], it["text"], word_fit(it["head"], hs, w - 0.68), bs,
                   head_color="FFFFFF" if strong else None, body_color=S._mix("FFFFFF", t["accent"], 0.15) if strong else None)
 
 
@@ -388,11 +470,11 @@ def _grille(pen: S.Painter, s: dict) -> None:
     avail = pen.bottom - TOP
     strong = pen.variant("studio-grille", 2) == 1 and n in (3, 4)
     if n <= 4:
-        h = min(max(_cards_height(items, n), 2.6), avail - 0.1)
+        h = min(max(_cards_height(items, n), 2.2), avail - 0.1)
         _cards_row(pen, items, TOP + (avail - h) * 0.45, h, n, strong)
     else:
         cols = 3
-        h = min(max(_cards_height(items, cols), 2.2), (avail - 0.3) / 2)
+        h = min(max(_cards_height(items, cols), 1.6), (avail - 0.3) / 2)
         _cards_row(pen, items[:cols], TOP, h, cols, False)
         _cards_row(pen, items[cols:], TOP + h + 0.3, h, cols, False)
 
@@ -425,15 +507,13 @@ def _schema(pen: S.Painter, s: dict) -> None:
     pen.step()
     hub = pen.gradient(MSO_SHAPE.OVAL, cx - d / 2, cy - d / 2, d, d, *_colours(t), 315, "Centre")
     hub.shadow.inherit = False
-    pen.icon(s.get("icon") or "target", cx - 0.27, cy - d / 2 + 0.32, 0.54, "FFFFFF")
     key = s.get("key") or s["title"].split(" ")[0]
-    size = word_fit(key, _fit(len(key), [(14, 20), (24, 17), (40, 14), (10_000, 12)]), d - 0.5)
-    pen.text(cx - d / 2 + 0.25, cy - 0.2, d - 0.5, d / 2 - 0.05, key, size, "FFFFFF", True, TITLE_FONT, PP_ALIGN.CENTER)
+    size = word_fit(key, _fit(len(key), [(14, 22), (24, 18), (40, 15), (10_000, 12)]), d - 0.5)
+    pen.text(cx - d / 2 + 0.25, cy - d / 2 + 0.3, d - 0.5, d - 0.6, key, size, "FFFFFF", True, TITLE_FONT, PP_ALIGN.CENTER, MSO_ANCHOR.MIDDLE)
     for x, y, w, h, it in boxes:
         pen.step()
         card(pen, x, y, w, h)
-        chip(pen, it["icon"], x + 0.22, y + (h - 0.52) / 2, 0.52)
-        pen.stack(x + 0.92, y + 0.1, w - 1.1, h - 0.2, it["head"], it["text"], 17, 13.5, anchor=MSO_ANCHOR.MIDDLE)
+        pen.stack(x + 0.3, y + 0.1, w - 0.6, h - 0.2, it["head"], it["text"], 18, 14.5, anchor=MSO_ANCHOR.MIDDLE)
 
 
 def _panneau(pen: S.Painter, s: dict) -> None:
@@ -441,10 +521,15 @@ def _panneau(pen: S.Painter, s: dict) -> None:
     avail = pen.bottom - TOP
     bw = 4.9
     pen.step()
-    gradient_card(pen, M, TOP, bw, avail)
-    chip(pen, s.get("icon") or "lightbulb", M + 0.42, TOP + 0.42, 0.72, on_colour=True)
+    if photo(pen, pen.photos.pick(s.get("art", "")) if getattr(pen, "photos", None) else None, M, TOP, bw, avail, 0.18, "Photo"):
+        shade = pen.gradient(MSO_SHAPE.ROUNDED_RECTANGLE, M, TOP, bw, avail, "0B0C10", "0B0C10", 90, "Voile")
+        _round(shade, 0.18)
+        for stop, part in zip(shade.fill._xPr.find(qn("a:gradFill")).find(qn("a:gsLst")), (20, 85)):
+            S._alpha(stop, part)
+    else:
+        gradient_card(pen, M, TOP, bw, avail)
     key = s.get("key") or ""
-    pen.text(M + 0.42, TOP + 1.45, bw - 0.84, avail - 1.8, key, _fit(len(key), [(50, 30), (80, 26), (10_000, 22)]), "FFFFFF", True, TITLE_FONT)
+    pen.text(M + 0.42, TOP + 0.5, bw - 0.84, avail - 0.9, key, _fit(len(key), [(50, 30), (80, 26), (10_000, 22)]), "FFFFFF", True, TITLE_FONT, anchor=MSO_ANCHOR.BOTTOM)
     x = M + bw + 0.55
     room = W - M - x
     n = len(items)
@@ -464,7 +549,7 @@ def _chronologie(pen: S.Painter, s: dict) -> None:
     w = (W - 2 * M) / n
     size = 17 if n <= 4 else 14.5
     tall = max(S.text_height(x["text"], size, w - 0.6) for x in items)
-    block = 1.0 + 0.45 + max(1.05 + tall + 0.4, 1.9)
+    block = 1.0 + 0.45 + max(0.3 + tall + 0.4, 1.5)
     line_y = TOP + max((avail - block) * 0.45, 0) + 1.0
     track = pen.shape(MSO_SHAPE.ROUNDED_RECTANGLE, M, line_y - 0.025, W - 2 * M, 0.05, S._mix(t["bg"], t["accent"], 0.3), "Ligne")
     _round(track, 0.025)
@@ -476,10 +561,9 @@ def _chronologie(pen: S.Painter, s: dict) -> None:
         dot.line.color.rgb = S._rgb(t["bg"])
         dot.line.width = Pt(3)
         top = line_y + 0.45
-        h = min(max(1.05 + tall + 0.4, 1.9), pen.bottom - top)
+        h = min(max(0.3 + tall + 0.4, 1.5), pen.bottom - top)
         card(pen, M + i * w + 0.1, top, w - 0.2, h)
-        chip(pen, it["icon"], cx - 0.28, top + 0.28, 0.56)
-        pen.text(M + i * w + 0.3, top + 1.05, w - 0.6, h - 1.25, it["text"], size, t["muted"], align=PP_ALIGN.CENTER)
+        pen.text(M + i * w + 0.3, top + 0.3, w - 0.6, h - 0.5, it["text"], size, t["ink"], align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
 
 
 def _etapes(pen: S.Painter, s: dict) -> None:
@@ -497,7 +581,6 @@ def _etapes(pen: S.Painter, s: dict) -> None:
         x = M + i * (w + gap)
         card(pen, x, y, w, h)
         pen.text(x + 0.3, y + 0.28, w - 0.6, 0.7, f"{i + 1:02d}", 30, t["text_accent"], True, TITLE_FONT)
-        pen.icon(it["icon"], x + w - 0.3 - 0.42, y + 0.36, 0.42, S._mix(t["card_fill"], t["accent"], 0.55))
         pen.stack(x + 0.3, y + 1.15, w - 0.6, h - 1.4, it["head"], it["text"], hs, bs)
         if i < n - 1:
             arrow = pen.shape(MSO_SHAPE.CHEVRON, x + w + gap / 2 - 0.1, y + h / 2 - 0.15, 0.2, 0.3, S._mix(t["bg"], t["accent"], 0.45), "Flèche")
@@ -531,7 +614,7 @@ def _chiffres(pen: S.Painter, s: dict) -> None:
     avail = pen.bottom - TOP
     gap = 0.3
     w = (W - 2 * M - gap * (n - 1)) / n
-    h = min(3.6, avail - 0.1)
+    h = min(3.2, avail - 0.1)
     y = TOP + (avail - h) * 0.45
     longest = max(len(x["value"]) for x in stats)
     size = _fit(int(longest * 4 / n), [(6, 60), (9, 50), (13, 40), (10_000, 30)])
@@ -540,9 +623,8 @@ def _chiffres(pen: S.Painter, s: dict) -> None:
         x = M + i * (w + gap)
         strong = i == 0
         (gradient_card if strong else card)(pen, x, y, w, h)
-        chip(pen, st.get("icon") or "trending-up", x + 0.32, y + 0.32, 0.6, on_colour=strong)
-        pen.text(x + 0.32, y + 1.15, w - 0.64, 1.25, st["value"], size, "FFFFFF" if strong else t["text_accent"], True, TITLE_FONT, anchor=MSO_ANCHOR.MIDDLE)
-        pen.text(x + 0.32, y + 2.45, w - 0.64, h - 2.65, st["label"], 16, S._mix("FFFFFF", t["accent"], 0.12) if strong else t["muted"])
+        pen.text(x + 0.36, y + 0.4, w - 0.72, 1.4, st["value"], size, "FFFFFF" if strong else t["text_accent"], True, TITLE_FONT, anchor=MSO_ANCHOR.BOTTOM)
+        pen.text(x + 0.36, y + 1.95, w - 0.72, h - 2.2, st["label"], 17, S._mix("FFFFFF", t["accent"], 0.12) if strong else t["muted"])
 
 
 def _graphique(pen: S.Painter, s: dict) -> None:
@@ -598,10 +680,9 @@ def _graphique(pen: S.Painter, s: dict) -> None:
     top = max(s["series"], key=lambda v: v["value"])
     figure = f"{top['value']:g}".replace(".", ",")
     gradient_card(pen, x, TOP, room, avail)
-    chip(pen, s.get("icon") or "chart-pie", x + 0.36, TOP + 0.36, 0.62, on_colour=True)
-    pen.text(x + 0.36, TOP + 1.2, room - 0.72, 1.0, figure, 50 if len(figure) <= 4 else 38, "FFFFFF", True, TITLE_FONT, anchor=MSO_ANCHOR.MIDDLE)
-    pen.text(x + 0.36, TOP + 2.2, room - 0.72, 0.5, top["label"], 15, S._mix("FFFFFF", t["accent"], 0.15), True)
-    pen.text(x + 0.36, TOP + 2.85, room - 0.72, avail - 3.1, key, _fit(len(key), [(70, 21), (120, 18), (10_000, 16)]), "FFFFFF", True, TITLE_FONT)
+    pen.text(x + 0.36, TOP + 0.4, room - 0.72, 1.1, figure, 56 if len(figure) <= 4 else 40, "FFFFFF", True, TITLE_FONT, anchor=MSO_ANCHOR.BOTTOM)
+    pen.text(x + 0.36, TOP + 1.6, room - 0.72, 0.5, top["label"], 15, S._mix("FFFFFF", t["accent"], 0.15), True)
+    pen.text(x + 0.36, TOP + 2.3, room - 0.72, avail - 2.6, key, _fit(len(key), [(70, 21), (120, 18), (10_000, 16)]), "FFFFFF", True, TITLE_FONT)
 
 
 def _encadre(pen: S.Painter, s: dict) -> None:
@@ -632,7 +713,7 @@ def _grand(pen: S.Painter, s: dict) -> None:
     pen.text(M, TOP + 0.1, room, 2.6, value, size, t["text_accent"], True, TITLE_FONT, anchor=MSO_ANCHOR.BOTTOM)
     pen.step()
     pen.text(M, TOP + 2.95, room, 1.6, s.get("text") or "", 24, t["ink"], True)
-    panel(pen, s.get("icon") or "target")
+    panel(pen, pen.photos.pick(s.get("art", "")) if getattr(pen, "photos", None) else None)
 
 
 def _figure(pen: S.Painter, s: dict, images_dir: Path) -> None:

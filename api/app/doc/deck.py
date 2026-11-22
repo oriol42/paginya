@@ -46,6 +46,9 @@ PROMPT = (
     "- Si le document contient un chiffre fort, une diapositive \"grand\" au moins est obligatoire.\n"
     "- Élément (item) : \"head\" 2 à 4 mots, \"text\" 60 caractères au plus. \"icon\" : le mot de cette liste le plus proche du sens : {icons}.\n"
     "- \"visual\" (obligatoire sur chaque diapositive \"grand\" et \"panneau\", et dans le champ général) : une scène à illustrer, en ANGLAIS, 15 mots au plus, concrète et photographiable (lieu, personnes, objets), sans nom propre, sans texte.\n"
+    "- \"photo\" (obligatoire dans le champ général, et sur chaque \"section\", \"grand\", \"panneau\", et sur les \"liste\" de 4 éléments au plus) : "
+    "2 ou 3 mots-clés en ANGLAIS pour chercher une vraie photo dans une banque d'images libre, du sujet concret de la diapositive "
+    "(« warehouse shelves », « students classroom », « cocoa farmer », « hospital ward »), sans nom propre, jamais abstraits (pas « success », « strategy »).\n"
     "- \"notes\" : ce que l'orateur dit à l'oral sur cette diapositive, 2 à 4 phrases naturelles.\n"
     "Types possibles (champ \"type\"), avec item = {{\"head\":\"\",\"text\":\"\",\"icon\":\"\"}} :\n"
     "- {{\"type\":\"liste\",\"title\":\"\",\"items\":[item],\"notes\":\"\"}} : 2 à 5 éléments les uns sous les autres\n"
@@ -63,7 +66,7 @@ PROMPT = (
     "- {{\"type\":\"tableau\",\"title\":\"\",\"table\":\"T1\",\"notes\":\"\"}} : un tableau\n"
     "- {{\"type\":\"section\",\"title\":\"\",\"notes\":\"\"}} : ouvre une grande partie (seulement à partir de 15 diapositives)\n"
     "Réponds avec un objet JSON et rien d'autre : "
-    "{{\"visual\":\"scène en anglais pour la couverture\",\"title\":\"le vrai titre du document, tel qu'il y figure ou reformulé fidèlement, 100 caractères au plus\",\"notes\":\"mot d'accueil pour la page de titre\",\"thanks\":\"Merci de votre attention (ces seuls mots, dans la langue du document)\","
+    "{{\"visual\":\"scène en anglais pour la couverture\",\"photo\":\"2 ou 3 mots-clés anglais pour la photo de couverture\",\"title\":\"le vrai titre du document, tel qu'il y figure ou reformulé fidèlement, 100 caractères au plus\",\"notes\":\"mot d'accueil pour la page de titre\",\"thanks\":\"Merci de votre attention (ces seuls mots, dans la langue du document)\","
     "\"parts\":[\"Contexte\",\"Démarche\",\"Résultats\"],\"slides\":[…]}}\n\n"
     "DOCUMENT :\n"
 )
@@ -71,6 +74,11 @@ PROMPT = (
 
 class DeckError(Exception):
     pass
+
+
+def _keywords(value) -> str:
+    """The keywords of a photo search: English words only, three at most ("warehouse shelves")."""
+    return " ".join(re.findall(r"[A-Za-z][A-Za-z'-]+", str(value or ""))[:3]).lower()
 
 
 def max_slides(words: int) -> int:
@@ -175,6 +183,9 @@ def _clean_slide(s: dict, figures: dict, tables: dict, known: set[str]) -> dict 
     visual = re.sub(r"[^\w ,'-]", " ", str(s.get("visual") or ""))[:140].strip()
     if visual:
         out["visual"] = visual
+    photo = _keywords(s.get("photo"))
+    if photo:
+        out["photo"] = photo
     if kind == "section":
         return out
     if kind == "encadre":
@@ -367,6 +378,7 @@ def write(document: dict, count: int, on_call=None) -> dict:
         raise DeckError("L'IA n'a pas réussi à préparer tes diapositives. Réessaie.")
     _vary(best)
     _strengthen(best)
-    return {"title": _line(answer.get("title"), 120, known), "visual": re.sub(r"[^\w ,'-]", " ", str(answer.get("visual") or ""))[:140].strip(), "slides": best, "parts": _with_parts(best, answer.get("parts"), not str(answer.get("thanks") or "Merci").lower().startswith("merci")),
+    return {"title": _line(answer.get("title"), 120, known), "visual": re.sub(r"[^\w ,'-]", " ", str(answer.get("visual") or ""))[:140].strip(),
+            "photo": _keywords(answer.get("photo")), "slides": best, "parts": _with_parts(best, answer.get("parts"), not str(answer.get("thanks") or "Merci").lower().startswith("merci")),
             "notes": str(answer.get("notes") or "").strip()[:1500],
             "thanks": re.split(r"(?<=[.!?])\s", _line(answer.get("thanks"), 200, known) or "Merci de votre attention")[0].rstrip(".")}

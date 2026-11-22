@@ -549,7 +549,7 @@ def present(order_id: str, body: PresentIn) -> dict:
 
 
 DECK_TYPES = {"liste", "grille", "panneau", "schema", "chronologie", "etapes", "comparaison", "chiffres", "graphique", "encadre", "grand", "figure", "tableau", "section"}
-_TEXT_KEYS = ("title", "notes", "part", "highlight", "takeaway", "key", "label", "text", "value", "caption", "chart", "icon", "visual", "art", "motion")
+_TEXT_KEYS = ("title", "notes", "part", "highlight", "takeaway", "key", "label", "text", "value", "caption", "chart", "icon", "visual", "art", "credit", "photo", "motion")
 
 
 def _clean_edited(slides: list[dict]) -> list[dict]:

@@ -2002,20 +2002,29 @@ def build_pptx(deck: dict, info: dict, theme_name: str, images_dir: Path, moving
     parts = deck.get("parts") or []
     total = len(deck["slides"]) + 3
     seed = zlib.crc32(info["title"].encode())
+    photos = premium.Photos(images_dir, deck) if premium else None
+
+    def said(notes: str, slide) -> str:
+        """The speaker notes, and the credit of the photos shown on the slide."""
+        credits = getattr(slide, "credits", None) or []
+        return "\n\n".join(x for x in [notes or "", *credits] if x)
+
     if premium:
-        first = premium.cover(prs, theme, info, images_dir, seed)
+        first = premium.cover(prs, theme, info, images_dir, seed, photos)
     else:
         first = _title_page(prs, theme, info, images_dir, deck.get("art", ""), seed)
-    _notes(first, deck.get("notes", ""))
+    _notes(first, said(deck.get("notes", ""), first))
     if moving:
         _transition(first)
     used = Counter()
     outline = "Outline" if info["english"] else "Plan de la présentation"
     plan = premium.standard(prs, theme, outline, None, "", {"type": "plan"}) if premium else _standard(prs, theme, outline, seed=seed, parts=parts)
-    plan.seed, plan.used = seed, used
+    plan.seed, plan.used, plan.photos = seed, used, photos
     (premium.plan if premium else _plan)(plan, parts)
     end = len(plan.slide.shapes._spTree)
     (premium.footer if premium else _progress)(plan, parts, None, 2, total)
+    if getattr(plan, "credits", None):
+        _notes(plan.slide, "\n\n".join(plan.credits))
     motion = motion if motion in MOTIONS else DEFAULT_MOTION
     if moving:
         _transition(plan.slide, _passage(motion, False))
@@ -2026,8 +2035,11 @@ def build_pptx(deck: dict, info: dict, theme_name: str, images_dir: Path, moving
         number += 1
         if s["type"] == "section":
             sections += 1
-            opener = (premium.section if premium else _section)(prs, theme, s["title"], sections, seed)
-            _notes(opener, s.get("notes", ""))
+            if premium:
+                opener = premium.section(prs, theme, s["title"], sections, seed, photos, s.get("art", ""))
+            else:
+                opener = _section(prs, theme, s["title"], sections, seed)
+            _notes(opener, said(s.get("notes", ""), opener))
             if moving:
                 _transition(opener, _passage(motion, False))
             after_content = False
@@ -2035,6 +2047,7 @@ def build_pptx(deck: dict, info: dict, theme_name: str, images_dir: Path, moving
         style = _night(theme) if theme["alt"] and s["type"] in ("encadre", "grand", "chiffres", "etapes") else theme
         if premium:
             pen = premium.standard(prs, style, s["title"], s.get("part"), s.get("highlight", ""), s)
+            pen.photos = photos
         else:
             pen = _standard(prs, style, s["title"], s.get("part"), s.get("highlight", ""), SIDED.get(s["type"], 0.0), seed + number // 3, parts)
         pen.images, pen.art = images_dir, s.get("art", "")
@@ -2061,8 +2074,10 @@ def build_pptx(deck: dict, info: dict, theme_name: str, images_dir: Path, moving
             effects = {at: how for at, how in pen.effects.items() if how != "zoom" or own in ("monter", "zoom")}  # a quiet fade stays quiet
             _animate(pen.slide, pen.marks if pen.marks and pen.marks[0] == base else [base, *pen.marks], end, own, click, effects)
         previous_part, after_content = s.get("part"), True
-        _notes(pen.slide, s.get("notes", ""))
-    last = (premium.end if premium else _end_page)(prs, theme, deck.get("thanks") or "Merci de votre attention", info, images_dir, seed)
+        pen.slide.credits = getattr(pen, "credits", [])
+        _notes(pen.slide, said(s.get("notes", ""), pen.slide))
+    thanks = deck.get("thanks") or "Merci de votre attention"
+    last = premium.end(prs, theme, thanks, info, images_dir, seed, photos) if premium else _end_page(prs, theme, thanks, info, images_dir, seed)
     if moving:
         _transition(last)
     prs.core_properties.title = info["title"][:200]
