@@ -209,3 +209,81 @@ def test_ai_pictures_can_be_ticked_before_the_slides_are_made(client, cloudflare
     first = client.post("/documents", json={"filename": "r.docx", "data": base64.b64encode(data).decode()}).json()
     again = client.post(f"/documents/{first['id']}/present", json={"slides": 9, "consent": True, "images": "ia"}).json()
     assert again["deck"]["images"] == "ia"
+
+
+def test_the_slides_come_first_and_their_pictures_follow(client, cloudflare, tmp_path, monkeypatch):
+    """The slides are shown as soon as their words are written; the pictures arrive a few seconds later."""
+    import json
+    import time
+    from app import doc_routes
+    from app.doc import deck
+    from tests.test_documents import DECK_ANSWER, stage_docx
+    monkeypatch.setattr(doc_routes, "PICTURES_LATER", True)
+    answer = {**DECK_ANSWER, "visual": "Workers checking boxes in a warehouse", "photo": "warehouse shelves"}
+    monkeypatch.setattr(deck, "ask", lambda source, prompt: (json.dumps(answer), "gemini"))
+    slow = threading.Event()
+    real = art.generate
+
+    def generate(*args, **kwargs):
+        slow.wait(5)  # still drawing when the slides are shown
+        return real(*args, **kwargs)
+    monkeypatch.setattr(art, "generate", generate)
+    stage_docx(tmp_path / "r.docx")
+    made = client.post("/documents/upload?filename=r.docx&convert=true&to=pptx&consent=true&slides=9&images=ia",
+                       content=(tmp_path / "r.docx").read_bytes()).json()
+    assert made["deck"]["pictures"] == "pending" and made["deck"]["slides"] == 9  # the words are there already
+    slow.set()
+    for _ in range(100):
+        shown = client.get(f"/documents/{made['id']}").json()
+        if shown["deck"]["pictures"] == "ready":
+            break
+        time.sleep(0.05)
+    assert shown["deck"]["pictures"] == "ready"
+    saved = db.get_order(made["id"])["payload"]["doc"]["deck"]
+    assert saved["credit"] == art.AI_CREDIT and saved["art"].startswith("deck-photo-")
+
+
+def test_pictures_go_back_to_the_same_slides_even_moved():
+    from app.doc_routes import _merge_pictures
+    found = {"art": "deck-photo-a0.jpg", "credit": "c0", "slides": [{"type": "liste", "title": "A", "art": "deck-photo-a1.jpg", "credit": "c1"},
+                                                                     {"type": "grand", "title": "B", "art": "", "credit": ""}]}
+    now = {"slides": [{"type": "grand", "title": "B"}, {"type": "liste", "title": "A"}, {"type": "liste", "title": "Nouvelle"}]}
+    _merge_pictures(now, found)
+    assert now["art"] == "deck-photo-a0.jpg" and now["slides"][1]["art"] == "deck-photo-a1.jpg" and now["slides"][0]["art"] == ""
+    assert "art" not in now["slides"][2]
+
+
+def test_every_picture_knows_the_report_it_belongs_to():
+    asked = art.prompt("A storekeeper counting cartons on shelves", "a logistics company warehouse in Douala, Cameroon")
+    assert asked.startswith("A storekeeper counting cartons on shelves. Setting: a logistics company warehouse in Douala, Cameroon.")
+    assert art.PEOPLE in asked and "No text" in asked
+    assert "Setting" not in art.prompt("A market in Douala, Cameroon", "Douala, Cameroon")  # said once is enough
+
+
+def test_pictures_are_made_only_for_the_slides_that_show_one(tmp_path, cloudflare, monkeypatch):
+    sent, _ = cloudflare
+    monkeypatch.setattr(art, "find_photo", lambda *a, **k: None)
+    item = {"head": "A", "text": "b", "icon": ""}
+    deck = {"visual": "A warehouse", "photo": "warehouse", "setting": "a warehouse in Douala, Cameroon", "slides": [
+        {"type": "grille", "visual": "cards", "photo": "cards", "items": [item] * 3},  # cards: no picture shown
+        {"type": "chiffres", "visual": "figures", "photo": "figures"},  # figures: none either
+        {"type": "liste", "visual": "a short list", "photo": "list", "items": [item] * 3},
+        {"type": "liste", "visual": "a long list", "photo": "list", "items": [item] * 5},  # too long for the photo column
+        *[{"type": "grand", "visual": f"scene {n}", "photo": "scene"} for n in range(10)]]}
+    art.illustrate(deck, tmp_path, drawn=True)
+    scenes = sorted(c["form"]["prompt"].split(".")[0] for c in sent)
+    assert len(sent) == art.MAX_DRAWN and "cards" not in scenes and "figures" not in scenes and "a long list" not in scenes
+    assert all("Setting: a warehouse in Douala, Cameroon" in c["form"]["prompt"] for c in sent)
+
+
+def test_a_slide_never_shows_the_picture_of_another():
+    from app.doc.studio import Photos
+    import tempfile
+    from pathlib import Path
+    folder = Path(tempfile.mkdtemp())
+    for n in range(2):
+        Image.new("RGB", (160, 90), (40, 120, 200)).save(folder / f"deck-photo-{n}.jpg")
+    photos = Photos(folder, {"art": "deck-photo-0.jpg", "slides": [{"type": "grand", "art": "deck-photo-1.jpg"}, {"type": "panneau"}]})
+    assert photos.pick("deck-photo-1.jpg")[0] == "deck-photo-1.jpg"
+    assert photos.pick("") is None and photos.pick("deck-photo-9.jpg") is None  # its block of colour, not slide 1's photo
+    assert photos.cover()[0] == "deck-photo-0.jpg"

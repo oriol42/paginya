@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import copy
 import io
 import logging
 import os
@@ -44,6 +45,18 @@ router = APIRouter(prefix="/documents")
 MAX_UPLOAD = 15 * 1024 * 1024
 MAX_TEXT = 1_500_000
 MAX_DECK_RUNS = 6  # each one is an AI call on a free quota
+# The slides are shown as soon as the AI has written them; their pictures (photos found or drawn, 7 to 15 s) follow in
+# the background and the slides are laid out again with them. Tests set PAGINYA_PICTURES_LATER=0 (all at once).
+PICTURES_LATER = os.getenv("PAGINYA_PICTURES_LATER", "1") == "1"
+PICTURES_WAIT = 150  # seconds: past it, a job that never came back (a restart) no longer holds the slides
+_LOCKS: dict[str, threading.RLock] = {}
+_LOCKS_GUARD = threading.Lock()
+
+
+def _lock(order_id: str) -> threading.RLock:
+    """One document changed by one hand at a time: the user's edits, a layout, the pictures arriving."""
+    with _LOCKS_GUARD:
+        return _LOCKS.setdefault(order_id, threading.RLock())
 TIERS = ["document_court", "rapport", "memoire"]
 CONVERTIBLE = (".docx", ".pdf")
 log = logging.getLogger("paginya.docs")
@@ -174,6 +187,7 @@ def view(order: dict) -> dict:
         "deck": {"slides": deck_ai.total(doc["deck"]), "theme": doc.get("deck_theme", DEFAULT_THEME),
                  "max": deck_ai.max_slides(doc["meta"].get("words", 0)), "file": doc.get("deck_file", ""), "school": doc.get("deck_school", True), "moving": doc.get("deck_moving", True), "motion": doc.get("deck_motion", DEFAULT_MOTION), "click": doc.get("deck_click", False),
                  "colors": doc.get("deck_colors") or {}, "font": doc.get("deck_font") or "", "images": doc.get("deck_images", "photos"),
+                 "pictures": "pending" if _pictures_pending(doc) else "ready",
                  "content": doc["deck"]["slides"]} if doc.get("deck") else None,
         "help": bool(doc.get("help")),  # « J'aide Paginya à s'améliorer » (app/learn.py)
         "ai_images": art.ai_configured(),  # pictures made by the AI can be asked (art.generate)
@@ -320,7 +334,7 @@ def create(body: DocIn) -> dict:
             doc.update(convert="pptx", plan={"cover": "none", "toc": "none", "numbers": "none"}, deck_theme=_theme(body.theme, doc), deck_file=(body.filename or "")[:200], deck_school=body.school,
                        deck_images="ia" if body.images == "ia" else "photos")
             try:
-                _write_deck(doc, body.slides, folder / "images")
+                _write_deck(doc, body.slides)  # its pictures start once the document is saved, below
             except deck_ai.DeckError as exc:
                 db.bump("ia_echec")
                 _discard(tmp_id)
@@ -348,6 +362,8 @@ def create(body: DocIn) -> dict:
         db.update_payload(order_id, {"doc": doc})
     _persist_inputs(order_id)
     learn.snapshot_later(order_id, raws, result, trace, doc_dir(order_id))
+    if doc.get("deck_pictures"):
+        _start_pictures(order_id, doc["deck_pictures"]["job"])
     return view(db.get_order(order_id))
 
 
@@ -357,22 +373,91 @@ def _theme(name: str, doc: dict | None = None) -> str:
     return choose_theme(doc) if doc else DEFAULT_THEME
 
 
-def _write_deck(doc: dict, wanted: int, images: Path | None = None) -> None:
+def _write_deck(doc: dict, wanted: int) -> str:
+    """The slides' words by the AI; their pictures are asked for at once and arrive later (see _pictures).
+    Returns the pictures' job, to start once the document is saved."""
     most = deck_ai.max_slides(doc["meta"].get("words", 0))
     count = max(deck_ai.MIN_SLIDES, min(wanted, most))
     doc["deck"] = deck_ai.write(doc, count, on_call=lambda provider: db.bump(f"ia:presentation-{provider}"))
     doc["deck_runs"] = doc.get("deck_runs", 0) + 1
-    if images is not None:
-        _illustrate(doc, images)
+    return _ask_pictures(doc)
 
 
-def _illustrate(doc: dict, images: Path) -> None:
-    """The deck's pictures, as the user chose them; each AI picture is counted, like the other AI calls."""
-    deck = doc["deck"]
-    art.illustrate(deck, images, drawn=doc.get("deck_images") == "ia")
-    for owner in [deck, *deck["slides"]]:
-        if owner.get("credit") == art.AI_CREDIT:
-            db.bump("ia:image")
+def _ask_pictures(doc: dict) -> str:
+    job = uuid.uuid4().hex[:10]
+    doc["deck_pictures"] = {"job": job, "since": time.time()}
+    return job
+
+
+def _pictures_pending(doc: dict) -> bool:
+    asked = doc.get("deck_pictures") or {}
+    return bool(asked) and time.time() - asked.get("since", 0) < PICTURES_WAIT
+
+
+def _start_pictures(order_id: str, job: str) -> None:
+    if PICTURES_LATER:
+        threading.Thread(target=_pictures, args=(order_id, job), daemon=True, name=f"images-{order_id[:8]}").start()
+    else:
+        _pictures(order_id, job)
+
+
+def _merge_pictures(target: dict, source: dict) -> None:
+    """The pictures found for `source` given to the same slides of `target` (the user may have moved some)."""
+    target["art"], target["credit"] = source.get("art", ""), source.get("credit", "")
+    found = {(s.get("type"), s.get("title")): s for s in source.get("slides", [])}
+    for s in target.get("slides", []):
+        got = found.get((s.get("type"), s.get("title")))
+        if got is not None and "art" in got:
+            s["art"], s["credit"] = got["art"], got.get("credit", "")
+
+
+def _pictures(order_id: str, job: str) -> None:
+    """Finds or draws the deck's pictures, as the user chose them, then lays the slides out again with them. Each AI
+    picture is counted, like the other AI calls. A newer job (the slides written again) makes this one give up."""
+    try:
+        doc = _load(order_id)["payload"]["doc"]
+        if (doc.get("deck_pictures") or {}).get("job") != job:
+            return
+        deck = copy.deepcopy(doc["deck"])
+        _ensure_inputs(order_id)
+        images = doc_dir(order_id) / "images"
+        art.illustrate(deck, images, drawn=doc.get("deck_images") == "ia", tag=f"{job[:6]}-")
+        for owner in [deck, *deck["slides"]]:
+            if owner.get("credit") == art.AI_CREDIT:
+                db.bump("ia:image")
+        with _lock(order_id):  # the slides are laid out again before the page is told the pictures are in
+            fresh = _load(order_id)["payload"]["doc"]
+            if (fresh.get("deck_pictures") or {}).get("job") != job:
+                return
+            _merge_pictures(fresh["deck"], deck)
+            db.update_payload(order_id, {"doc": fresh})
+            used = {o.get("art") for o in [fresh["deck"], *fresh["deck"]["slides"]]}
+            for old in images.glob("deck-photo-*.jpg"):  # the pictures no slide shows any more
+                if old.name not in used:
+                    old.unlink(missing_ok=True)
+            if fresh.get("render"):
+                render(order_id)
+            done = _load(order_id)["payload"]["doc"]
+            done.pop("deck_pictures", None)
+            db.update_payload(order_id, {"doc": done})
+        _persist_inputs(order_id)
+    except Exception:  # noqa: BLE001 - a picture that fails leaves the slides as they are; they must stop waiting
+        log.exception("images of %s", order_id)
+        try:
+            with _lock(order_id):
+                fresh = _load(order_id)["payload"]["doc"]
+                if (fresh.get("deck_pictures") or {}).get("job") == job:
+                    fresh.pop("deck_pictures", None)
+                    db.update_payload(order_id, {"doc": fresh})
+        except Exception:  # noqa: BLE001
+            log.exception("images of %s: could not stop the wait", order_id)
+
+
+def _wait_pictures(order_id: str, most: float = 45) -> None:
+    """A download waits for the pictures on their way (a few seconds), so the file has them."""
+    end = time.monotonic() + most
+    while time.monotonic() < end and _pictures_pending(_load(order_id)["payload"]["doc"]):
+        time.sleep(0.5)
 
 
 def _with_toc_lines(blocks: list[dict], trace: dict, raws: list) -> list[dict]:
@@ -554,13 +639,14 @@ def present(order_id: str, body: PresentIn) -> dict:
            "deck_images": "ia" if body.images == "ia" else "photos"}
     doc["deck_theme"] = _theme(body.theme, doc)
     try:
-        _write_deck(doc, body.slides, folder / "images")
+        pictures = _write_deck(doc, body.slides)
     except deck_ai.DeckError as exc:
         db.bump("ia_echec")
         _discard(new_id)
         raise HTTPException(503, str(exc)) from exc
     db.update_payload(new_id, {"doc": doc})
     _persist_inputs(new_id)
+    _start_pictures(new_id, pictures)
     return view(db.get_order(new_id))
 
 
@@ -637,48 +723,63 @@ class DeckIn(BaseModel):
 
 @router.post("/{order_id}/deck")
 def change_deck(order_id: str, body: DeckIn) -> dict:
-    order = _load(order_id)
-    doc = order["payload"]["doc"]
-    if doc.get("convert") != "pptx" or not doc.get("deck"):
-        raise HTTPException(400, "Ce document n'est pas une présentation")
-    if not view(order)["editable"]:
-        raise HTTPException(403, "La période de modification gratuite (7 jours) est terminée")
-    if body.theme:
-        doc["deck_theme"] = _theme(body.theme)
-    if body.school is not None:
-        doc["deck_school"] = body.school
-    if body.moving is not None:
-        doc["deck_moving"] = body.moving
-    if body.motion in MOTIONS:
-        doc["deck_motion"] = body.motion
-    if body.click is not None:
-        doc["deck_click"] = body.click
-    if body.colors is not None:
-        doc["deck_colors"] = {k: str(v).lstrip("#").upper() for k, v in body.colors.items() if k in ("accent", "second") and re.fullmatch(r"#?[0-9a-fA-F]{6}", str(v))}
-    if body.font is not None:
-        doc["deck_font"] = body.font if body.font in ("Calibri", "Cambria", "Arial") else ""
-    if body.edited is not None:
-        doc["deck"]["slides"] = _clean_edited(body.edited)
-        doc["deck"]["parts"] = list(dict.fromkeys(s["part"] for s in doc["deck"]["slides"] if s.get("part")))
-    if body.logo:
-        _ensure_inputs(order_id)
-        doc["deck_logo"] = _save_logo(order_id, body.logo)
-    if body.images in ("photos", "ia") and body.images != doc.get("deck_images", "photos"):
-        doc["deck_images"] = body.images
-        if body.slides is None:  # same words, new pictures: no AI call for the text
+    pictures = ""
+    with _lock(order_id):
+        order = _load(order_id)
+        doc = order["payload"]["doc"]
+        if doc.get("convert") != "pptx" or not doc.get("deck"):
+            raise HTTPException(400, "Ce document n'est pas une présentation")
+        if not view(order)["editable"]:
+            raise HTTPException(403, "La période de modification gratuite (7 jours) est terminée")
+        if body.theme:
+            doc["deck_theme"] = _theme(body.theme)
+        if body.school is not None:
+            doc["deck_school"] = body.school
+        if body.moving is not None:
+            doc["deck_moving"] = body.moving
+        if body.motion in MOTIONS:
+            doc["deck_motion"] = body.motion
+        if body.click is not None:
+            doc["deck_click"] = body.click
+        if body.colors is not None:
+            doc["deck_colors"] = {k: str(v).lstrip("#").upper() for k, v in body.colors.items() if k in ("accent", "second") and re.fullmatch(r"#?[0-9a-fA-F]{6}", str(v))}
+        if body.font is not None:
+            doc["deck_font"] = body.font if body.font in ("Calibri", "Cambria", "Arial") else ""
+        if body.edited is not None:
+            before = copy.deepcopy(doc["deck"])
+            doc["deck"]["slides"] = _clean_edited(body.edited)
+            doc["deck"]["parts"] = list(dict.fromkeys(s["part"] for s in doc["deck"]["slides"] if s.get("part")))
+            for s in doc["deck"]["slides"]:  # the editor may hold slides sent before their pictures arrived: they keep them
+                if not s.get("art"):
+                    s.pop("art", None)
+            kept = {(x.get("type"), x.get("title")): x for x in before["slides"]}
+            for s in doc["deck"]["slides"]:
+                got = kept.get((s.get("type"), s.get("title")))
+                if "art" not in s and got is not None and got.get("art"):
+                    s["art"], s["credit"] = got["art"], got.get("credit", "")
+        if body.logo:
             _ensure_inputs(order_id)
-            _illustrate(doc, doc_dir(order_id) / "images")
-    if body.slides is not None:
-        if doc.get("deck_runs", 0) >= MAX_DECK_RUNS:
-            raise HTTPException(429, "Tu as refait cette présentation plusieurs fois : garde celle-ci ou importe à nouveau ton fichier.")
-        try:
-            _write_deck(doc, body.slides, doc_dir(order_id) / "images")
-        except deck_ai.DeckError as exc:
-            db.bump("ia_echec")
-            raise HTTPException(503, str(exc)) from exc
-    db.update_payload(order_id, {"doc": doc})
+            doc["deck_logo"] = _save_logo(order_id, body.logo)
+        if body.images in ("photos", "ia") and body.images != doc.get("deck_images", "photos"):
+            doc["deck_images"] = body.images
+            if body.slides is None:  # same words, new pictures: no AI call for the text; they arrive in a few seconds
+                pictures = _ask_pictures(doc)
+        if body.slides is not None:
+            if doc.get("deck_runs", 0) >= MAX_DECK_RUNS:
+                raise HTTPException(429, "Tu as refait cette présentation plusieurs fois : garde celle-ci ou importe à nouveau ton fichier.")
+            try:
+                pictures = _write_deck(doc, body.slides)
+            except deck_ai.DeckError as exc:
+                db.bump("ia_echec")
+                raise HTTPException(503, str(exc)) from exc
+        db.update_payload(order_id, {"doc": doc})
     _persist_inputs(order_id)
-    return render(order_id)
+    shown = render(order_id)  # at once, with the pictures it has; new ones lay the slides out again when they arrive
+    if pictures:
+        _start_pictures(order_id, pictures)
+        if not PICTURES_LATER:
+            shown = view(db.get_order(order_id))
+    return shown
 
 
 MAX_DRAWN = 10  # AI pictures for one document: the free allowance of the day is shared by every customer
@@ -862,6 +963,11 @@ def to_letter(order_id: str) -> dict:
 
 @router.post("/{order_id}/render")
 def render(order_id: str) -> dict:
+    with _lock(order_id):
+        return _render(order_id)
+
+
+def _render(order_id: str) -> dict:
     order = _load(order_id)
     doc = order["payload"]["doc"]
     _ensure_inputs(order_id)
@@ -939,6 +1045,7 @@ def image(order_id: str, name: str) -> FileResponse:
 
 
 def final_file(order_id: str, fmt: str) -> Path:
+    _wait_pictures(order_id)
     build = doc_dir(order_id) / "build"
     path = build / f"final.{fmt}"
     doc = _load(order_id)["payload"]["doc"]

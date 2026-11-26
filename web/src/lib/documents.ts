@@ -137,7 +137,7 @@ export type DocView = {
 export type DeckShowPlan = { slides: { frames: number; push: boolean; motion?: string; click?: boolean }[]; version: string };
 export type DeckItem = { head: string; text: string; icon: string };
 export type DeckSlide = { type: string; title: string; items?: DeckItem[]; key?: string; takeaway?: string; value?: string; text?: string; motion?: string; [other: string]: unknown };
-export type DeckInfo = { slides: number; theme: string; max: number; file?: string; school?: boolean; moving?: boolean; motion?: string; click?: boolean; colors?: { accent?: string; second?: string }; font?: string; images?: DeckImages; content?: DeckSlide[] };
+export type DeckInfo = { slides: number; theme: string; max: number; file?: string; school?: boolean; moving?: boolean; motion?: string; click?: boolean; colors?: { accent?: string; second?: string }; font?: string; images?: DeckImages; /** "pending": the slides are shown, their pictures are on their way. */ pictures?: "pending" | "ready"; content?: DeckSlide[] };
 /** "photos": real photos found on the internet (an AI picture when none fits); "ia": pictures made by the AI. */
 export type DeckImages = "photos" | "ia";
 export type DeckPatch = { slides?: number; theme?: string; logo?: string; school?: boolean; moving?: boolean; motion?: string; click?: boolean; colors?: { accent?: string; second?: string }; font?: string; images?: DeckImages; edited?: DeckSlide[] };

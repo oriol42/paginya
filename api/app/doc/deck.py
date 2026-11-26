@@ -45,28 +45,32 @@ PROMPT = (
     "- \"takeaway\" (obligatoire sur une diapositive sur trois au moins) : la phrase à retenir, 70 caractères au plus.\n"
     "- Si le document contient un chiffre fort, une diapositive \"grand\" au moins est obligatoire.\n"
     "- Élément (item) : \"head\" 2 à 4 mots, \"text\" 60 caractères au plus. \"icon\" : le mot de cette liste le plus proche du sens : {icons}.\n"
-    "- \"visual\" (obligatoire sur chaque diapositive \"grand\" et \"panneau\", et dans le champ général) : une scène à illustrer, en ANGLAIS, 15 mots au plus, concrète et photographiable (lieu, personnes, objets), sans nom propre, sans texte.\n"
+    "- \"setting\" (champ général, obligatoire) : le cadre commun à toutes les images, en ANGLAIS, 15 mots au plus, tiré du document : le lieu, le pays ou la ville, "
+    "le milieu (« a logistics company warehouse in Douala, Cameroon », « a public hospital ward in Yaounde, Cameroon », « a secondary school classroom in Cameroon »).\n"
+    "- \"visual\" (obligatoire dans le champ général, et sur chaque \"section\", \"grand\", \"panneau\", et sur les \"liste\" de 4 éléments au plus) : "
+    "la scène qui illustre CETTE diapositive, en ANGLAIS, 20 mots au plus : ce qu'on y voit de concret (personnes, gestes, objets, lieu) qui montre exactement ce que dit la diapositive "
+    "dans ce document (« a storekeeper counting cartons on warehouse shelves with a clipboard », pas « teamwork »), sans nom propre de personne, sans texte écrit.\n"
     "- \"photo\" (obligatoire dans le champ général, et sur chaque \"section\", \"grand\", \"panneau\", et sur les \"liste\" de 4 éléments au plus) : "
     "2 ou 3 mots-clés en ANGLAIS pour chercher une vraie photo dans une banque d'images libre, du sujet concret de la diapositive "
     "(« warehouse shelves », « students classroom », « cocoa farmer », « hospital ward »), sans nom propre, jamais abstraits (pas « success », « strategy »).\n"
     "- \"notes\" : ce que l'orateur dit à l'oral sur cette diapositive, 2 à 4 phrases naturelles.\n"
     "Types possibles (champ \"type\"), avec item = {{\"head\":\"\",\"text\":\"\",\"icon\":\"\"}} :\n"
-    "- {{\"type\":\"liste\",\"title\":\"\",\"items\":[item],\"notes\":\"\"}} : 2 à 5 éléments les uns sous les autres\n"
+    "- {{\"type\":\"liste\",\"title\":\"\",\"visual\":\"la scène de cette diapo, en anglais\",\"photo\":\"2 ou 3 mots-clés anglais\",\"items\":[item],\"notes\":\"\"}} : 2 à 5 éléments les uns sous les autres\n"
     "- {{\"type\":\"grille\",\"title\":\"\",\"items\":[item],\"notes\":\"\"}} : 2 à 6 idées de même poids en cartes\n"
     "- {{\"type\":\"schema\",\"title\":\"\",\"key\":\"le mot central, 18 caractères au plus\",\"icon\":\"\",\"items\":[item],\"notes\":\"\"}} : un schéma, 3 à 6 idées autour d'une idée centrale (piliers, composantes, acteurs, causes) ; mets-en au moins un dans la présentation\n"
-    "- {{\"type\":\"panneau\",\"title\":\"\",\"key\":\"le message à retenir, 90 caractères au plus\",\"icon\":\"\",\"items\":[item],\"notes\":\"\"}} : un message fort et 2 à 4 détails\n"
+    "- {{\"type\":\"panneau\",\"title\":\"\",\"visual\":\"la scène de cette diapo, en anglais\",\"photo\":\"2 ou 3 mots-clés anglais\",\"key\":\"le message à retenir, 90 caractères au plus\",\"icon\":\"\",\"items\":[item],\"notes\":\"\"}} : un message fort et 2 à 4 détails\n"
     "- {{\"type\":\"chronologie\",\"title\":\"\",\"items\":[item],\"notes\":\"\"}} : 3 à 6 moments dans le temps, text de 60 caractères au plus\n"
     "- {{\"type\":\"etapes\",\"title\":\"\",\"items\":[item],\"notes\":\"\"}} : 3 à 5 étapes dans l'ordre, text de 70 caractères au plus\n"
     "- {{\"type\":\"comparaison\",\"title\":\"\",\"left\":{{\"title\":\"\",\"points\":[\"\"]}},\"right\":{{\"title\":\"\",\"points\":[\"\"]}},\"notes\":\"\"}} : deux colonnes\n"
     "- {{\"type\":\"chiffres\",\"title\":\"\",\"stats\":[{{\"value\":\"\",\"label\":\"\",\"icon\":\"\"}}],\"notes\":\"\"}} : 2 à 4 chiffres clés copiés du document\n"
     "- {{\"type\":\"graphique\",\"title\":\"\",\"chart\":\"donut ou barres\",\"series\":[{{\"label\":\"\",\"value\":40}}],\"key\":\"ce que montre le graphique\",\"icon\":\"\",\"notes\":\"\"}} : 2 à 6 valeurs copiées du document\n"
-    "- {{\"type\":\"grand\",\"title\":\"\",\"value\":\"3 semaines\",\"text\":\"ce que ça signifie, 80 caractères au plus\",\"icon\":\"\",\"notes\":\"\"}} : un seul chiffre ou mot énorme, copié du document ; mets-en une ou deux dans la présentation s'il y a des chiffres forts\n"
+    "- {{\"type\":\"grand\",\"title\":\"\",\"visual\":\"la scène de cette diapo, en anglais\",\"photo\":\"2 ou 3 mots-clés anglais\",\"value\":\"3 semaines\",\"text\":\"ce que ça signifie, 80 caractères au plus\",\"icon\":\"\",\"notes\":\"\"}} : un seul chiffre ou mot énorme, copié du document ; mets-en une ou deux dans la présentation s'il y a des chiffres forts\n"
     "- {{\"type\":\"encadre\",\"title\":\"\",\"label\":\"Problématique\",\"text\":\"\",\"notes\":\"\"}} : une phrase forte dans un cadre, text de 180 caractères au plus\n"
     "- {{\"type\":\"figure\",\"title\":\"\",\"figure\":\"F1\",\"points\":[\"\"],\"notes\":\"\"}} : une image et 0 à 3 puces\n"
     "- {{\"type\":\"tableau\",\"title\":\"\",\"table\":\"T1\",\"notes\":\"\"}} : un tableau\n"
-    "- {{\"type\":\"section\",\"title\":\"\",\"notes\":\"\"}} : ouvre une grande partie (seulement à partir de 15 diapositives)\n"
+    "- {{\"type\":\"section\",\"title\":\"\",\"visual\":\"la scène de cette diapo, en anglais\",\"photo\":\"2 ou 3 mots-clés anglais\",\"notes\":\"\"}} : ouvre une grande partie (seulement à partir de 15 diapositives)\n"
     "Réponds avec un objet JSON et rien d'autre : "
-    "{{\"visual\":\"scène en anglais pour la couverture\",\"photo\":\"2 ou 3 mots-clés anglais pour la photo de couverture\",\"title\":\"le vrai titre du document, tel qu'il y figure ou reformulé fidèlement, 100 caractères au plus\",\"notes\":\"mot d'accueil pour la page de titre\",\"thanks\":\"Merci de votre attention (ces seuls mots, dans la langue du document)\","
+    "{{\"setting\":\"cadre commun des images, en anglais\",\"visual\":\"scène en anglais pour la couverture\",\"photo\":\"2 ou 3 mots-clés anglais pour la photo de couverture\",\"title\":\"le vrai titre du document, tel qu'il y figure ou reformulé fidèlement, 100 caractères au plus\",\"notes\":\"mot d'accueil pour la page de titre\",\"thanks\":\"Merci de votre attention (ces seuls mots, dans la langue du document)\","
     "\"parts\":[\"Contexte\",\"Démarche\",\"Résultats\"],\"slides\":[…]}}\n\n"
     "DOCUMENT :\n"
 )
@@ -180,7 +184,7 @@ def _clean_slide(s: dict, figures: dict, tables: dict, known: set[str]) -> dict 
         out["highlight"] = mark
     if takeaway:
         out["takeaway"] = takeaway
-    visual = re.sub(r"[^\w ,'-]", " ", str(s.get("visual") or ""))[:140].strip()
+    visual = re.sub(r"[^\w ,'-]", " ", str(s.get("visual") or ""))[:180].strip()
     if visual:
         out["visual"] = visual
     photo = _keywords(s.get("photo"))
@@ -378,7 +382,8 @@ def write(document: dict, count: int, on_call=None) -> dict:
         raise DeckError("L'IA n'a pas réussi à préparer tes diapositives. Réessaie.")
     _vary(best)
     _strengthen(best)
-    return {"title": _line(answer.get("title"), 120, known), "visual": re.sub(r"[^\w ,'-]", " ", str(answer.get("visual") or ""))[:140].strip(),
+    return {"title": _line(answer.get("title"), 120, known), "visual": re.sub(r"[^\w ,'-]", " ", str(answer.get("visual") or ""))[:180].strip(),
+            "setting": re.sub(r"[^\w ,'-]", " ", str(answer.get("setting") or ""))[:140].strip(),
             "photo": _keywords(answer.get("photo")), "slides": best, "parts": _with_parts(best, answer.get("parts"), not str(answer.get("thanks") or "Merci").lower().startswith("merci")),
             "notes": str(answer.get("notes") or "").strip()[:1500],
             "thanks": re.split(r"(?<=[.!?])\s", _line(answer.get("thanks"), 200, known) or "Merci de votre attention")[0].rstrip(".")}

@@ -31,7 +31,8 @@ import httpx
 from PIL import Image, ImageDraw, ImageFilter
 
 log = logging.getLogger("paginya.art")
-MAX_PICTURES = 6
+MAX_PICTURES = 6  # real photos: the banks are slow and uneven
+MAX_DRAWN = 8  # pictures made by the AI: one for each slide that shows one, as far as the free allowance goes
 HEADERS = {"User-Agent": "Paginya/1.0 (presentations; https://paginya.vercel.app)"}  # Wikimedia asks every client to say who it is
 OLD = re.compile(r"\b1[5-9]\d\d\b|circa|vintage|museum|archive|histor|library|collection|illustration|drawing|engraving|painting|lithograph|\bmap\b|poster|scan", re.I)
 # words on a picture fight the slide's own words; a protest or a brand is never neutral in a defence
@@ -217,21 +218,24 @@ def ai_spent() -> bool:
     return ai_configured() and time.time() < _spent_until
 
 
-def prompt(scene: str) -> str:
-    """What FLUX is asked: the scene, who the people are, then the look of a real photograph."""
-    who = "" if ORIGIN.search(scene) else f" {PEOPLE}"
-    return f"{scene.rstrip('.')}.{who} {AI_STYLE}"
+def prompt(scene: str, setting: str = "") -> str:
+    """What FLUX is asked: the slide's scene, the setting every picture of the talk shares (« a logistics warehouse in
+    Douala, Cameroon »: the pictures belong to the same report), who the people are, then the look of a photograph."""
+    where = f" Setting: {setting.rstrip('.')}." if setting and setting.lower() not in scene.lower() else ""
+    who = "" if ORIGIN.search(scene) else f" {PEOPLE}"  # the setting says where, not who
+    return f"{scene.rstrip('.')}.{where}{who} {AI_STYLE}"
 
 
-def generate(scene: str, path: Path, size: tuple[int, int] = SLIDE_SIZE, timeout: float = 30) -> dict | None:
+def generate(scene: str, path: Path, size: tuple[int, int] = SLIDE_SIZE, timeout: float = 30, setting: str = "") -> dict | None:
     """A picture drawn by FLUX.2 [klein] for this scene, saved at `path` as a JPEG: {"credit"} or None (not set up,
     a scene it will not draw, the day's allowance spent, too slow). The model always runs its four steps."""
     global _spent_until
     scene = re.sub(r"\s+", " ", str(scene or "")).strip()[:500]
-    if not scene or UNSAFE.search(scene) or not ai_ready():
+    setting = re.sub(r"\s+", " ", str(setting or "")).strip()[:160]
+    if not scene or UNSAFE.search(f"{scene} {setting}") or not ai_ready():
         return None
     account, token = os.environ["CLOUDFLARE_ACCOUNT_ID"], os.environ["CLOUDFLARE_AI_TOKEN"]
-    form = {"prompt": (None, prompt(scene)), "width": (None, str(size[0])), "height": (None, str(size[1]))}
+    form = {"prompt": (None, prompt(scene, setting)), "width": (None, str(size[0])), "height": (None, str(size[1]))}
     try:
         answer = httpx.post(f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{AI_MODEL}",
                             headers={"Authorization": f"Bearer {token}"}, files=form, timeout=timeout)
@@ -255,40 +259,49 @@ def generate(scene: str, path: Path, size: tuple[int, int] = SLIDE_SIZE, timeout
     return {"credit": AI_CREDIT}
 
 
-PHOTO_TYPES = ("section", "liste", "grand", "panneau", "encadre", "chiffres")
+def shows_picture(s: dict) -> bool:
+    """The slides that show a picture of their own: part openers (all photo), the big figure, the block of colour,
+    and a short list (with the photo column beside it). The others never show one: no picture is made for them."""
+    kind = s.get("type")
+    return kind in ("section", "grand", "panneau") or (kind == "liste" and len(s.get("items") or []) <= 4)
 
 
-def picture(query: str, scene: str, n: int, path: Path, taken: set[str], lock: threading.Lock, drawn: bool = False) -> dict | None:
+def picture(query: str, scene: str, n: int, path: Path, taken: set[str], lock: threading.Lock, drawn: bool = False,
+            setting: str = "") -> dict | None:
     """One picture of a presentation. Real photos first, an AI picture when none was found; the other way round when
     the user chose AI pictures (and a real photo when the AI cannot draw today)."""
     end = time.monotonic() + DEADLINE
     if drawn:
-        return generate(scene or query, path, timeout=DEADLINE - 10) or (query and find_photo(query, n, path, taken, lock, max(5.0, end - time.monotonic()))) or None
+        return (generate(scene or query, path, timeout=DEADLINE - 10, setting=setting)
+                or (query and find_photo(query, n, path, taken, lock, max(5.0, end - time.monotonic()))) or None)
     found = find_photo(query, n, path, taken, lock, DEADLINE - AI_TIME if ai_ready() else DEADLINE) if query else None
-    return found or generate(scene or query, path, timeout=max(5.0, end - time.monotonic() - 1))
+    return found or generate(scene or query, path, timeout=max(5.0, end - time.monotonic() - 1), setting=setting)
 
 
-def illustrate(deck: dict, images_dir: Path, drawn: bool = False) -> None:
+def illustrate(deck: dict, images_dir: Path, drawn: bool = False, tag: str = "") -> None:
     """Finds the pictures the presentation asks for (the cover, then a few slides), all at once. Those that fail are
-    forgotten: every layout works without a photo. `drawn`: the user chose pictures made by the AI."""
+    forgotten: every layout works without a photo. `drawn`: the user chose pictures made by the AI. `tag` goes into
+    the file names, so new pictures never overwrite those the slides are still drawn with."""
     images_dir.mkdir(parents=True, exist_ok=True)
+    most = MAX_DRAWN if drawn else MAX_PICTURES
+    setting = deck.get("setting", "")
     jobs: list[tuple[dict, str, str]] = []  # who gets the picture, the keywords of a photo search, the scene to draw
     cover = deck.get("photo") or keywords(deck.get("visual", ""))
     if cover:
         jobs.append((deck, cover, deck.get("visual") or cover))
     for s in deck["slides"]:
         query = s.get("photo") or keywords(s.get("visual", ""))
-        if query and s.get("type") in PHOTO_TYPES and len(jobs) < MAX_PICTURES:
+        if query and shows_picture(s) and len(jobs) < most:
             jobs.append((s, query, s.get("visual") or query))
     taken: set[str] = set()
     lock = threading.Lock()
 
     pool = ThreadPoolExecutor(max_workers=max(len(jobs), 1))
-    futures = {pool.submit(picture, query, scene, n, images_dir / f"deck-photo-{n}.jpg", taken, lock, drawn): (n, owner)
+    futures = {pool.submit(picture, query, scene, n, images_dir / f"deck-photo-{tag}{n}.jpg", taken, lock, drawn, setting): (n, owner)
                for n, (owner, query, scene) in enumerate(jobs)}
     done, _late = wait(futures, timeout=DEADLINE)
     pool.shutdown(wait=False, cancel_futures=True)  # a photo still on its way is dropped, the presentation does not wait
     for future, (n, owner) in futures.items():
         got = future.result() if future in done and future.exception() is None else None
-        owner["art"] = f"deck-photo-{n}.jpg" if got else ""
+        owner["art"] = f"deck-photo-{tag}{n}.jpg" if got else ""
         owner["credit"] = got["credit"] if got else ""

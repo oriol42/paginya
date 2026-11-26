@@ -81,27 +81,18 @@ class Photos:
             if name.startswith("deck-photo") and (images_dir / name).is_file() and name not in (n for n, _ in self.items):
                 self.items.append((name, owner.get("credit") or ""))
         self.own_cover = bool(deck.get("art")) and bool(self.items) and self.items[0][0] == deck.get("art")
-        self.k, self.last, self.turn = 0, "", 0
+        self.turn = 0
         self.used: list[str] = []
 
     def cover(self) -> tuple[str, str] | None:
         return self.items[0] if self.items else None
 
     def pick(self, own: str = "") -> tuple[str, str] | None:
+        """The slide's own picture, never one found for another slide: it would show something else (a photo of fish
+        on a slide about stock sheets, 26/11/2026). Without one, the slide keeps its block of colour."""
         for name, credit in self.items:
             if own and name == own:
-                self.last = name
                 return name, credit
-        # the cover's photo opens and closes the talk: the slides between take the others (if there are others)
-        rest = self.items[1:] if self.own_cover and len(self.items) > 1 else self.items
-        if not rest:
-            return None
-        for _ in range(len(rest)):
-            item = rest[self.k % len(rest)]
-            self.k += 1
-            if item[0] != self.last or len(self.items) == 1:
-                self.last = item[0]
-                return item
         return None
 
     def side(self) -> str:
@@ -365,8 +356,9 @@ def standard(prs, t: dict, text: str, part: str | None, mark: str, s: dict | Non
         side = "left" if s.get("type") == "panneau" else "right" if s.get("type") == "plan" or photos is None else photos.side()
     pen, room, size = header(prs, t, text, side)
     pen.photos = photos
-    if side:
-        column(pen, photos.pick(s.get("art", "")) if photos else None, side)
+    if side:  # the outline shows the cover's picture (Morph carries it from the cover); a slide, its own
+        entry = (photos.cover() if s.get("type") == "plan" else photos.pick(s.get("art", ""))) if photos else None
+        column(pen, entry, side)
     title(pen, text, mark, room, size)
     pen.part = part
     return pen

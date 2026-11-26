@@ -85,6 +85,22 @@ export function DocumentApp() {
     setPhase("editor");
   }, [router]);
 
+  // The slides are shown as soon as their words are written; their pictures follow (7 to 15 s). Until then, ask
+  // every 3 s; when they are in, only the pages and that state are taken, so an edit in progress is not lost.
+  const picturesPending = doc?.deck?.pictures === "pending";
+  useEffect(() => {
+    if (!picturesPending || !doc) return;
+    const id = doc.id;
+    const tick = setInterval(async () => {
+      try {
+        const fresh = await docs.get(id);
+        if (fresh.deck?.pictures === "pending") return;
+        setDoc((d) => (d && d.id === id ? { ...d, render: fresh.render ?? d.render, deck: d.deck ? { ...d.deck, pictures: fresh.deck?.pictures } : d.deck } : d));
+      } catch { /* the next tick tries again */ }
+    }, 3000);
+    return () => clearInterval(tick);
+  }, [picturesPending, doc?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     // Only a link opens a document: coming back to /document starts a new one (older ones are in "Reprendre").
     const id = params.get("doc");
@@ -440,6 +456,12 @@ export function DocumentApp() {
                 <p className="text-[14px] text-ink/70">Ton fichier avait déjà sa mise en page ; elle a été remplacée par celle de Paginya.</p>
                 <button type="button" onClick={() => switchMode("keep")} className="press shrink-0 rounded-md px-3 py-2 text-[14px] font-bold ring-1 ring-black/15 hover:bg-ink/5">Revenir à mon document</button>
               </section>
+            )}
+            {picturesPending && (
+              <p role="status" className="paper mx-auto mb-4 flex max-w-[720px] items-center gap-2.5 rounded-[2px] px-4 py-3 text-[14px] font-semibold text-ink">
+                <Icon name="loader-circle" size={18} className="shrink-0 animate-spin text-board" />
+                {doc.deck?.images === "ia" ? "L'IA dessine tes images." : "Paginya cherche tes photos."} Les diapos se mettent à jour toutes seules dans quelques secondes.
+              </p>
             )}
             <Pages doc={doc} view={view} beforePages={beforePages} dim={rendering} cover={doc.has_cover && doc.options.cover ? liveCover : ""} zoom={zoom} />
             {!slides && (
