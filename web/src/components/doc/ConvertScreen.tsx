@@ -20,6 +20,7 @@ export function ConvertScreen() {
   const [theme, setTheme] = useState("auto");
   const [consent, setConsent] = useState(false);
   const [school, setSchool] = useState(true);
+  const [drawn, setDrawn] = useState(false); // pictures made by the AI instead of real photos: asked before anything is made
   const [source, setSource] = useState<{ id: string; title: string } | null>(null); // a document already formatted on Paginya
 
   // /convertir?vers=powerpoint: straight to the presentation (read here: the page itself is static)
@@ -40,7 +41,7 @@ export function ConvertScreen() {
     setError("");
     setBusy("L'IA prépare tes diapos…");
     try {
-      const view = await docs.presentFrom(source.id, count, theme, school);
+      const view = await docs.presentFrom(source.id, count, theme, school, drawn ? "ia" : "photos");
       router.push(`/document?doc=${view.id}`);
     } catch (e) {
       setError((e as Error).message);
@@ -64,7 +65,7 @@ export function ConvertScreen() {
     setBusy("Envoi du fichier… 0 %");
     try {
       const progress = (sent: number) => setBusy(sent < 1 ? `Envoi du fichier… ${Math.round(sent * 100)} %` : slides ? `L'IA lit « ${file.name.slice(0, 40)} »…` : pdf ? "Lecture du PDF…" : "Lecture du fichier Word…");
-      const view = await (slides ? docs.present(file, count, theme, school, progress) : docs.convert(file, progress));
+      const view = await (slides ? docs.present(file, count, theme, school, drawn ? "ia" : "photos", progress) : docs.convert(file, progress));
       router.push(`/document?doc=${view.id}`);
     } catch (e) {
       setError((e as Error).message);
@@ -111,6 +112,13 @@ export function ConvertScreen() {
             <PurposePick school={school} disabled={!!busy} onChange={setSchool} />
             <SlideCount value={count} max={30} disabled={!!busy} onChange={setCount} />
             <ThemePick value={theme} disabled={!!busy} onChange={setTheme} auto />
+            <label className={`flex cursor-pointer items-start gap-3 rounded-md p-3.5 ring-1 transition-colors ${drawn ? "bg-brand-50 ring-board" : "ring-black/15 hover:bg-ink/5"}`}>
+              <input type="checkbox" name="images-ia" checked={drawn} disabled={!!busy} onChange={(e) => setDrawn(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-board)]" />
+              <span className="min-w-0">
+                <span className="block text-[15px] font-bold">Utiliser des images créées par l&apos;IA</span>
+                <span className="mt-0.5 block text-[13px] leading-snug text-ink/65">Une image dessinée pour chaque diapo, avec des personnes d&apos;ici. Sans cette case, Paginya cherche de vraies photos sur internet. Tu pourras changer d&apos;avis dans l&apos;éditeur.</span>
+              </span>
+            </label>
             <label className="flex cursor-pointer items-start gap-3 text-[14px] text-ink/75">
               <input type="checkbox" checked={consent} disabled={!!busy} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-board)]" />
               J&apos;accepte que le texte de mon document soit envoyé à un service d&apos;IA pour préparer la présentation, et que de courtes descriptions d&apos;images soient envoyées à un service d&apos;illustration.

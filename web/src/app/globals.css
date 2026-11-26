@@ -33,6 +33,10 @@
   --color-hi: #f4d63a;
   --color-hi-deep: #e3bf12;
   --color-pen: #1d4ed8;
+  /* the colours everyone knows for each file format (home page tool icons) */
+  --color-word: #185abd;
+  --color-slides: #c43e1c;
+  --color-pdf: #d93025;
   /* legacy names, mapped onto the board so existing screens follow the new world */
   --color-brand-50: #eef4f0;
   --color-brand-100: #dce8e0;

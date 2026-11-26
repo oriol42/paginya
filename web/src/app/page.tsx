@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Footer } from "@/components/Footer";
 import { Icon } from "@/components/Icon";
 import { Logo } from "@/components/Logo";
+import { ToolIcon } from "@/components/ToolIcons";
 
 const RAW = `REMERCIEMENTS
 Au moment où nous achevons notre formation…
@@ -19,12 +20,12 @@ Tableau 1 : Répartition du personnel`;
 
 // Many visitors come for one precise thing: each tool has its own door, right under the board.
 const TOOLS = [
-  ["/document", "file-text", "Mettre en forme", "Rapport, mémoire, cours, exposé : titres, sommaire, pagination."],
-  ["/convertir?vers=powerpoint", "presentation", "Faire un PowerPoint", "L'IA résume ton document pour ta soutenance, en autant de diapos que tu veux."],
-  ["/garde", "landmark", "Page de garde", "Aux normes de ton école, avec l'en-tête et le logo."],
-  ["/convertir", "refresh-cw", "Word ↔ PDF", "Ton Word en PDF, ou ton PDF en Word à modifier."],
-  ["/lettre", "mail", "Lettre, demande", "Lettre de motivation, demande de stage, requête."],
-  ["/epreuve", "pen-line", "Épreuve", "Pour les enseignants : un sujet propre, prêt à imprimer."],
+  ["/document", "word", "Mettre en forme", "Rapport, mémoire, cours, exposé : titres, sommaire, pagination."],
+  ["/convertir?vers=powerpoint", "slides", "Faire un PowerPoint", "L'IA résume ton document pour ta soutenance, en autant de diapos que tu veux."],
+  ["/garde", "cover", "Page de garde", "Aux normes de ton école, avec l'en-tête et le logo."],
+  ["/convertir", "convert", "Word ↔ PDF", "Ton Word en PDF, ou ton PDF en Word à modifier."],
+  ["/lettre", "letter", "Lettre, demande", "Lettre de motivation, demande de stage, requête."],
+  ["/epreuve", "exam", "Épreuve", "Pour les enseignants : un sujet propre, prêt à imprimer."],
 ] as const;
 
 const STEPS: [string, string, string][] = [
@@ -131,7 +132,7 @@ export default function Home() {
           {TOOLS.map(([href, icon, label, text]) => (
             <li key={href}>
               <Link href={href} className="press paper group flex h-full items-start gap-4 rounded-[3px] p-5 ring-1 ring-black/10 hover:ring-board">
-                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-md bg-board text-white"><Icon name={icon} size={24} /></span>
+                <ToolIcon kind={icon} className="-my-1 h-14 w-14 transition-transform duration-200 motion-safe:group-hover:-translate-y-0.5" />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1 font-display text-[23px] leading-none font-black uppercase">{label}<Icon name="chevron-right" size={18} className="text-ink/40 group-hover:text-board" /></span>
                   <span className="mt-1.5 block text-[15px] leading-snug text-ink/70">{text}</span>

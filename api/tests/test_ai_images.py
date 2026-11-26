@@ -193,3 +193,19 @@ def test_a_presentation_can_switch_to_ai_pictures_without_writing_its_slides_aga
     order = db.get_order(view["id"])["payload"]["doc"]
     assert order["deck"]["credit"] == art.AI_CREDIT
     assert client.post(f"/documents/{view['id']}/deck", json={"images": "ia"}).json()["deck"]["images"] == "ia" and len(cloudflare[0]) == 2 * drawn_first  # same choice: nothing redone
+
+
+def test_ai_pictures_can_be_ticked_before_the_slides_are_made(client, cloudflare, tmp_path, monkeypatch):
+    import json
+    from app.doc import deck
+    from tests.test_documents import DECK_ANSWER, stage_docx
+    answer = {**DECK_ANSWER, "visual": "Workers checking boxes in a warehouse", "photo": "warehouse shelves"}
+    monkeypatch.setattr(deck, "ask", lambda source, prompt: (json.dumps(answer), "gemini"))
+    monkeypatch.setattr(art, "find_photo", lambda *a, **k: pytest.fail("ticked: no photo search first"))
+    stage_docx(tmp_path / "r.docx")
+    data = (tmp_path / "r.docx").read_bytes()
+    made = client.post("/documents/upload?filename=r.docx&convert=true&to=pptx&consent=true&slides=9&images=ia", content=data).json()
+    assert made["deck"]["images"] == "ia" and cloudflare[0]  # drawn from the start
+    first = client.post("/documents", json={"filename": "r.docx", "data": base64.b64encode(data).decode()}).json()
+    again = client.post(f"/documents/{first['id']}/present", json={"slides": 9, "consent": True, "images": "ia"}).json()
+    assert again["deck"]["images"] == "ia"

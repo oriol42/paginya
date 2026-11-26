@@ -189,11 +189,11 @@ export const docs = {
   convert: (file: File, onProgress?: (sent: number) => void) =>
     created(upload(`/documents/upload?filename=${encodeURIComponent(file.name)}&convert=true`, file, onProgress)),
   /** A Word or PDF file as a presentation: the AI reads it and writes the number of slides asked. */
-  present: (file: File, slides: number, theme: string, school: boolean, onProgress?: (sent: number) => void) =>
-    created(upload(`/documents/upload?filename=${encodeURIComponent(file.name)}&convert=true&to=pptx&consent=true&slides=${slides}&theme=${theme}&school=${school}`, file, onProgress)),
+  present: (file: File, slides: number, theme: string, school: boolean, images: DeckImages, onProgress?: (sent: number) => void) =>
+    created(upload(`/documents/upload?filename=${encodeURIComponent(file.name)}&convert=true&to=pptx&consent=true&slides=${slides}&theme=${theme}&school=${school}&images=${images}`, file, onProgress)),
   /** A document already formatted as a presentation: nothing to send again, a new order. */
-  presentFrom: (id: string, slides: number, theme: string, school: boolean) =>
-    call<DocView>(`/documents/${id}/present`, { method: "POST", body: JSON.stringify({ slides, theme, school, consent: true }) }),
+  presentFrom: (id: string, slides: number, theme: string, school: boolean, images: DeckImages) =>
+    call<DocView>(`/documents/${id}/present`, { method: "POST", body: JSON.stringify({ slides, theme, school, images, consent: true }) }),
   /** Pictures of each slide as its things appear, for the slideshow on the site. */
   show: (id: string) => call<DeckShowPlan>(`/documents/${id}/show`, { method: "POST" }),
   showUrl: (id: string, slide: number, frame: number, version: string) => `${API_URL}/documents/${id}/show/${slide}-${frame}.webp?v=${version}`,

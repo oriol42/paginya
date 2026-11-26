@@ -126,6 +126,7 @@ class DocIn(BaseModel):
     theme: str = "auto"
     school: bool = True  # a school work: the slides open and close like the report (logos, establishment, supervisors)
     consent: bool = False  # the text is sent to an AI service: the user agreed
+    images: str = "photos"  # "ia": the user ticked « Utiliser des images créées par l'IA » before the slides were made
 
 
 class DocPatch(BaseModel):
@@ -189,7 +190,7 @@ def plan_of(doc: dict) -> dict:
 
 @router.post("/upload")
 async def upload(request: Request, filename: str, convert: bool = False, to: str = "", slides: int = deck_ai.DEFAULT_SLIDES,
-                 theme: str = "auto", consent: bool = False, school: bool = True) -> dict:
+                 theme: str = "auto", consent: bool = False, school: bool = True, images: str = "photos") -> dict:
     """The file sent as it is (no base64): a third less to send on a slow 3G line than /documents."""
     raw = b""
     async for chunk in request.stream():
@@ -198,7 +199,8 @@ async def upload(request: Request, filename: str, convert: bool = False, to: str
             raise HTTPException(413, "Fichier trop lourd (15 Mo maximum)")
     if not raw:
         raise HTTPException(400, "Fichier vide")
-    body = DocIn(filename=filename[:200], data=base64.b64encode(raw).decode(), convert=convert, to=to, slides=slides, theme=theme, consent=consent, school=school)
+    body = DocIn(filename=filename[:200], data=base64.b64encode(raw).decode(), convert=convert, to=to, slides=slides, theme=theme, consent=consent, school=school,
+                 images=images)
     return await run_in_threadpool(create, body)  # the heavy work stays off the event loop, like /documents
 
 
@@ -315,7 +317,8 @@ def create(body: DocIn) -> dict:
         doc["confirmed"] = True  # nothing to choose: the file is shown converted straight away
         if body.to == "pptx":  # the content of the file as slides to edit: only what it says, cut into slides
             doc.pop("mode", None)
-            doc.update(convert="pptx", plan={"cover": "none", "toc": "none", "numbers": "none"}, deck_theme=_theme(body.theme, doc), deck_file=(body.filename or "")[:200], deck_school=body.school)
+            doc.update(convert="pptx", plan={"cover": "none", "toc": "none", "numbers": "none"}, deck_theme=_theme(body.theme, doc), deck_file=(body.filename or "")[:200], deck_school=body.school,
+                       deck_images="ia" if body.images == "ia" else "photos")
             try:
                 _write_deck(doc, body.slides, folder / "images")
             except deck_ai.DeckError as exc:
@@ -524,6 +527,7 @@ class PresentIn(BaseModel):
     theme: str = "auto"
     school: bool = True
     consent: bool = False  # the text is sent to an AI service: the user agreed
+    images: str = "photos"  # "ia": pictures made by the AI, ticked before the slides were made
 
 
 @router.post("/{order_id}/present")
@@ -546,7 +550,8 @@ def present(order_id: str, body: PresentIn) -> dict:
     meta = source["meta"]
     doc = {"blocks": source["blocks"], "meta": meta, "style": source["style"], "options": source["options"], "cover_svg": None, "render": None, "analysis": None,
            "confirmed": True, "convert": "pptx", "plan": {"cover": "none", "toc": "none", "numbers": "none"}, "deck_theme": "",
-           "deck_file": str((meta.get("cover") or {}).get("title") or meta.get("title") or "Ton document")[:200], "deck_school": body.school}
+           "deck_file": str((meta.get("cover") or {}).get("title") or meta.get("title") or "Ton document")[:200], "deck_school": body.school,
+           "deck_images": "ia" if body.images == "ia" else "photos"}
     doc["deck_theme"] = _theme(body.theme, doc)
     try:
         _write_deck(doc, body.slides, folder / "images")
