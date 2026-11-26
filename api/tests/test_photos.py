@@ -1,4 +1,4 @@
-"""Real photos for the presentations, found on free photo banks; no icons in the Studio family. No network here."""
+"""Real photos for the presentations, found on free photo banks; Studio icons in two tones, in tiles. No network here."""
 import io
 import threading
 
@@ -46,7 +46,7 @@ def test_black_and_white_pictures_and_signs_are_left_out(tmp_path, monkeypatch):
     assert art.keywords("Workers checking boxes on shelves in a large warehouse") == "Workers checking boxes"
 
 
-def test_studio_shows_the_photos_and_no_icon_and_credits_them(tmp_path):
+def test_studio_shows_the_photos_and_icons_in_tiles_and_credits_them(tmp_path):
     for n in range(3):
         Image.new("RGB", (1600, 900), (30 + 60 * n, 120, 200)).save(tmp_path / f"deck-photo-{n}.jpg")
     items = [{"head": "Stock", "text": "Suivi quotidien", "icon": "layers"}, {"head": "Vente", "text": "Par mois", "icon": "coins"}]
@@ -64,6 +64,9 @@ def test_studio_shows_the_photos_and_no_icon_and_credits_them(tmp_path):
     assert kinds(slides[0])["!!Panneau"] == 13  # the cover's panel is a picture (MSO_SHAPE_TYPE.PICTURE)
     assert kinds(slides[2])["!!Panneau"] == 13 and kinds(slides[3])["!!Panneau"] == 13  # part opener, list: the same name, Morph carries the photo
     assert slides[3].notes_slide.notes_text_frame.text == "Je présente.\n\nPhoto : C, CC0, via Openverse"
-    assert all(s.name != "Icône" for slide in slides for s in slide.shapes)  # no icon anywhere
+    for slide in (slides[3], slides[4]):  # the list and the cards: one tile and its icon per point, as in Kova Docs
+        names = [s.name for s in slide.shapes]
+        assert names.count("Tuile") == names.count("Icône") == 2 * (1 if slide is slides[3] else 2)
+    assert not any(s.name == "Icône" for s in slides[0].shapes)  # none on the cover
     credits = next(s for s in slides[-1].shapes if s.name == "Crédits des photos").text_frame.text
     assert "A, CC0" in credits and "B, CC BY 2.0" in credits and "C, CC0" in credits

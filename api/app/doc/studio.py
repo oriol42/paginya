@@ -10,7 +10,9 @@ profile.py), then the same measures were taken on Paginya's decks. What the desi
   subject (art.illustrate, credited in the notes and on the last slide); a block of colour when there is none;
 - almost no shadows (7 % of their slides) nor gradients: flat cards with a hairline, a solid colour for the one that
   matters; figures without boxes, big, with a thin line between them;
-- no icons: they are what makes generated slides look generated (asked by Oriol, 22/11/2026);
+- icons in two tones, as in Kova Docs (asked by Oriol, 26/11/2026, after « no icons » on 22/11): a dark line and a
+  pale fill of the slide's colour, in a small rounded tile with a hairline edge, beside or above each point
+  (Phosphor duotone, icons_duo/); never the flat single-colour pictograms that made generated slides look generated;
 - motion: designers fade things in, in half a second, one after the other; the slide's photo is laid before the
   slide's things so it stays put, and Morph carries it from slide to slide (cover to outline, part opener to its
   first slide, slide to slide): it grows, shrinks or slides to its new place.
@@ -19,8 +21,12 @@ pills, serif display titles, glows. Everything stays editable in PowerPoint.
 """
 from __future__ import annotations
 
+import io
+import re
+from functools import lru_cache
 from pathlib import Path
 
+import resvg_py
 from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.oxml.ns import qn
@@ -153,6 +159,44 @@ def column(pen: S.Painter, entry: tuple[str, str] | None, side: str) -> None:
     x = W - COLUMN if side == "right" else 0.0
     if not photo(pen, entry, x, 0, COLUMN, H, 0, "!!Panneau"):
         pen.shape(MSO_SHAPE.RECTANGLE, x, 0, COLUMN, H, _colours(pen.t)[0], "!!Panneau")
+
+
+# --- icons in two tones ---------------------------------------------------------------------------
+
+DUO = Path(__file__).with_name("icons_duo")
+TILE = 0.62  # the tile of an icon, in inches
+
+
+@lru_cache(maxsize=256)
+def _duo_png(name: str, deep: str, soft: str) -> bytes:
+    """The icon drawn in two tones: its lines in `deep`, its pale fill in `soft` (Phosphor's 20 % layer, made solid)."""
+    path = DUO / f"{name}.svg"
+    if not path.is_file():
+        path = DUO / "circle-check.svg"
+    svg = re.sub(r'opacity="0\.2"', f'fill="#{soft}"', path.read_text(encoding="utf-8"))
+    svg = svg.replace('fill="currentColor"', f'fill="#{deep}"', 1)
+    return bytes(resvg_py.svg_to_bytes(svg_string=svg, width=256, height=256))
+
+
+def chip(pen: S.Painter, name: str, x: float, y: float, size: float = TILE, on: str | None = None) -> None:
+    """A tile with its icon, as in Kova Docs: pale tint, hairline edge, the icon in two tones of the slide's colour.
+    `on`: the colour of a solid card it sits on (then the tile is a lighter shade of it and the icon white)."""
+    t = pen.t
+    if on:
+        fill, edge, deep, soft = S._mix(on, "FFFFFF", 0.16), S._mix(on, "FFFFFF", 0.32), "FFFFFF", S._mix(on, "FFFFFF", 0.5)
+    else:
+        ground = t["card_fill"]
+        fill = t["tint"]
+        edge = S._mix(ground, t["accent"], 0.3 if not t["dark"] else 0.4)
+        deep = t["text_accent"]
+        soft = S._mix(fill, t["accent"], 0.38)
+    tile = card(pen, x, y, size, size, fill=fill, name="Tuile", edge=True)
+    tile.line.color.rgb = S._rgb(edge)
+    _round(tile, size * 0.26)
+    pad = size * 0.2
+    pic = pen.slide.shapes.add_picture(io.BytesIO(_duo_png(name or "circle-check", deep, soft)), Inches(x + pad), Inches(y + pad),
+                                       Inches(size - 2 * pad), Inches(size - 2 * pad))
+    pic.name = "Icône"
 
 
 # --- drawing helpers ------------------------------------------------------------------------------
@@ -496,11 +540,14 @@ def _liste(pen: S.Painter, s: dict) -> None:
     avail = pen.bottom - TOP
     row = min(1.3, avail / n)
     y0 = TOP + (avail - row * n) * 0.3
-    lead, text = shared(items, room, row - 0.22, 24, 18)
+    size = min(TILE, row - 0.4)
+    shift = size + 0.3
+    lead, text = shared(items, room - shift, row - 0.22, 24, 18)
     for i, it in enumerate(items):
         pen.step()
         y = y0 + i * row
-        pen.stack(x, y + 0.02, room, row - 0.2, it["head"], it["text"], lead, text)
+        chip(pen, it.get("icon") or "", x, y + 0.04, size)
+        pen.stack(x + shift, y + 0.02, room - shift, row - 0.2, it["head"], it["text"], lead, text)
         if i < n - 1:
             hairline(pen, x, y + row - 0.1, room)
 
@@ -509,14 +556,16 @@ def _card_sizes(cols: int) -> tuple[float, float]:
     return (24, 18) if cols <= 3 else (22, 17)
 
 
-def _cards_height(items: list[dict], cols: int, width: float = W - 2 * M) -> float:
-    w = (width - 0.3 * (cols - 1)) / cols - 0.64
+def _cards_height(items: list[dict], cols: int, width: float = W - 2 * M, on_top: bool = True) -> float:
+    w = (width - 0.3 * (cols - 1)) / cols - 0.64 - (0 if on_top else TILE * 0.8 + 0.25)
     lead, text = shared(items, w, 99, *_card_sizes(cols))
-    return max(need(it["head"], it["text"], w, lead, text) for it in items) + 0.9
+    return max(need(it["head"], it["text"], w, lead, text) for it in items) + 0.9 + (TILE + 0.22 if on_top else 0)
 
 
 def _cards_row(pen: S.Painter, items: list[dict], y: float, h: float, cols: int, first_strong: bool, sizes: tuple[float, float], x0: float = M,
-               width: float | None = None) -> None:
+               width: float | None = None, on_top: bool | None = True) -> None:
+    """Cards side by side, each with its icon: on top of the card, or on the left of its head when the cards are low
+    (`on_top` False), or none when the words need all the room (None)."""
     t = pen.t
     gap = 0.3
     width = width or (W - 2 * M)
@@ -526,7 +575,16 @@ def _cards_row(pen: S.Painter, items: list[dict], y: float, h: float, cols: int,
         x = x0 + i * (w + gap)
         strong = first_strong and i == 0
         (strong_card if strong else card)(pen, x, y, w, h)
-        pen.stack(x + 0.32, y + 0.36, w - 0.64, h - 0.62, it["head"], it["text"], *sizes,
+        on = _colours(t)[0] if strong else None
+        dx = dy = 0.0
+        if on_top:
+            chip(pen, it.get("icon") or "", x + 0.32, y + 0.32, TILE, on)
+            dy = TILE + 0.22
+        elif on_top is False:
+            size = TILE * 0.8
+            chip(pen, it.get("icon") or "", x + 0.32, y + 0.32, size, on)
+            dx = size + 0.25
+        pen.stack(x + 0.32 + dx, y + 0.36 + dy, w - 0.64 - dx, h - 0.62 - dy, it["head"], it["text"], *sizes,
                   head_color="FFFFFF" if strong else None, body_color=S._mix("FFFFFF", t["accent"], 0.12) if strong else None)
 
 
@@ -539,13 +597,17 @@ def _grille(pen: S.Painter, s: dict) -> None:
     w = (W - 2 * M - 0.3 * (cols - 1)) / cols - 0.64
     if n <= 4:
         h = min(max(_cards_height(items, n), 2.6), avail - 0.1)
-        sizes = shared(items, w, h - 0.62, *_card_sizes(cols))
+        sizes = shared(items, w, h - 0.62 - TILE - 0.22, *_card_sizes(cols))
         _cards_row(pen, items, TOP + (avail - h) * 0.45, h, n, strong, sizes)
     else:
-        h = min(max(_cards_height(items, cols), 1.6), (avail - 0.3) / 2)
-        sizes = shared(items, w, h - 0.62, 21, 16.5)
-        _cards_row(pen, items[:cols], TOP, h, cols, False, sizes)
-        _cards_row(pen, items[cols:], TOP + h + 0.3, h, cols, False, sizes)
+        side = TILE * 0.8 + 0.25
+        h = min(max(_cards_height(items, cols, on_top=False), 1.6), (avail - 0.3) / 2)
+        sizes = shared(items, w - side, h - 0.62, 21, 16.5)
+        icons: bool | None = False
+        if max(need(it["head"], it["text"], w - side, *sizes) for it in items) > h - 0.62:  # long words: they keep the room
+            icons, sizes = None, shared(items, w, h - 0.62, 21, 16.5)
+        _cards_row(pen, items[:cols], TOP, h, cols, False, sizes, on_top=icons)
+        _cards_row(pen, items[cols:], TOP + h + 0.3, h, cols, False, sizes, on_top=icons)
 
 
 def _schema(pen: S.Painter, s: dict) -> None:
@@ -576,14 +638,29 @@ def _schema(pen: S.Painter, s: dict) -> None:
     pen.step()
     hub = pen.shape(MSO_SHAPE.OVAL, cx - d / 2, cy - d / 2, d, d, _colours(t)[0], "Centre")
     hub.shadow.inherit = False
-    key = s.get("key") or s["title"].split(" ")[0]
-    size = word_fit(key, S._fit(len(key), [(14, 22), (24, 18), (40, 15), (10_000, 12)]), d - 0.5)
-    pen.text(cx - d / 2 + 0.25, cy - d / 2 + 0.3, d - 0.5, d - 0.6, key, size, "FFFFFF", True, TITLE_FONT, PP_ALIGN.CENTER, MSO_ANCHOR.MIDDLE)
-    sizes = shared(items, cw - 0.6, ch - 0.2, 18, 14.5, floor=12)
+    key = s.get("key") or ""
+    if key:
+        size = word_fit(key, S._fit(len(key), [(14, 22), (24, 18), (40, 15), (10_000, 12)]), d - 0.5)
+        pen.text(cx - d / 2 + 0.25, cy - d / 2 + 0.3, d - 0.5, d - 0.6, key, size, "FFFFFF", True, TITLE_FONT, PP_ALIGN.CENTER, MSO_ANCHOR.MIDDLE)
+    else:  # no word for the middle: its icon, big and white (the first word of the title said nothing: « Ce »)
+        name = s.get("icon") if s.get("icon") not in (None, "", "circle-check") else "lightbulb"  # circle-check: none was chosen
+        big = d * 0.42
+        pic = pen.slide.shapes.add_picture(io.BytesIO(_duo_png(name, "FFFFFF", S._mix(_colours(t)[0], "FFFFFF", 0.45))),
+                                           Inches(cx - big / 2), Inches(cy - big / 2), Inches(big), Inches(big))
+        pic.name = "Icône"
+    size = min(0.52, ch - 0.3)
+    shift = size + 0.22
+    sizes = shared(items, cw - 0.6 - shift, ch - 0.2, 18, 14.5, floor=12)
+    if max(need(it["head"], it["text"], cw - 0.6 - shift, *sizes) for it in items) > ch - 0.2:  # long words: no icon, all the room
+        shift = 0.0
+        sizes = shared(items, cw - 0.6, ch - 0.2, 18, 14.5, floor=12)
     for x, y, w, h, it in boxes:
         pen.step()
         card(pen, x, y, w, h)
-        pen.stack(x + 0.3, y + 0.1, w - 0.6, h - 0.2, it["head"], it["text"], *sizes, anchor=MSO_ANCHOR.MIDDLE)
+        if shift:
+            chip(pen, it.get("icon") or "", x + 0.25, y + (h - size) / 2, size)
+        pen.stack(x + (0.25 + shift if shift else 0.3), y + 0.1, w - (0.55 + shift if shift else 0.6), h - 0.2, it["head"], it["text"], *sizes,
+                  anchor=MSO_ANCHOR.MIDDLE)
 
 
 def _panneau(pen: S.Painter, s: dict) -> None:
@@ -599,11 +676,14 @@ def _panneau(pen: S.Painter, s: dict) -> None:
     x, room = pen.left, pen.right - pen.left
     n = len(items)
     row = min(1.3, avail / n)
-    lead, text = shared(items, room, row - 0.24, 21, 17)
+    size = min(TILE, row - 0.4)
+    shift = size + 0.3
+    lead, text = shared(items, room - shift, row - 0.24, 21, 17)
     for i, it in enumerate(items):
         pen.step()
         y = TOP + i * row
-        pen.stack(x, y + 0.05, room, row - 0.22, it["head"], it["text"], lead, text)
+        chip(pen, it.get("icon") or "", x, y + 0.06, size)
+        pen.stack(x + shift, y + 0.05, room - shift, row - 0.22, it["head"], it["text"], lead, text)
         if i < n - 1:
             hairline(pen, x, y + row - 0.1, room)
 
@@ -686,7 +766,8 @@ def _chiffres(pen: S.Painter, s: dict) -> None:
     while label > 13 and max(S.text_height(x["label"], label, w - 0.5) for x in stats) > 1.3:
         label -= 1
     tall = size * S.LINE / 72
-    block = tall + 0.25 + 1.3
+    top = TILE + 0.3  # the icon above the figure
+    block = top + tall + 0.25 + 1.3
     y = TOP + max((avail - block) * 0.45, 0)
     for i, st in enumerate(stats):
         pen.step("zoom")
@@ -694,8 +775,9 @@ def _chiffres(pen: S.Painter, s: dict) -> None:
         if i:
             hairline(pen, x, y, 0.014, block)
         inset = 0.25 if i else 0.0
-        pen.text(x + inset, y, w - 0.5, tall, st["value"], size, t["text_accent"], True, TITLE_FONT, anchor=MSO_ANCHOR.BOTTOM)
-        pen.text(x + inset, y + tall + 0.25, w - 0.5, 1.3, st["label"], label, t["muted"])
+        chip(pen, st.get("icon") or "", x + inset, y, TILE)
+        pen.text(x + inset, y + top, w - 0.5, tall, st["value"], size, t["text_accent"], True, TITLE_FONT, anchor=MSO_ANCHOR.BOTTOM)
+        pen.text(x + inset, y + top + tall + 0.25, w - 0.5, 1.3, st["label"], label, t["muted"])
 
 
 def _graphique(pen: S.Painter, s: dict) -> None:

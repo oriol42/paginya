@@ -1,0 +1,78 @@
+MIT License
+
+Copyright (c) 2023 Phosphor Icons
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Icônes « duotone » de Phosphor Icons 2.1.1 (https://phosphoricons.com), renommées d'après les noms Lucide de ../icons/ :
+  arrow-right.svg = arrow-right-duotone.svg
+  award.svg = medal-duotone.svg
+  baby.svg = baby-duotone.svg
+  book-open.svg = book-open-duotone.svg
+  brain.svg = brain-duotone.svg
+  building-2.svg = buildings-duotone.svg
+  calendar.svg = calendar-blank-duotone.svg
+  chart-column.svg = chart-bar-duotone.svg
+  chart-pie.svg = chart-pie-slice-duotone.svg
+  circle-check.svg = check-circle-duotone.svg
+  clipboard-check.svg = clipboard-text-duotone.svg
+  clock.svg = clock-duotone.svg
+  cloud.svg = cloud-duotone.svg
+  code.svg = code-duotone.svg
+  coins.svg = coins-duotone.svg
+  compass.svg = compass-duotone.svg
+  cpu.svg = cpu-duotone.svg
+  database.svg = database-duotone.svg
+  eye.svg = eye-duotone.svg
+  factory.svg = factory-duotone.svg
+  file-text.svg = file-text-duotone.svg
+  flag.svg = flag-duotone.svg
+  globe.svg = globe-hemisphere-west-duotone.svg
+  graduation-cap.svg = graduation-cap-duotone.svg
+  handshake.svg = handshake-duotone.svg
+  heart-pulse.svg = heartbeat-duotone.svg
+  hospital.svg = hospital-duotone.svg
+  layers.svg = stack-duotone.svg
+  leaf.svg = leaf-duotone.svg
+  lightbulb.svg = lightbulb-duotone.svg
+  lock.svg = lock-duotone.svg
+  map-pin.svg = map-pin-duotone.svg
+  megaphone.svg = megaphone-duotone.svg
+  message-circle.svg = chat-circle-dots-duotone.svg
+  network.svg = share-network-duotone.svg
+  pill.svg = pill-duotone.svg
+  puzzle.svg = puzzle-piece-duotone.svg
+  rocket.svg = rocket-launch-duotone.svg
+  scale.svg = scales-duotone.svg
+  search.svg = magnifying-glass-duotone.svg
+  server.svg = hard-drives-duotone.svg
+  settings.svg = gear-six-duotone.svg
+  shield-check.svg = shield-check-duotone.svg
+  smartphone.svg = device-mobile-duotone.svg
+  stethoscope.svg = stethoscope-duotone.svg
+  syringe.svg = syringe-duotone.svg
+  target.svg = target-duotone.svg
+  trending-up.svg = trend-up-duotone.svg
+  triangle-alert.svg = warning-duotone.svg
+  truck.svg = truck-duotone.svg
+  users.svg = users-three-duotone.svg
+  user.svg = user-duotone.svg
+  wallet.svg = wallet-duotone.svg
+  wrench.svg = wrench-duotone.svg
+  zap.svg = lightning-duotone.svg
