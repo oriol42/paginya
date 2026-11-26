@@ -848,3 +848,53 @@ def test_studio_is_the_premium_default_with_one_panel_cards_and_a_growing_progre
     for slide in prs.slides:
         for ref in slide._element.iter("{http://schemas.openxmlformats.org/drawingml/2006/main}effectRef"):
             assert ref.get("idx") == "0"
+
+
+def _study(name: str):
+    """A module of api/ml/study/decks (the measures taken on designers' decks), loaded from its file."""
+    import importlib.util
+    path = Path(__file__).resolve().parents[1] / "ml" / "study" / "decks" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(f"decks_{name}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_studio_stays_close_to_what_designers_do(tmp_path):
+    """41 decks by professional designers were measured (api/ml/study/decks/designers.json: numbers only). A Studio
+    deck must keep to their habits: two or three text sizes on a slide, no shadow, a big cover title, wide margins,
+    photos edge to edge, things that fade in within half a second, Morph carrying the photo from slide to slide."""
+    import json
+    from pptx import Presentation
+    from app.doc.slides import build_pptx, title_info
+    measure, norms = _study("measure"), _study("profile_decks")
+    sample = _study("sample")
+    designers = json.loads((Path(__file__).resolve().parents[1] / "ml" / "study" / "decks" / "designers.json").read_text())
+    slides = json.loads(json.dumps(sample.SLIDES))
+    for n, s in enumerate([x for x in slides if x.get("photo")], 1):
+        Image.new("RGB", (1600, 1000), (40 * n, 110, 160)).save(tmp_path / f"deck-photo-{n}.jpg")
+        s["art"], s["credit"] = f"deck-photo-{n}.jpg", f"Photo : P{n}, CC0, via Openverse"
+    Image.new("RGB", (1600, 1000), (200, 120, 60)).save(tmp_path / "deck-photo-0.jpg")
+    deck = {"slides": slides, "parts": sample.PARTS, "thanks": "Merci de votre attention", "art": "deck-photo-0.jpg", "credit": "Photo : C, CC0, via Openverse"}
+    info = title_info({"blocks": [], "meta": {"title": sample.TITLE, "cover": sample.COVER}}, tmp_path)
+    saved = tmp_path / "s.pptx"
+    saved.write_bytes(build_pptx(deck, info, "studio", tmp_path))
+    row = measure.measure(str(saved))
+    result = norms.score(designers, [row])
+    assert result["score"] >= 0.8, {k: v for k, v in result.items() if k != "score" and v["inside"] < 0.8}
+    content = row["slides"][1:-1]
+    assert sum(s["n_sizes"] <= 3 for s in content) >= 0.75 * len(content)  # a title, a head, its text
+    assert not any(s["shadows"] for s in row["slides"])
+    assert row["slides"][0]["title_size"] >= 44 and min(s["left"] for s in content if s["left"] is not None) >= 0.07
+    prs = Presentation(saved)
+    for slide in prs.slides:  # the photo column (or the whole photo) runs the full height of the slide
+        for shape in slide.shapes:
+            if shape.name == "!!Panneau":
+                assert shape.top == 0 and shape.height == prs.slide_height
+    moves = [a for s in row["slides"] for a in s["anims"]]
+    assert moves and all(a["dur"] <= 500 for a in moves if a["id"] not in (21, 22))  # charts take their time to draw
+    morphs = [s["transition"] for s in row["slides"] if s["transition"] and s["transition"]["kind"] == "morph"]
+    assert len(morphs) >= len(row["slides"]) // 2 and all(t["dur"] == 1400 for t in morphs)
+    timings = [slide._element.find("{http://schemas.openxmlformats.org/presentationml/2006/main}timing") for slide in prs.slides]
+    steps = [len({c.getparent().getparent().getparent().get("id") for c in t.iter("{http://schemas.openxmlformats.org/presentationml/2006/main}cTn") if c.get("presetClass")}) for t in timings if t is not None]
+    assert max(steps) <= 12

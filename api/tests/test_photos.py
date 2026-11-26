@@ -62,7 +62,7 @@ def test_studio_shows_the_photos_and_no_icon_and_credits_them(tmp_path):
     slides = list(prs.slides)
     kinds = lambda slide: {s.name: s.shape_type for s in slide.shapes}  # noqa: E731
     assert kinds(slides[0])["!!Panneau"] == 13  # the cover's panel is a picture (MSO_SHAPE_TYPE.PICTURE)
-    assert "Photo de fond" in kinds(slides[2]) and kinds(slides[3])["!!Panneau"] == 13  # part opener, list
+    assert kinds(slides[2])["!!Panneau"] == 13 and kinds(slides[3])["!!Panneau"] == 13  # part opener, list: the same name, Morph carries the photo
     assert slides[3].notes_slide.notes_text_frame.text == "Je présente.\n\nPhoto : C, CC0, via Openverse"
     assert all(s.name != "Icône" for slide in slides for s in slide.shapes)  # no icon anywhere
     credits = next(s for s in slides[-1].shapes if s.name == "Crédits des photos").text_frame.text

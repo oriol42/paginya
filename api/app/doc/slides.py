@@ -1835,7 +1835,9 @@ def _section(prs, theme: dict, title: str, number: int, seed: int = 0):
 MOTIONS = {"fondu": (10, 0), "monter": (42, 0), "glisser": (2, 8), "zoom": (53, 0), "balayer": (22, 8)}  # PowerPoint's own effect numbers: its panel shows their names
 OWN = {"roue": (21, 1), "trace": (22, 8)}  # chosen by a layout for one thing: a ring that turns (Roue), bars that grow (Balayer)
 DEFAULT_MOTION = "monter"
-STEP_MS, EFFECT_MS = 260, 480  # things overlap a little: a flow, not a queue
+STEP_MS, EFFECT_MS = 220, 450  # things overlap a little: a flow, not a queue. Designers' decks fade things in over 0.5 s
+MOST_STEPS = 7  # beyond, the last things appear together: a slide that keeps building tires the room
+RISE, SLIDE = 0.025, 0.04  # how far a thing travels as it appears (share of the slide): a hint of movement, not a flight
 SLOW_MS = {"roue": 1100, "trace": 900}  # a chart takes the time to be read as it draws
 
 
@@ -1855,9 +1857,9 @@ def _effect(kind: str, spid: str, node: str, delay: int, nid) -> str:
             '<p:attrNameLst><p:attrName>style.visibility</p:attrName></p:attrNameLst></p:cBhvr><p:to><p:strVal val="visible"/></p:to></p:set>')
     match kind:
         case "monter":
-            body = fade + move("ppt_y", "#ppt_y+0.05", "#ppt_y")
+            body = fade + move("ppt_y", f"#ppt_y+{RISE}", "#ppt_y")
         case "glisser":
-            body = fade + move("ppt_x", "#ppt_x-0.06", "#ppt_x")
+            body = fade + move("ppt_x", f"#ppt_x-{SLIDE}", "#ppt_x")
         case "zoom":
             body = fade + move("ppt_w", "#ppt_w*0.82", "#ppt_w") + move("ppt_h", "#ppt_h*0.82", "#ppt_h")
         case "balayer" | "trace":
@@ -1875,7 +1877,9 @@ def _animate(slide, marks: list[int], end: int, kind: str = DEFAULT_MOTION, clic
     children = list(slide.shapes._spTree)
     own = effects or {}
     steps = [([str(el.xpath(".//p:cNvPr/@id")[0]) for el in children[a:b]], own.get(a, kind)) for a, b in zip(marks, [*marks[1:], end])]
-    steps = [s for s in steps if s[0]][:12]
+    steps = [s for s in steps if s[0]]
+    if len(steps) > MOST_STEPS:
+        steps = [*steps[:MOST_STEPS - 1], ([i for ids, _ in steps[MOST_STEPS - 1:] for i in ids], steps[MOST_STEPS - 1][1])]
     if not steps:
         return
     n = [2]
@@ -1902,6 +1906,8 @@ def _animate(slide, marks: list[int], end: int, kind: str = DEFAULT_MOTION, clic
 
 
 MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+P14 = "http://schemas.microsoft.com/office/powerpoint/2010/main"
+MORPH_MS = 1400  # designers leave PowerPoint's 2 s; a photo that crosses the slide reads well in 1.4 s, and the talk keeps its pace
 P = "http://schemas.openxmlformats.org/presentationml/2006/main"
 
 
@@ -1931,7 +1937,7 @@ def _transition(slide, kind: str = "fade") -> None:
         # PowerPoint 2019 / 365 « Morphose »: what both slides share (title, part marker, decor) glides to its new place,
         # the rest fades. Older PowerPoint, WPS and LibreOffice read the fallback: a plain fade.
         _after_cover(slide, f'<mc:AlternateContent xmlns:mc="{MC}"><mc:Choice xmlns:p159="http://schemas.microsoft.com/office/powerpoint/2015/09/main" Requires="p159">'
-                            f'<p:transition xmlns:p="{P}" spd="slow"><p159:morph option="byObject"/></p:transition></mc:Choice>'
+                            f'<p:transition xmlns:p="{P}" xmlns:p14="{P14}" spd="slow" p14:dur="{MORPH_MS}"><p159:morph option="byObject"/></p:transition></mc:Choice>'
                             f'<mc:Fallback><p:transition xmlns:p="{P}" spd="med"><p:fade/></p:transition></mc:Fallback></mc:AlternateContent>')
         return
     effect = TRANSITIONS.get(kind, TRANSITIONS["fade"])
@@ -2004,6 +2010,10 @@ def build_pptx(deck: dict, info: dict, theme_name: str, images_dir: Path, moving
     seed = zlib.crc32(info["title"].encode())
     photos = premium.Photos(images_dir, deck) if premium else None
 
+    def carried(before, after) -> bool:
+        """Both slides show the photo column (or a full photo): Morph carries it from one to the other."""
+        return bool(premium) and all(any(sh.name == "!!Panneau" for sh in x.shapes) for x in (before, after))
+
     def said(notes: str, slide) -> str:
         """The speaker notes, and the credit of the photos shown on the slide."""
         credits = getattr(slide, "credits", None) or []
@@ -2018,7 +2028,7 @@ def build_pptx(deck: dict, info: dict, theme_name: str, images_dir: Path, moving
         _transition(first)
     used = Counter()
     outline = "Outline" if info["english"] else "Plan de la présentation"
-    plan = premium.standard(prs, theme, outline, None, "", {"type": "plan"}) if premium else _standard(prs, theme, outline, seed=seed, parts=parts)
+    plan = premium.standard(prs, theme, outline, None, "", {"type": "plan"}, photos) if premium else _standard(prs, theme, outline, seed=seed, parts=parts)
     plan.seed, plan.used, plan.photos = seed, used, photos
     (premium.plan if premium else _plan)(plan, parts)
     end = len(plan.slide.shapes._spTree)
@@ -2026,8 +2036,9 @@ def build_pptx(deck: dict, info: dict, theme_name: str, images_dir: Path, moving
     if getattr(plan, "credits", None):
         _notes(plan.slide, "\n\n".join(plan.credits))
     motion = motion if motion in MOTIONS else DEFAULT_MOTION
+    previous = plan.slide
     if moving:
-        _transition(plan.slide, _passage(motion, False))
+        _transition(plan.slide, "morph" if carried(first, plan.slide) and motion not in ("zoom", "balayer") else _passage(motion, False))
         _animate(plan.slide, plan.marks, end, motion, click)
     number, sections = 2, 0
     previous_part, after_content = None, False
@@ -2041,12 +2052,12 @@ def build_pptx(deck: dict, info: dict, theme_name: str, images_dir: Path, moving
                 opener = _section(prs, theme, s["title"], sections, seed)
             _notes(opener, said(s.get("notes", ""), opener))
             if moving:
-                _transition(opener, _passage(motion, False))
-            after_content = False
+                _transition(opener, "morph" if carried(previous, opener) and motion not in ("zoom", "balayer") else _passage(motion, False))
+            after_content, previous = False, opener
             continue
         style = _night(theme) if theme["alt"] and s["type"] in ("encadre", "grand", "chiffres", "etapes") else theme
         if premium:
-            pen = premium.standard(prs, style, s["title"], s.get("part"), s.get("highlight", ""), s)
+            pen = premium.standard(prs, style, s["title"], s.get("part"), s.get("highlight", ""), s, photos)
             pen.photos = photos
         else:
             pen = _standard(prs, style, s["title"], s.get("part"), s.get("highlight", ""), SIDED.get(s["type"], 0.0), seed + number // 3, parts)
@@ -2070,16 +2081,16 @@ def build_pptx(deck: dict, info: dict, theme_name: str, images_dir: Path, moving
         (premium.footer if premium else _progress)(pen, parts, s.get("part"), number, total)
         own = s.get("motion") if s.get("motion") in (*MOTIONS, "aucune") else motion
         if moving and own != "aucune":
-            _transition(pen.slide, _passage(own, previous_part == s.get("part"), after_content))
+            _transition(pen.slide, _passage(own, previous_part == s.get("part"), after_content or carried(previous, pen.slide)))
             effects = {at: how for at, how in pen.effects.items() if how != "zoom" or own in ("monter", "zoom")}  # a quiet fade stays quiet
             _animate(pen.slide, pen.marks if pen.marks and pen.marks[0] == base else [base, *pen.marks], end, own, click, effects)
-        previous_part, after_content = s.get("part"), True
+        previous_part, after_content, previous = s.get("part"), True, pen.slide
         pen.slide.credits = getattr(pen, "credits", [])
         _notes(pen.slide, said(s.get("notes", ""), pen.slide))
     thanks = deck.get("thanks") or "Merci de votre attention"
     last = premium.end(prs, theme, thanks, info, images_dir, seed, photos) if premium else _end_page(prs, theme, thanks, info, images_dir, seed)
     if moving:
-        _transition(last)
+        _transition(last, "morph" if carried(previous, last) and motion not in ("zoom", "balayer") else "fade")
     prs.core_properties.title = info["title"][:200]
     prs.core_properties.author = ", ".join(info["authors"][:3]) or "Paginya"
     out = io.BytesIO()

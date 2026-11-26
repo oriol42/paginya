@@ -1,0 +1,149 @@
+{
+ "decks": 41,
+ "slides": 1111,
+ "bands": {
+  "content:n_sizes": [
+   1,
+   2.0,
+   3
+  ],
+  "content:body_size": [
+   10.7,
+   16.0,
+   24.0
+  ],
+  "content:title_size": [
+   16.0,
+   32.0,
+   69.3
+  ],
+  "content:left": [
+   0.004,
+   0.07,
+   0.217
+  ],
+  "content:n_text": [
+   2,
+   4.0,
+   12
+  ],
+  "content:edges": [
+   1,
+   2.0,
+   8
+  ],
+  "content:fills": [
+   0,
+   2.0,
+   6
+  ],
+  "content:words": [
+   5,
+   22.0,
+   81
+  ],
+  "content:text_area": [
+   0.103,
+   0.25,
+   0.569
+  ],
+  "cover:n_sizes": [
+   1,
+   1.0,
+   3
+  ],
+  "cover:body_size": [
+   10.7,
+   18.35,
+   24.2
+  ],
+  "cover:title_size": [
+   40.0,
+   64.0,
+   80.0
+  ],
+  "cover:left": [
+   0.046,
+   0.075,
+   0.301
+  ],
+  "cover:n_text": [
+   1,
+   2.0,
+   4
+  ],
+  "cover:edges": [
+   1,
+   1.0,
+   4
+  ],
+  "cover:fills": [
+   0,
+   1.0,
+   5
+  ],
+  "cover:words": [
+   4,
+   5.0,
+   21
+  ],
+  "cover:text_area": [
+   0.133,
+   0.252,
+   0.464
+  ]
+ },
+ "shares": {
+  "shadow_share": 0.06,
+  "gradient_share": 0.146,
+  "photo_share": 0.491
+ },
+ "motion": {
+  "transitions": {
+   "aucune": 969,
+   "push": 51,
+   "fade": 50,
+   "morph": 39,
+   "prstTrans": 1,
+   "switch": 1
+  },
+  "transition_ms": [
+   500.0,
+   1000.0,
+   2000.0,
+   142
+  ],
+  "animated_share": 0.057,
+  "effects_per_animated_slide": [
+   2.0,
+   4.0,
+   8.0,
+   63
+  ],
+  "classes": {
+   "entr": 429
+  },
+  "entrances": {
+   "Fondu": 426,
+   "Apparaître": 3
+  },
+  "effect_ms": [
+   500.0,
+   500.0,
+   500.0,
+   426
+  ],
+  "triggers": {
+   "afterEffect": 275,
+   "clickEffect": 91,
+   "withEffect": 63
+  },
+  "delays_ms": [
+   null,
+   null,
+   null,
+   0
+  ],
+  "decks_with_motion": 11
+ }
+}
