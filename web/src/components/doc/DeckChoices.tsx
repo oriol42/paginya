@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { DeckInfo, DeckItem, DeckPatch, DeckSlide } from "@/lib/documents";
+import type { DeckImages, DeckInfo, DeckItem, DeckPatch, DeckSlide } from "@/lib/documents";
 
 /** Same colours as the themes of api/app/doc/slides.py. */
 const THEMES = [
@@ -234,8 +234,31 @@ function MotionPick({ deck, busy, onChange }: { deck: DeckInfo; busy: boolean; o
   );
 }
 
+/** Real photos found on the internet for the subject, or pictures made by the AI for each slide. */
+function ImagesPick({ value, busy, onChange }: { value: DeckImages; busy: boolean; onChange: (images: DeckImages) => void }) {
+  const choices: { id: DeckImages; label: string; hint: string }[] = [
+    { id: "photos", label: "Vraies photos", hint: "Trouvées sur internet selon ton sujet" },
+    { id: "ia", label: "Créées par l'IA", hint: "Une image faite pour chaque diapo" },
+  ];
+  return (
+    <div>
+      <p className="text-[14px] font-bold">Images</p>
+      <div role="radiogroup" aria-label="Images des diapos" className="mt-2 grid grid-cols-2 gap-2">
+        {choices.map((c) => (
+          <button key={c.id} type="button" role="radio" aria-checked={value === c.id} disabled={busy} onClick={() => value !== c.id && onChange(c.id)}
+            className={`press rounded-md p-2.5 text-left ring-1 ${value === c.id ? "ring-2 ring-board" : "ring-black/15"}`}>
+            <span className="block text-[14px] font-bold">{c.label}</span>
+            <span className="mt-0.5 block text-[12px] leading-snug text-ink/60">{c.hint}</span>
+          </button>
+        ))}
+      </div>
+      <p className="mt-1.5 text-[12px] text-ink/60">Quand aucune photo ne convient, l&apos;IA crée l&apos;image. Les images créées par l&apos;IA sont signalées sur la dernière diapo.</p>
+    </div>
+  );
+}
+
 /** In the editor: the look changes at once; a new number of slides is written again by the AI, on request. */
-export function DeckPanel({ deck, busy, onChange }: { deck: DeckInfo; busy: boolean; onChange: (patch: DeckPatch) => void }) {
+export function DeckPanel({ deck, busy, drawing, onChange }: { deck: DeckInfo; busy: boolean; drawing?: boolean; onChange: (patch: DeckPatch) => void }) {
   const [count, setCount] = useState(deck.slides);
   return (
     <div className="space-y-4">
@@ -243,6 +266,7 @@ export function DeckPanel({ deck, busy, onChange }: { deck: DeckInfo; busy: bool
       <PurposePick school={deck.school !== false} disabled={busy} onChange={(school) => school !== (deck.school !== false) && onChange({ school })} />
       <ThemePick value={deck.theme} disabled={busy} onChange={(theme) => theme !== deck.theme && onChange({ theme })} />
       <ColorPick colors={deck.colors ?? {}} disabled={busy} onChange={(colors) => onChange({ colors })} />
+      {drawing && <ImagesPick value={deck.images ?? "photos"} busy={busy} onChange={(images) => onChange({ images })} />}
       <div>
         <p className="text-[14px] font-bold">Police des titres</p>
         <div className="mt-2 grid grid-cols-4 gap-1.5">

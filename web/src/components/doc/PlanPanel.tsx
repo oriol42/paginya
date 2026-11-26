@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { API_URL } from "@/lib/api";
-import type { Block } from "@/lib/documents";
+import { docs, type Block } from "@/lib/documents";
 import { Icon } from "@/components/Icon";
 
 type Props = {
   docId: string;
   blocks: Block[];
+  /** Pictures made by the AI can be added (a document Paginya lays out itself). */
+  canDraw?: boolean;
   onChange: (blocks: Block[]) => void;
 };
 
@@ -24,12 +26,20 @@ const TARGETS: Target[] = [
 
 const EDITABLE = new Set(["heading", "paragraph", "list", "quote"]);
 
-export function PlanPanel({ docId, blocks, onChange }: Props) {
+export function PlanPanel({ docId, blocks, canDraw, onChange }: Props) {
   const [onlyHeadings, setOnlyHeadings] = useState(blocks.length > 40);
   const [open, setOpen] = useState<number | null>(null);
   const visible = onlyHeadings ? blocks.filter((b) => b.type === "heading") : blocks;
 
   const update = (id: number, fn: (b: Block) => Block) => onChange(blocks.map((b) => (b.id === id ? fn(b) : b)));
+  /** The new picture goes right after the element, with its caption (the server numbers the blocks again). */
+  const insertAfter = (id: number, image: string, caption: string) => {
+    const at = blocks.findIndex((b) => b.id === id);
+    const top = Math.max(0, ...blocks.map((b) => b.id));
+    const added: Block[] = [{ id: top + 1, type: "figure", image }, { id: top + 2, type: "caption", of: "figure", text: caption }];
+    onChange([...blocks.slice(0, at + 1), ...added, ...blocks.slice(at + 1)]);
+    setOpen(null);
+  };
 
   return (
     <div>
@@ -86,12 +96,64 @@ export function PlanPanel({ docId, blocks, onChange }: Props) {
                   >
                     <span className="inline-flex items-center gap-1.5"><Icon name={b.hidden ? "undo-2" : "trash-2"} size={15} />{b.hidden ? "Remettre dans le document" : "Retirer du document"}</span>
                   </button>
+                  {canDraw && <DrawImage docId={docId} onDone={(image, caption) => insertAfter(b.id, image, caption)} />}
                 </div>
               )}
             </li>
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+/** A picture made by the AI from the user's words, added after the element. Its caption says it was generated. */
+function DrawImage({ docId, onDone }: { docId: string; onDone: (image: string, caption: string) => void }) {
+  const [asking, setAsking] = useState(false);
+  const [prompt, setPrompt] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  if (!asking) {
+    return (
+      <button type="button" onClick={() => setAsking(true)} className="mt-2 block text-[13px] font-semibold text-ink/70 hover:text-ink">
+        <span className="inline-flex items-center gap-1.5"><Icon name="image" size={15} />Ajouter une image créée par l&apos;IA</span>
+      </button>
+    );
+  }
+  async function create() {
+    if (prompt.trim().length < 3) {
+      setError("Décris l'image en quelques mots.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const made = await docs.draw(docId, prompt);
+      onDone(made.image, made.caption);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="mt-2.5 space-y-2 border-t border-brand-100 pt-2.5">
+      <label className="block">
+        <span className="text-[13px] font-semibold">Décris l&apos;image</span>
+        <textarea name="description-image" autoComplete="off" rows={2} maxLength={400} value={prompt} disabled={busy} onChange={(e) => setPrompt(e.target.value)}
+          placeholder="Par exemple : un entrepôt rempli de cartons, vu de haut…"
+          className="mt-1 w-full rounded-md bg-white px-2.5 py-2 text-[14px] ring-1 ring-black/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500" />
+      </label>
+      <p className="text-[12px] text-ink/60">L&apos;image est ajoutée après cet élément, avec une légende qui indique qu&apos;elle a été créée par l&apos;IA.</p>
+      {error && <p role="alert" className="text-[13px] font-semibold text-pin">{error}</p>}
+      <div className="flex items-center gap-3">
+        <button type="button" disabled={busy} onClick={create}
+          className="press inline-flex min-h-11 items-center gap-2 rounded-md bg-ink px-4 text-[14px] font-bold text-white hover:bg-ink/85 disabled:opacity-50">
+          {busy && <Icon name="loader-circle" size={16} className="animate-spin" />}
+          {busy ? "Création de l'image…" : "Créer l'image"}
+        </button>
+        <button type="button" disabled={busy} onClick={() => { setAsking(false); setError(""); }} className="min-h-11 text-[13px] font-semibold text-ink/60 hover:text-ink">Annuler</button>
+      </div>
     </div>
   );
 }

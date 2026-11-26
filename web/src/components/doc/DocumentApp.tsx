@@ -306,7 +306,7 @@ export function DocumentApp() {
           : "Le texte, les titres et les tableaux de ton PDF sont remis dans un fichier Word que tu peux modifier."}
       </p>
       {doc.deck && <button type="button" disabled={rendering} onClick={() => setShowing(true)} className="press flex w-full items-center justify-center gap-2 rounded-md bg-hi px-3 py-3.5 text-[15px] font-bold text-ink"><Icon name="presentation" size={19} />Voir le diaporama</button>}
-      {doc.deck && <DeckPanel deck={doc.deck} busy={rendering} onChange={changeDeck} />}
+      {doc.deck && <DeckPanel deck={doc.deck} busy={rendering} drawing={doc.ai_images} onChange={changeDeck} />}
       <p className="text-[14px] leading-relaxed text-ink/60">Regarde l&apos;aperçu, puis télécharge. {!slides && <>Pour ajouter une page de garde, un sommaire ou des numéros, utilise plutôt la mise en forme.</>}</p>
       {!slides && <Link href={`/convertir?vers=powerpoint&doc=${doc.id}`} className="press block w-full rounded-md bg-board px-3 py-3 text-center text-[14px] font-bold text-white">Faire un PowerPoint</Link>}
       {!slides && <Link href="/document" className="press block w-full rounded-md px-3 py-3 text-center text-[14px] font-bold ring-1 ring-black/15 hover:bg-ink/5">Mettre en forme un document</Link>}
@@ -363,7 +363,7 @@ export function DocumentApp() {
           onState={setCover}
         />
       )}
-      {panel === "plan" && <PlanPanel docId={doc.id} blocks={doc.blocks} onChange={(blocks) => change({ blocks })} />}
+      {panel === "plan" && <PlanPanel docId={doc.id} blocks={doc.blocks} canDraw={!!doc.ai_images && !doc.convert && !keeping} onChange={(blocks) => change({ blocks })} />}
     </>
   );
 

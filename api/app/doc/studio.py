@@ -466,7 +466,8 @@ def end(prs, t: dict, thanks: str, info: dict, images_dir: Path, seed: int = 0, 
     if photos:
         credits += [c for c in photos.used if c not in credits]
     if credits:
-        pen.text(M, 6.55, W - 2 * M, 0.7, "Photos : " + " ; ".join(c.removeprefix("Photo : ") for c in credits[:8]), 9, "FFFFFF", align=PP_ALIGN.CENTER).name = "Crédits des photos"
+        label = "Images : " if any(not c.startswith("Photo : ") for c in credits) else "Photos : "  # an AI picture is no photo
+        pen.text(M, 6.55, W - 2 * M, 0.7, label + " ; ".join(c.removeprefix("Photo : ") for c in credits[:8]), 9, "FFFFFF", align=PP_ALIGN.CENTER).name = "Crédits des photos"
     return slide
 
 

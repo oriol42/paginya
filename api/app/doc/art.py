@@ -1,14 +1,20 @@
-"""The backgrounds of a presentation, drawn here, and real photos found on the internet. No AI pictures: the customers
-do not want them, and they look generated.
+"""The backgrounds of a presentation, drawn here, real photos found on the internet, and pictures made by an AI.
 
 Photos, best first: Pexels when PEXELS_API_KEY is set (free key, no card: the most modern pictures); then Openverse
 without a key, first on its modern CC0 banks (StockSnap, the WordPress Photo Directory), then everywhere it may be used
 commercially; then Wikimedia Commons. Only two or three English keywords per picture leave the server ("warehouse
 shelves"), never the document. Each photo keeps its author and licence: they go into the speaker notes and on the last
 slide. If nothing answers in time, a slide keeps its colours.
+
+AI pictures (asked by Oriol on 26/11/2026): FLUX.2 [klein] 4B (Black Forest Labs, Apache 2.0) on Cloudflare Workers AI,
+when CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_AI_TOKEN are set. Free: 10,000 neurons a day (back at 00:00 UTC), about
+150 neurons a 1280x720 picture. Real photos stay first: a slide gets an AI picture when no photo was found, or when
+the user chose « Images créées par l'IA ». Only the scene to draw leaves the server (15 English words written by the
+presentation's AI, no names), or the words the user typed for a document's picture. Credited as generated.
 """
 from __future__ import annotations
 
+import base64
 import html
 import io
 import logging
@@ -16,6 +22,7 @@ import os
 import random
 import re
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, wait
 from functools import lru_cache
 from pathlib import Path
@@ -176,26 +183,109 @@ def find_photo(query: str, seed: int, path: Path, taken: set[str], lock: threadi
         pool.shutdown(wait=False, cancel_futures=True)
 
 
+# --- pictures made by an AI -------------------------------------------------------------------------
+
+AI_MODEL = "@cf/black-forest-labs/flux-2-klein-4b"
+AI_CREDIT = "Image générée par IA (FLUX.2 klein, Black Forest Labs)"
+AI_STYLE = ("Realistic editorial photograph, natural light, true colours, sharp focus, shot on a 35 mm camera. "
+            "No text, no letters, no words, no logo, no watermark, no frame.")
+# Paginya's customers are Cameroonian: the people drawn look like them (asked by Oriol, 26/11/2026; left to itself the
+# model draws Europeans). Not added when the scene already says who the people are ("a European tourist").
+PEOPLE = "Any people in the picture are Black Africans from Cameroon, with dark skin."
+ORIGIN = re.compile(r"\b(afric\w*|caucasian|europ\w*|asian?s?|asiati\w*|chinese|chinois\w*|indian?s?|indien\w*|arab\w*|latin[oa]s?|hispanic|"
+                    r"(?:white|black) (?:man|men|woman|women|people|person|persons|child|children|boy|girl)s?|"
+                    r"(?:hommes?|femmes?|personnes?|gens|enfants?|garçons?|filles?) (?:blanc|blanche|noir|noire)s?)\b", re.I)
+SLIDE_SIZE = (1280, 720)  # a full slide; the photo columns are cut from it
+FIGURE_SIZE = (1024, 768)  # a figure in a Word document
+AI_TIME = 15  # seconds kept for an AI picture when the photo banks gave nothing
+# a picture the service will not draw, whoever asks, in French and in English ("blood test", "cancer du sein" stay)
+UNSAFE = re.compile(r"\b(nue?s?|nudit\w*|naked|nudes?|sex(?:e|es|y|ual\w*|uel\w*)?|porn\w*|[ée]roti\w*|lingerie|gore|cadavres?|corpses?|"
+                    r"tu[eé]r?|kill(?:s|ed|ing)?|meurtres?|murders?|armes?|weapons?|fusils?|guns?|nazi\w*|terror\w*)\b", re.I)
+_spent_until = 0.0  # the free allowance of the day is spent: no call before it comes back
+
+
+def ai_configured() -> bool:
+    return bool(os.getenv("CLOUDFLARE_ACCOUNT_ID") and os.getenv("CLOUDFLARE_AI_TOKEN"))
+
+
+def ai_ready() -> bool:
+    return ai_configured() and time.time() >= _spent_until
+
+
+def ai_spent() -> bool:
+    """The free pictures of the day are all used: they come back at 00:00 UTC (01:00 in Cameroon)."""
+    return ai_configured() and time.time() < _spent_until
+
+
+def prompt(scene: str) -> str:
+    """What FLUX is asked: the scene, who the people are, then the look of a real photograph."""
+    who = "" if ORIGIN.search(scene) else f" {PEOPLE}"
+    return f"{scene.rstrip('.')}.{who} {AI_STYLE}"
+
+
+def generate(scene: str, path: Path, size: tuple[int, int] = SLIDE_SIZE, timeout: float = 30) -> dict | None:
+    """A picture drawn by FLUX.2 [klein] for this scene, saved at `path` as a JPEG: {"credit"} or None (not set up,
+    a scene it will not draw, the day's allowance spent, too slow). The model always runs its four steps."""
+    global _spent_until
+    scene = re.sub(r"\s+", " ", str(scene or "")).strip()[:500]
+    if not scene or UNSAFE.search(scene) or not ai_ready():
+        return None
+    account, token = os.environ["CLOUDFLARE_ACCOUNT_ID"], os.environ["CLOUDFLARE_AI_TOKEN"]
+    form = {"prompt": (None, prompt(scene)), "width": (None, str(size[0])), "height": (None, str(size[1]))}
+    try:
+        answer = httpx.post(f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{AI_MODEL}",
+                            headers={"Authorization": f"Bearer {token}"}, files=form, timeout=timeout)
+    except httpx.HTTPError as exc:
+        log.warning("image IA : pas de réponse (%s)", exc)
+        return None
+    if answer.status_code != 200:
+        said = answer.text[:300]
+        if answer.status_code == 429 or "4006" in said or "allocation" in said.lower():
+            _spent_until = (time.time() // 86400 + 1) * 86400  # the next 00:00 UTC
+        log.warning("image IA refusée : %s %s", answer.status_code, said)
+        return None
+    try:
+        body = answer.json()
+        image = (body.get("result") or body).get("image") or ""
+        with Image.open(io.BytesIO(base64.b64decode(image))) as img:
+            img.convert("RGB").save(path, "JPEG", quality=88, dpi=(150, 150))
+    except (ValueError, OSError, AttributeError) as exc:
+        log.warning("image IA illisible (%s)", exc)
+        return None
+    return {"credit": AI_CREDIT}
+
+
 PHOTO_TYPES = ("section", "liste", "grand", "panneau", "encadre", "chiffres")
 
 
-def illustrate(deck: dict, images_dir: Path) -> None:
-    """Finds the real photos the presentation asks for (the cover, then a few slides), all at once. Those that fail are
-    forgotten: every layout works without a photo."""
+def picture(query: str, scene: str, n: int, path: Path, taken: set[str], lock: threading.Lock, drawn: bool = False) -> dict | None:
+    """One picture of a presentation. Real photos first, an AI picture when none was found; the other way round when
+    the user chose AI pictures (and a real photo when the AI cannot draw today)."""
+    end = time.monotonic() + DEADLINE
+    if drawn:
+        return generate(scene or query, path, timeout=DEADLINE - 10) or (query and find_photo(query, n, path, taken, lock, max(5.0, end - time.monotonic()))) or None
+    found = find_photo(query, n, path, taken, lock, DEADLINE - AI_TIME if ai_ready() else DEADLINE) if query else None
+    return found or generate(scene or query, path, timeout=max(5.0, end - time.monotonic() - 1))
+
+
+def illustrate(deck: dict, images_dir: Path, drawn: bool = False) -> None:
+    """Finds the pictures the presentation asks for (the cover, then a few slides), all at once. Those that fail are
+    forgotten: every layout works without a photo. `drawn`: the user chose pictures made by the AI."""
     images_dir.mkdir(parents=True, exist_ok=True)
-    jobs: list[tuple[dict, str]] = []
+    jobs: list[tuple[dict, str, str]] = []  # who gets the picture, the keywords of a photo search, the scene to draw
     cover = deck.get("photo") or keywords(deck.get("visual", ""))
     if cover:
-        jobs.append((deck, cover))
+        jobs.append((deck, cover, deck.get("visual") or cover))
     for s in deck["slides"]:
         query = s.get("photo") or keywords(s.get("visual", ""))
         if query and s.get("type") in PHOTO_TYPES and len(jobs) < MAX_PICTURES:
-            jobs.append((s, query))
+            jobs.append((s, query, s.get("visual") or query))
     taken: set[str] = set()
     lock = threading.Lock()
 
     pool = ThreadPoolExecutor(max_workers=max(len(jobs), 1))
-    futures = {pool.submit(find_photo, query, n, images_dir / f"deck-photo-{n}.jpg", taken, lock): (n, owner) for n, (owner, query) in enumerate(jobs)}
+    futures = {pool.submit(picture, query, scene, n, images_dir / f"deck-photo-{n}.jpg", taken, lock, drawn): (n, owner)
+               for n, (owner, query, scene) in enumerate(jobs)}
     done, _late = wait(futures, timeout=DEADLINE)
     pool.shutdown(wait=False, cancel_futures=True)  # a photo still on its way is dropped, the presentation does not wait
     for future, (n, owner) in futures.items():

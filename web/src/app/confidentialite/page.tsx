@@ -50,6 +50,7 @@ export default function Confidentialite() {
         <li><b>Nos hébergeurs</b> Cloudflare, Render et Supabase : serveurs aux États-Unis (voir les mentions légales).</li>
         <li><b>Google (Gemini)</b>, ou <b>Groq</b> / <b>OpenRouter</b> quand Gemini est indisponible : <u>seulement pour des pages écrites à la main</u>, si tu le choisis et après ton accord explicite. Le traitement a lieu hors du Cameroun. Les pages imprimées sont lues sur nos propres serveurs, sans les envoyer à personne.</li>
         <li><b>Banques de photos libres</b> (Pexels, Openverse, Wikimedia Commons) : quand tu fais un PowerPoint, seuls deux ou trois mots-clés en anglais (par exemple « warehouse shelves ») leur sont envoyés pour trouver des photos. Ni ton document, ni ton nom, ni ton numéro.</li>
+        <li><b>Cloudflare Workers AI</b> (modèle FLUX.2 klein de Black Forest Labs) : pour les images créées par l&apos;IA. Pour un PowerPoint, seule une courte description de la scène en anglais lui est envoyée (par exemple « workers checking boxes in a warehouse »). Pour un document, ce sont les mots que tu tapes pour décrire l&apos;image. Ni ton document, ni ton nom, ni ton numéro. Cloudflare indique ne pas conserver ces données.</li>
       </ul>
       <p>
         Les transferts de données hors du Cameroun sont encadrés par la loi n° 2024/017. Nous limitons ces transferts au strict nécessaire,

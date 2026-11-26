@@ -172,8 +172,10 @@ def view(order: dict) -> dict:
         "convert": doc.get("convert"),  # "pdf" | "docx" | "pptx" when the order is a plain conversion
         "deck": {"slides": deck_ai.total(doc["deck"]), "theme": doc.get("deck_theme", DEFAULT_THEME),
                  "max": deck_ai.max_slides(doc["meta"].get("words", 0)), "file": doc.get("deck_file", ""), "school": doc.get("deck_school", True), "moving": doc.get("deck_moving", True), "motion": doc.get("deck_motion", DEFAULT_MOTION), "click": doc.get("deck_click", False),
-                 "colors": doc.get("deck_colors") or {}, "font": doc.get("deck_font") or "", "content": doc["deck"]["slides"]} if doc.get("deck") else None,
+                 "colors": doc.get("deck_colors") or {}, "font": doc.get("deck_font") or "", "images": doc.get("deck_images", "photos"),
+                 "content": doc["deck"]["slides"]} if doc.get("deck") else None,
         "help": bool(doc.get("help")),  # « J'aide Paginya à s'améliorer » (app/learn.py)
+        "ai_images": art.ai_configured(),  # pictures made by the AI can be asked (art.generate)
     }
 
 
@@ -358,7 +360,16 @@ def _write_deck(doc: dict, wanted: int, images: Path | None = None) -> None:
     doc["deck"] = deck_ai.write(doc, count, on_call=lambda provider: db.bump(f"ia:presentation-{provider}"))
     doc["deck_runs"] = doc.get("deck_runs", 0) + 1
     if images is not None:
-        art.illustrate(doc["deck"], images)
+        _illustrate(doc, images)
+
+
+def _illustrate(doc: dict, images: Path) -> None:
+    """The deck's pictures, as the user chose them; each AI picture is counted, like the other AI calls."""
+    deck = doc["deck"]
+    art.illustrate(deck, images, drawn=doc.get("deck_images") == "ia")
+    for owner in [deck, *deck["slides"]]:
+        if owner.get("credit") == art.AI_CREDIT:
+            db.bump("ia:image")
 
 
 def _with_toc_lines(blocks: list[dict], trace: dict, raws: list) -> list[dict]:
@@ -616,6 +627,7 @@ class DeckIn(BaseModel):
     colors: dict | None = None  # {"accent": "RRGGBB", "second": "RRGGBB"}; {} goes back to the style's own colours
     font: str | None = None  # font of the titles: Calibri, Cambria or Arial; "" for the style's own
     edited: list[dict] | None = None  # the slides as the user changed them: words, order, layout, removals
+    images: str | None = None  # "photos": real photos (an AI picture when none fits); "ia": pictures made by the AI
 
 
 @router.post("/{order_id}/deck")
@@ -646,6 +658,11 @@ def change_deck(order_id: str, body: DeckIn) -> dict:
     if body.logo:
         _ensure_inputs(order_id)
         doc["deck_logo"] = _save_logo(order_id, body.logo)
+    if body.images in ("photos", "ia") and body.images != doc.get("deck_images", "photos"):
+        doc["deck_images"] = body.images
+        if body.slides is None:  # same words, new pictures: no AI call for the text
+            _ensure_inputs(order_id)
+            _illustrate(doc, doc_dir(order_id) / "images")
     if body.slides is not None:
         if doc.get("deck_runs", 0) >= MAX_DECK_RUNS:
             raise HTTPException(429, "Tu as refait cette présentation plusieurs fois : garde celle-ci ou importe à nouveau ton fichier.")
@@ -657,6 +674,52 @@ def change_deck(order_id: str, body: DeckIn) -> dict:
     db.update_payload(order_id, {"doc": doc})
     _persist_inputs(order_id)
     return render(order_id)
+
+
+MAX_DRAWN = 10  # AI pictures for one document: the free allowance of the day is shared by every customer
+
+
+class DrawIn(BaseModel):
+    prompt: str  # what the picture shows, in the user's words
+
+
+@router.post("/{order_id}/image")
+def draw(order_id: str, body: DrawIn) -> dict:
+    """A picture made by the AI for a Word document, from the user's words. The site puts it in the document as a
+    figure, with its caption saying it was generated."""
+    order = _load(order_id)
+    doc = order["payload"]["doc"]
+    if order["status"] == "PENDING":
+        raise HTTPException(409, "Paiement en cours, réessaie dans un instant")
+    if not view(order)["editable"]:
+        raise HTTPException(403, "La période de modification gratuite (7 jours) est terminée")
+    if doc.get("convert") in ("pdf", "pptx") or doc.get("mode") == "keep":
+        raise HTTPException(400, "Les images créées par l'IA s'ajoutent quand Paginya refait la mise en page du document")
+    if not art.ai_configured():
+        raise HTTPException(503, "La création d'images n'est pas encore activée")
+    prompt = re.sub(r"\s+", " ", body.prompt).strip()
+    if len(prompt) < 3 or len(prompt) > 400:
+        raise HTTPException(400, "Décris l'image en quelques mots (400 caractères au plus)")
+    if art.UNSAFE.search(prompt):
+        raise HTTPException(400, "Cette image ne peut pas être créée. Décris autre chose.")
+    if doc.get("drawn", 0) >= MAX_DRAWN:
+        raise HTTPException(429, f"Tu as déjà créé {MAX_DRAWN} images pour ce document")
+    if art.ai_spent():
+        raise HTTPException(503, "Les images gratuites du jour sont toutes utilisées. Réessaie demain.")
+    _ensure_inputs(order_id)
+    folder = doc_dir(order_id) / "images"
+    folder.mkdir(parents=True, exist_ok=True)
+    name = f"ia{uuid.uuid4().hex[:12]}.jpg"  # letters and digits only: what a figure block may name
+    if not art.generate(prompt, folder / name, art.FIGURE_SIZE):
+        if art.ai_spent():
+            raise HTTPException(503, "Les images gratuites du jour sont toutes utilisées. Réessaie demain.")
+        raise HTTPException(503, "L'image n'a pas pu être créée, réessaie dans un instant")
+    db.bump("ia:image")
+    doc = _load(order_id)["payload"]["doc"]  # read again: the user may have changed the document meanwhile
+    doc["drawn"] = doc.get("drawn", 0) + 1
+    db.update_payload(order_id, {"doc": doc})
+    _persist_inputs(order_id)
+    return {"image": name, "caption": f"{prompt[:1].upper()}{prompt[1:200].rstrip('.')} (image générée par IA)"}
 
 
 SHOW_DPI = 80

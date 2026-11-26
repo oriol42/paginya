@@ -130,13 +130,17 @@ export type DocView = {
   deck?: DeckInfo | null;
   /** The customer agreed to let the team keep the file to improve Paginya. */
   help?: boolean;
+  /** Pictures made by the AI can be asked (the server has its Cloudflare keys). */
+  ai_images?: boolean;
 };
 
 export type DeckShowPlan = { slides: { frames: number; push: boolean; motion?: string; click?: boolean }[]; version: string };
 export type DeckItem = { head: string; text: string; icon: string };
 export type DeckSlide = { type: string; title: string; items?: DeckItem[]; key?: string; takeaway?: string; value?: string; text?: string; motion?: string; [other: string]: unknown };
-export type DeckInfo = { slides: number; theme: string; max: number; file?: string; school?: boolean; moving?: boolean; motion?: string; click?: boolean; colors?: { accent?: string; second?: string }; font?: string; content?: DeckSlide[] };
-export type DeckPatch = { slides?: number; theme?: string; logo?: string; school?: boolean; moving?: boolean; motion?: string; click?: boolean; colors?: { accent?: string; second?: string }; font?: string; edited?: DeckSlide[] };
+export type DeckInfo = { slides: number; theme: string; max: number; file?: string; school?: boolean; moving?: boolean; motion?: string; click?: boolean; colors?: { accent?: string; second?: string }; font?: string; images?: DeckImages; content?: DeckSlide[] };
+/** "photos": real photos found on the internet (an AI picture when none fits); "ia": pictures made by the AI. */
+export type DeckImages = "photos" | "ia";
+export type DeckPatch = { slides?: number; theme?: string; logo?: string; school?: boolean; moving?: boolean; motion?: string; click?: boolean; colors?: { accent?: string; second?: string }; font?: string; images?: DeckImages; edited?: DeckSlide[] };
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
@@ -196,6 +200,8 @@ export const docs = {
   /** A new number of slides (the AI writes them again) or a new theme (same words). */
   deck: (id: string, patch: DeckPatch) =>
     call<DocView>(`/documents/${id}/deck`, { method: "POST", body: JSON.stringify(patch) }),
+  /** A picture made by the AI from the user's words, for a Word document: the site puts it in as a figure. */
+  draw: (id: string, prompt: string) => call<{ image: string; caption: string }>(`/documents/${id}/image`, { method: "POST", body: JSON.stringify({ prompt }) }),
   get: (id: string) => call<DocView>(`/documents/${id}`),
   update: (id: string, patch: Partial<{ blocks: Block[]; style: DocStyle; options: DocOptions; kind: string; letterhead: Letterhead; cover_svg: string; remove_cover: boolean; mode: DocMode; plan: Partial<DocPlan>; confirm: boolean }>) =>
     call<DocView>(`/documents/${id}`, { method: "PUT", body: JSON.stringify(patch) }),
